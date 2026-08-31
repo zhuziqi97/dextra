@@ -9,6 +9,9 @@ use codeg_lib::web::{
     WebServerState,
 };
 
+// Dextra Runner 默认只接受本机连接；显式设置 CODEG_HOST 才能扩大监听范围。
+const DEFAULT_SERVER_HOST: &str = "127.0.0.1";
+
 fn main() -> ExitCode {
     // Capture our own executable path before anything can rename it (an
     // in-place upgrade swaps the binary mid-run; `current_exe()` would then
@@ -145,7 +148,7 @@ async fn async_main() -> ExitCode {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(3080);
-    let host = std::env::var("CODEG_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
+    let host = std::env::var("CODEG_HOST").unwrap_or_else(|_| DEFAULT_SERVER_HOST.to_string());
     // CODEG_DATA_DIR was already resolved and absolutized in `main()` so
     // all path resolvers across the process see the same root. Read it
     // back rather than re-deriving the default.
@@ -596,4 +599,14 @@ fn default_data_dir() -> PathBuf {
     dirs::data_dir()
         .map(|d| d.join("codeg"))
         .unwrap_or_else(|| PathBuf::from(".codeg-data"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dextra_server_defaults_to_loopback() {
+        assert_eq!(DEFAULT_SERVER_HOST, "127.0.0.1");
+    }
 }

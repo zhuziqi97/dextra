@@ -1,0 +1,326 @@
+{
+  "protocolVersion": 1,
+  "codegApiRevision": 1,
+  "codegUpstreamVersion": "v0.29.0",
+  "codegUpstreamCommit": "769610c626f1fc4b18c11d3e289326acf097b99f",
+  "commands": [
+    {
+      "command": "acp_connect",
+      "group": "TASK_CONTROL",
+      "route": "OPERATION",
+      "operation": "SESSION_CREATE",
+      "requiredScope": "SESSION_CONTROL",
+      "effects": ["PROCESS"],
+      "sharedUser": true,
+      "idempotency": "COMMAND_ID",
+      "timeoutMs": 60000,
+      "audit": "DOMAIN_OPERATION"
+    },
+    {
+      "command": "acp_prompt",
+      "group": "TASK_CONTROL",
+      "route": "OPERATION",
+      "operation": "TASK_START",
+      "requiredScope": "TASK_CONTROL",
+      "effects": ["AGENT_TURN"],
+      "sharedUser": true,
+      "idempotency": "COMMAND_ID",
+      "timeoutMs": 60000,
+      "audit": "DOMAIN_OPERATION"
+    },
+    {
+      "command": "acp_cancel",
+      "group": "TASK_CONTROL",
+      "route": "OPERATION",
+      "operation": "TASK_CANCEL",
+      "requiredScope": "TASK_CONTROL",
+      "effects": ["PROCESS"],
+      "sharedUser": true,
+      "idempotency": "COMMAND_ID",
+      "timeoutMs": 30000,
+      "audit": "DOMAIN_OPERATION"
+    },
+    {
+      "command": "acp_disconnect",
+      "group": "TASK_CONTROL",
+      "route": "OPERATION",
+      "operation": "SESSION_CLOSE",
+      "requiredScope": "SESSION_CONTROL",
+      "effects": ["PROCESS"],
+      "sharedUser": true,
+      "idempotency": "COMMAND_ID",
+      "timeoutMs": 30000,
+      "audit": "DOMAIN_OPERATION"
+    },
+    {
+      "command": "acp_respond_permission",
+      "group": "APPROVAL_RESPONSE",
+      "route": "OPERATION",
+      "operation": "APPROVAL_DECIDE",
+      "requiredScope": "APPROVAL_DECIDE",
+      "effects": ["AGENT_TURN"],
+      "sharedUser": true,
+      "idempotency": "COMMAND_ID",
+      "timeoutMs": 30000,
+      "audit": "DOMAIN_OPERATION"
+    },
+    {
+      "command": "acp_answer_question",
+      "group": "APPROVAL_RESPONSE",
+      "route": "OPERATION",
+      "operation": "APPROVAL_DECIDE",
+      "requiredScope": "APPROVAL_DECIDE",
+      "effects": ["AGENT_TURN"],
+      "sharedUser": true,
+      "idempotency": "COMMAND_ID",
+      "timeoutMs": 30000,
+      "audit": "DOMAIN_OPERATION"
+    },
+    {
+      "command": "acp_answer_plan_approval",
+      "group": "APPROVAL_RESPONSE",
+      "route": "OPERATION",
+      "operation": "APPROVAL_DECIDE",
+      "requiredScope": "APPROVAL_DECIDE",
+      "effects": ["AGENT_TURN"],
+      "sharedUser": true,
+      "idempotency": "COMMAND_ID",
+      "timeoutMs": 30000,
+      "audit": "DOMAIN_OPERATION"
+    },
+    {
+      "command": "acp_list_connections",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "acp_get_session_snapshot",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "acp_get_session_snapshot_by_conversation",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "acp_find_connection_for_conversation",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "acp_list_agents",
+      "group": "RUNTIME_READ",
+      "route": "RELAY",
+      "requiredScope": "RUNTIME_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "acp_get_agent_status",
+      "group": "RUNTIME_READ",
+      "route": "RELAY",
+      "requiredScope": "RUNTIME_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "list_conversations",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "get_conversation",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "forge_create_comment",
+      "group": "FORGE_MUTATE",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["EXTERNAL_WRITE"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "forge_set_item_state",
+      "group": "FORGE_MUTATE",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["EXTERNAL_WRITE"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "forge_create_issue",
+      "group": "FORGE_MUTATE",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["EXTERNAL_WRITE"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "forge_merge_change",
+      "group": "FORGE_MUTATE",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["EXTERNAL_WRITE"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "open_in_code",
+      "group": "LOCAL_OS_INTEGRATION",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["LOCAL_OS"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "acp_open_hermes_setup_terminal",
+      "group": "LOCAL_OS_INTEGRATION",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["LOCAL_OS", "PROCESS"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "terminal_spawn",
+      "group": "TERMINAL",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["PROCESS"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "terminal_write",
+      "group": "TERMINAL",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["PROCESS"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "acp_update_agent_env",
+      "group": "CREDENTIALS",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["CONFIG", "SECRET"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "acp_update_agent_config",
+      "group": "SETTINGS",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["CONFIG"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "acp_download_agent_binary",
+      "group": "INSTALL",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["NETWORK", "PROCESS", "FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    },
+    {
+      "command": "perform_app_update",
+      "group": "INSTALL",
+      "route": "DENY",
+      "requiredScope": "NONE",
+      "effects": ["NETWORK", "PROCESS", "FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 0,
+      "audit": "DENIED"
+    }
+  ],
+  "channels": [
+    {
+      "channel": "conversation://changed",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ"
+    },
+    {
+      "channel": "folder://changed",
+      "group": "RUNTIME_READ",
+      "route": "RELAY",
+      "requiredScope": "RUNTIME_READ"
+    }
+  ]
+}

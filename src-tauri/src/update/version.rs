@@ -1,10 +1,7 @@
-//! Update manifest fetching and version comparison.
+//! 更新清单获取与版本比较。
 //!
-//! The manifest (`latest.json`) is the same artifact the desktop
-//! `tauri-plugin-updater` consults, so desktop and server modes agree on
-//! "what is the latest version". Server mode additionally downloads the
-//! platform tarball from the deterministic `releases/latest/download/`
-//! path (see `install.rs`).
+//! P0-C 阶段尚未建立 Dextra 自有发布源，因此桌面端和服务器端统一指向
+//! `.invalid` 保留域名并明确失败，避免误用 Codeg 上游更新包。
 
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -13,15 +10,11 @@ use serde::Deserialize;
 
 use crate::app_error::AppCommandError;
 
-/// Update manifest URL — mirrors the `endpoints` entry in `tauri.conf.json`
-/// so desktop and server modes consult the same source of truth.
-pub const UPDATE_MANIFEST_URL: &str =
-    "https://github.com/xintaofei/codeg/releases/latest/download/latest.json";
+/// 与 `tauri.conf.json` 保持一致的占位清单地址；P1 接入自有发布源后替换。
+pub const UPDATE_MANIFEST_URL: &str = "https://updates.cerebro.invalid/dextra/latest.json";
 
-/// Deterministic base for "latest" release assets (server tarballs + their
-/// `.sig` detached signatures). Same channel as the manifest.
-pub const RELEASE_DOWNLOAD_BASE: &str =
-    "https://github.com/xintaofei/codeg/releases/latest/download";
+/// 服务器更新包的占位下载地址；使用保留域名确保当前阶段不可下载。
+pub const RELEASE_DOWNLOAD_BASE: &str = "https://updates.cerebro.invalid/dextra/releases/latest";
 
 /// Short-timeout client for the small manifest fetch. Proxy env vars are
 /// sampled at build time, so `init_proxy_from_db` must run before the first
@@ -136,5 +129,20 @@ mod tests {
     fn non_semver_falls_back_to_inequality() {
         assert!(is_newer("nightly-2", "nightly-1"));
         assert!(!is_newer("same", "same"));
+    }
+
+    #[test]
+    fn p0_c_update_source_is_explicitly_unavailable() {
+        let tauri_config: serde_json::Value =
+            serde_json::from_str(include_str!("../../tauri.conf.json")).unwrap();
+        let desktop_endpoint = tauri_config["plugins"]["updater"]["endpoints"][0]
+            .as_str()
+            .unwrap();
+
+        assert!(UPDATE_MANIFEST_URL.contains(".invalid/"));
+        assert!(RELEASE_DOWNLOAD_BASE.contains(".invalid/"));
+        assert_eq!(desktop_endpoint, UPDATE_MANIFEST_URL);
+        assert!(!UPDATE_MANIFEST_URL.contains("github.com/xintaofei/codeg"));
+        assert!(!RELEASE_DOWNLOAD_BASE.contains("github.com/xintaofei/codeg"));
     }
 }

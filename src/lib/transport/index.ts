@@ -1,11 +1,14 @@
 import { detectEnvironment } from "./detect"
+import type { CerebroPlatformPeer } from "./cerebro-remote-transport"
 import type { RemoteTransportConfig, Transport } from "./types"
 
 export type { RemoteTransportConfig, Transport, UnsubscribeFn } from "./types"
+export type { CerebroPlatformPeer } from "./cerebro-remote-transport"
 
 let _shellTransport: Transport | null = null
 let _remoteTransport: Transport | null = null
 let _remoteConfig: RemoteTransportConfig | null = null
+let _cerebroTransport: Transport | null = null
 
 function createTauriTransport(): Transport {
   // Use dynamic require to avoid bundling tauri deps in web mode.
@@ -53,12 +56,36 @@ export function clearRemoteDesktopTransport(): void {
   _remoteConfig = null
 }
 
+/**
+ * 把隔离的 Dextra Web 子应用绑定到 Cerebro command router。
+ * 该入口只接收窄 peer，不接收 Runner URL、本地 bearer 或设备凭据。
+ */
+export function configureCerebroRemoteTransport(
+  peer: CerebroPlatformPeer
+): void {
+  _cerebroTransport?.destroy?.()
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { CerebroRemoteTransport } = require("./cerebro-remote-transport") as {
+    CerebroRemoteTransport: new (peer: CerebroPlatformPeer) => Transport
+  }
+  _cerebroTransport = new CerebroRemoteTransport(peer)
+}
+
+export function clearCerebroRemoteTransport(): void {
+  _cerebroTransport?.destroy?.()
+  _cerebroTransport = null
+}
+
+export function isCerebroRemoteMode(): boolean {
+  return _cerebroTransport !== null
+}
+
 export function getActiveRemoteConnectionId(): number | null {
   return _remoteConfig?.id ?? null
 }
 
 export function getTransport(): Transport {
-  return _remoteTransport ?? getShellTransport()
+  return _cerebroTransport ?? _remoteTransport ?? getShellTransport()
 }
 
 export function isDesktop(): boolean {
@@ -109,7 +136,9 @@ export function __resetTransportForTests(): void {
   if (process.env.NODE_ENV !== "test") return
   _shellTransport?.destroy?.()
   _remoteTransport?.destroy?.()
+  _cerebroTransport?.destroy?.()
   _shellTransport = null
   _remoteTransport = null
   _remoteConfig = null
+  _cerebroTransport = null
 }
