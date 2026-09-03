@@ -17,6 +17,7 @@ mod app_error;
 pub mod app_state;
 pub mod automation;
 pub mod backgrounds;
+pub mod cerebro;
 pub mod cerebro_bridge;
 pub mod chat_channel;
 pub mod commands;
