@@ -7690,6 +7690,251 @@ mod tests {
             .status
     }
 
+    struct RealLinkedRun {
+        task_id: i32,
+        run_seq: i32,
+        worktree_path: String,
+        _commands: tokio::sync::mpsc::Receiver<crate::acp::connection::ConnectionCommand>,
+    }
+
+    /// 通过生产事务 seam 和真实 Git worktree 把平台任务推进到 running；只有
+    /// Agent 进程本身由测试连接替代，Folder、WorkTask、worktree 与状态转换均走原生实现。
+    async fn prepare_real_linked_run(
+        engine: &Arc<TaskEngine>,
+        root_id: i32,
+        settings: &WorkTaskFolderSettings,
+        platform_task_id: &str,
+    ) -> RealLinkedRun {
+        let task = match crate::cerebro::create_linked_work_task(
+            &EventEmitter::Noop,
+            &engine.db.conn,
+            platform_task_id,
+            crate::models::WorkTaskDraft {
+                folder_id: root_id,
+                title: format!("真实执行 {platform_task_id}"),
+                config: serde_json::json!({
+                    "display_text": format!("执行 {platform_task_id}"),
+                    "prompt_blocks": [{ "type": "text", "text": "完成测试任务" }],
+                }),
+            },
+        )
+        .await
+        .expect("创建 linked WorkTask")
+        {
+            crate::cerebro::LinkedWorkTaskCreateOutcome::Created(task) => task,
+            other => panic!("首次创建不得命中重复 link，实际为 {other:?}"),
+        };
+        assert_eq!(task.status, WorkTaskStatus::Todo);
+
+        let run_seq = work_task_service::claim_for_run(
+            &engine.db.conn,
+            task.id,
+            WorkTaskStatus::Todo,
+            "test",
+        )
+        .await
+        .expect("claim")
+        .expect("todo 应进入 queued");
+        assert_eq!(status_of(engine, task.id).await, WorkTaskStatus::Queued);
+        assert!(work_task_service::begin_setup(&engine.db.conn, task.id, run_seq)
+            .await
+            .expect("begin setup"));
+        assert_eq!(
+            status_of(engine, task.id).await,
+            WorkTaskStatus::Preparing
+        );
+
+        let root = get_folder_core(&engine.db, root_id).await.expect("根 Folder");
+        let task_row = work_task_service::get_model(&engine.db.conn, task.id)
+            .await
+            .expect("preparing task");
+        let worktree = engine
+            .ensure_worktree(&task_row, &root, settings)
+            .await
+            .expect("创建真实 task worktree");
+        let conversation = conversation_service::create(
+            &engine.db.conn,
+            worktree.folder_id,
+            AgentType::Codex,
+            None,
+            None,
+        )
+        .await
+        .expect("worktree conversation");
+        let conn_id = format!("real-linked-{}", task.id);
+        let commands = engine
+            .manager
+            .insert_test_connection_live(
+                &conn_id,
+                AgentType::Codex,
+                Some(PathBuf::from(&worktree.path)),
+                EventEmitter::Noop,
+            )
+            .await;
+        assert!(work_task_service::mark_running(
+            &engine.db.conn,
+            task.id,
+            run_seq,
+            conversation.id,
+            &conn_id,
+        )
+        .await
+        .expect("mark running"));
+        engine
+            .index
+            .lock()
+            .await
+            .insert(conn_id, (task.id, run_seq));
+        assert_eq!(status_of(engine, task.id).await, WorkTaskStatus::Running);
+
+        let output = crate::process::tokio_command("git")
+            .args(["rev-parse", "--show-toplevel"])
+            .current_dir(&worktree.path)
+            .output()
+            .await
+            .expect("读取 worktree 根目录");
+        assert!(output.status.success());
+        let reported_root = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        assert_eq!(
+            Path::new(&reported_root).canonicalize().expect("Git 根目录"),
+            Path::new(&worktree.path)
+                .canonicalize()
+                .expect("worktree 目录"),
+            "执行 cwd 必须是 Codeg 创建的 task worktree 根，而不是项目根目录"
+        );
+
+        RealLinkedRun {
+            task_id: task.id,
+            run_seq,
+            worktree_path: worktree.path,
+            _commands: commands,
+        }
+    }
+
+    /// M1 的真实 Git Folder 验收：Target projection、linked create、原生 worktree
+    /// 和 engine settle 共同覆盖 review、done、failed 与 canceled 四个可观察结果。
+    #[tokio::test]
+    async fn linked_tasks_run_in_real_git_worktrees_through_native_engine_outcomes() {
+        use crate::cerebro::{
+            project_folder_targets, reconcile_linked_work_task, LinkedWorkTaskState,
+            TargetAvailability,
+        };
+        use crate::db::test_helpers::{fresh_in_memory_db, seed_folder};
+
+        let fixture = tempfile::tempdir().expect("临时验收目录");
+        let repository = fixture.path().join("repository");
+        let worktrees = fixture.path().join("worktrees");
+        std::fs::create_dir_all(&repository).expect("创建仓库目录");
+        git_run(&repository, &["init", "-q", "-b", "main"]);
+        std::fs::write(repository.join("README.md"), "# fixture\n").expect("写入基线文件");
+        git_run(&repository, &["add", "-A"]);
+        git_run(&repository, &["commit", "-q", "-m", "initial"]);
+
+        let db = fresh_in_memory_db().await;
+        let root_id = seed_folder(&db, repository.to_str().expect("UTF-8 仓库路径")).await;
+        let settings = WorkTaskFolderSettings {
+            default_agent_type: Some("codex".to_string()),
+            mode_id: Some("agent-full-access".to_string()),
+            label_snapshot: Some(serde_json::json!({ "mode_label": "Agent full access" })),
+            worktree_root: Some(worktrees.to_string_lossy().into_owned()),
+            ..Default::default()
+        };
+        work_task_service::settings_set(&db.conn, root_id, &settings)
+            .await
+            .expect("保存 Folder WorkTask 设置");
+
+        let targets = project_folder_targets(&db.conn, "runner-real-git")
+            .await
+            .expect("投影真实 Git Folder");
+        assert_eq!(targets.len(), 1);
+        let target = &targets[0];
+        assert_eq!(target.availability, TargetAvailability::Available);
+        assert!(target.supports_background_task);
+        assert_eq!(target.repository.as_deref(), Some("repository"));
+        assert_eq!(target.branch.as_deref(), Some("main"));
+        assert_eq!(target.agent_type.as_deref(), Some("codex"));
+        assert_eq!(target.mode_display_name.as_deref(), Some("Agent full access"));
+
+        let engine = test_engine(db);
+        let root = get_folder_core(&engine.db, root_id).await.expect("根 Folder");
+        let (_, effective_mode, _) = effective_agent_config(
+            &WorkTaskConfig::default(),
+            &settings,
+            &root,
+        );
+        assert_eq!(effective_mode.as_deref(), Some("agent-full-access"));
+
+        let completed =
+            prepare_real_linked_run(&engine, root_id, &settings, "platform-real-completed").await;
+        assert!(Path::new(&completed.worktree_path).starts_with(&worktrees));
+        engine
+            .on_turn_complete(&format!("real-linked-{}", completed.task_id), "end_turn")
+            .await;
+        assert_eq!(
+            status_of(&engine, completed.task_id).await,
+            WorkTaskStatus::Review
+        );
+        assert_eq!(
+            reconcile_linked_work_task(&engine.db.conn, "platform-real-completed")
+                .await
+                .expect("review reconcile")
+                .state,
+            LinkedWorkTaskState::ResultReady
+        );
+        engine
+            .complete_task(completed.task_id, false)
+            .await
+            .expect("无改动任务完成");
+        assert_eq!(
+            status_of(&engine, completed.task_id).await,
+            WorkTaskStatus::Done
+        );
+        assert_eq!(
+            reconcile_linked_work_task(&engine.db.conn, "platform-real-completed")
+                .await
+                .expect("done reconcile")
+                .state,
+            LinkedWorkTaskState::Completed
+        );
+
+        let failed =
+            prepare_real_linked_run(&engine, root_id, &settings, "platform-real-failed").await;
+        engine
+            .on_turn_complete(&format!("real-linked-{}", failed.task_id), "agent_crashed")
+            .await;
+        let failed_row = work_task_service::get_model(&engine.db.conn, failed.task_id)
+            .await
+            .expect("failed row");
+        assert_eq!(failed_row.status, WorkTaskStatus::Failed);
+        assert_eq!(failed_row.failure_reason.as_deref(), Some("agent_error"));
+        assert_eq!(
+            reconcile_linked_work_task(&engine.db.conn, "platform-real-failed")
+                .await
+                .expect("failed reconcile")
+                .state,
+            LinkedWorkTaskState::Failed
+        );
+
+        let canceled =
+            prepare_real_linked_run(&engine, root_id, &settings, "platform-real-canceled").await;
+        assert_eq!(canceled.run_seq, 1);
+        engine
+            .cancel(canceled.task_id, Some("验收取消".to_string()))
+            .await
+            .expect("原生 engine cancel");
+        assert_eq!(
+            status_of(&engine, canceled.task_id).await,
+            WorkTaskStatus::Canceled
+        );
+        assert_eq!(
+            reconcile_linked_work_task(&engine.db.conn, "platform-real-canceled")
+                .await
+                .expect("canceled reconcile")
+                .state,
+            LinkedWorkTaskState::Cancelled
+        );
+    }
+
     #[tokio::test]
     async fn a_late_cancelled_event_does_not_cancel_a_task_in_review() {
         let (engine, task_id) = running_task().await;
