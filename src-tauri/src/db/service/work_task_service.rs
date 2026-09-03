@@ -1538,7 +1538,7 @@ pub async fn cancel_running_generation(
     id: i32,
     run_seq: i32,
 ) -> Result<bool, DbError> {
-    cancel_inner(
+    Ok(cancel_matching_with_context(
         conn,
         id,
         &[WorkTaskStatus::Running, WorkTaskStatus::AwaitingInput],
@@ -1546,7 +1546,8 @@ pub async fn cancel_running_generation(
         "engine",
         None,
     )
-    .await
+    .await?
+    .is_some())
 }
 
 /// running/awaiting_input → review for the given generation. Captures the
@@ -2378,7 +2379,26 @@ pub async fn cancel(
     id: i32,
     reason: Option<&str>,
 ) -> Result<bool, DbError> {
-    cancel_inner(
+    Ok(cancel_with_context(conn, id, reason).await?.is_some())
+}
+
+/// 一次已提交取消所冻结的执行坐标；后续清理只能使用这些坐标。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CanceledExecutionContext {
+    pub task_id: i32,
+    pub run_seq: i32,
+    pub folder_id: i32,
+    pub conversation_id: Option<i32>,
+    pub connection_id: Option<String>,
+}
+
+/// 普通本地取消和 Cerebro adapter 共享的事务边界。
+pub(crate) async fn cancel_with_context(
+    conn: &DatabaseConnection,
+    id: i32,
+    reason: Option<&str>,
+) -> Result<Option<CanceledExecutionContext>, DbError> {
+    cancel_matching_with_context(
         conn,
         id,
         &[
@@ -2397,58 +2417,78 @@ pub async fn cancel(
     .await
 }
 
-/// The single conditional UPDATE behind both cancels: `expected` (and, for an
-/// engine-owned transition, `run_seq`) is the CAS; `actor` / `reason` is the
-/// audit trail. One write, so the columns a cancel has to clear can never drift
-/// between the user's stop button and the engine's own.
-async fn cancel_inner(
+async fn cancel_matching_with_context(
     conn: &DatabaseConnection,
     id: i32,
     expected: &[WorkTaskStatus],
     run_seq: Option<i32>,
     actor: &str,
     reason: Option<&str>,
-) -> Result<bool, DbError> {
-    let now = Utc::now();
+) -> Result<Option<CanceledExecutionContext>, DbError> {
     let txn = conn.begin().await?;
-    let mut update = work_task::Entity::update_many()
+    let context = cancel_in_transaction(&txn, id, expected, run_seq, actor, reason).await?;
+    if context.is_none() {
+        txn.rollback().await?;
+        return Ok(None);
+    }
+    txn.commit().await?;
+    Ok(context)
+}
+
+/// 调用者事务中的唯一取消实现。
+///
+/// 条件 no-op UPDATE 是第一条语句，用它取得 SQLite 写锁并认领当前状态；随后
+/// 在同一事务读取取消前坐标并完成真实更新，避免 deferred read→write 升级竞争。
+pub(crate) async fn cancel_in_transaction<C: ConnectionTrait>(
+    conn: &C,
+    id: i32,
+    expected: &[WorkTaskStatus],
+    run_seq: Option<i32>,
+    actor: &str,
+    reason: Option<&str>,
+) -> Result<Option<CanceledExecutionContext>, DbError> {
+    let now = Utc::now();
+    let mut claim = work_task::Entity::update_many()
         .col_expr(
             work_task::Column::Status,
-            Expr::value(status_str(WorkTaskStatus::Canceled)),
+            Expr::col(work_task::Column::Status).into(),
         )
-        .col_expr(work_task::Column::ConnectionId, Expr::value(None::<String>))
-        // A cancel mid-repair abandons the auto-remerge; a later requeue must
-        // not re-fire a stale merge.
-        .col_expr(work_task::Column::PendingMerge, Expr::value(None::<String>))
-        // Same reasoning for a planned start: stopping a task drops its plan,
-        // so a requeue days later cannot resurrect a time nobody remembers
-        // setting and launch an agent unattended. (A running row carries no
-        // plan — every claim consumes it — so this only bites the user path,
-        // but the clear belongs to "canceled", not to one caller.)
-        .col_expr(
-            work_task::Column::ScheduledAt,
-            Expr::value(None::<chrono::DateTime<Utc>>),
-        )
-        .col_expr(work_task::Column::FinishedAt, Expr::value(Some(now)))
-        .col_expr(work_task::Column::UpdatedAt, Expr::value(now))
         .filter(work_task::Column::Id.eq(id))
         .filter(work_task::Column::Status.is_in(expected.iter().copied()))
         .filter(work_task::Column::DeletedAt.is_null());
     if let Some(run_seq) = run_seq {
-        update = update.filter(work_task::Column::RunSeq.eq(run_seq));
+        claim = claim.filter(work_task::Column::RunSeq.eq(run_seq));
     }
-    let res = update.exec(&txn).await?;
-    if res.rows_affected != 1 {
-        txn.rollback().await?;
-        return Ok(false);
+    if claim.exec(conn).await?.rows_affected != 1 {
+        return Ok(None);
     }
+    let row = work_task::Entity::find_by_id(id)
+        .one(conn)
+        .await?
+        .ok_or_else(|| DbError::NotFound(format!("work task {id}")))?;
+    let context = CanceledExecutionContext {
+        task_id: row.id,
+        run_seq: row.run_seq,
+        folder_id: row.folder_id,
+        conversation_id: row.conversation_id,
+        connection_id: row.connection_id.clone(),
+    };
+    let mut active = row.into_active_model();
+    active.status = Set(WorkTaskStatus::Canceled);
+    active.connection_id = Set(None);
+    // 取消会放弃尚未执行的自动 remerge，后续 requeue 不能重放旧 intent。
+    active.pending_merge = Set(None);
+    // 取消同时消费旧计划，后续 requeue 不能按过期时间自行启动。
+    active.scheduled_at = Set(None);
+    active.finished_at = Set(Some(now));
+    active.updated_at = Set(now);
+    active.update(conn).await?;
     let extra = reason
         .map(str::trim)
         .filter(|r| !r.is_empty())
         .map(|r| serde_json::json!({ "reason": r }));
-    status_changed_event(&txn, id, actor, None, WorkTaskStatus::Canceled, extra).await?;
-    txn.commit().await?;
-    Ok(true)
+    status_changed_event(conn, id, actor, None, WorkTaskStatus::Canceled, extra).await?;
+    Ok(Some(context))
 }
 
 /// Flag / clear the worktree-cleanup outcome. Never touches `status` — a done

@@ -86,13 +86,9 @@ pub struct TaskEngine {
     /// keyed by connection_id map back to a task generation. Lost on restart
     /// (boot reconcile covers that).
     index: Arc<Mutex<HashMap<String, (i32, i32)>>>,
-    /// Outstanding blocking requests per task (`"q:<id>"`, `"p:<id>"`,
-    /// `"a:<id>"` — namespaced so the three id spaces can't collide). Non-empty
-    /// set ⇔ awaiting_input. Requests raised by a delegation sub-agent are
-    /// additionally prefixed with the child's connection id
-    /// (`"<child_conn>#p:<id>"`) so [`TaskEngine::forget_delegation_child`] can
-    /// drop the whole group when that child goes away.
-    awaiting: Arc<Mutex<HashMap<i32, HashSet<String>>>>,
+    /// 每个 WorkTask 当前 run_seq 的阻塞请求；代次 owner 防止旧 cleanup 清掉新等待项。
+    /// key 仍按 q/p/a 命名空间区分，delegation child 额外带 connection 前缀。
+    awaiting: Arc<Mutex<HashMap<i32, AwaitingRequests>>>,
     /// `child_connection_id -> parent_connection_id` for delegation children of
     /// a task run. A sub-agent's blocking prompts arrive on the CHILD's
     /// connection, which is not in `index` — without this mapping they are
@@ -207,7 +203,7 @@ const MAX_DELEGATION_CHAIN_HOPS: usize = 16;
 /// handling, request tracking) directly. The subscriber loop is never started;
 /// tests feed `on_event` themselves.
 #[cfg(test)]
-fn test_engine(db: AppDatabase) -> Arc<TaskEngine> {
+pub(crate) fn test_engine(db: AppDatabase) -> Arc<TaskEngine> {
     test_engine_with_forge(db, Arc::new(crate::forge::deliver::ForgeDelivery))
 }
 
@@ -693,59 +689,65 @@ impl TaskEngine {
         task_id: i32,
         reason: Option<String>,
     ) -> Result<(), String> {
-        let won = work_task_service::cancel(&self.db.conn, task_id, reason.as_deref())
-            .await
-            .map_err(|e| e.to_string())?;
-        if !won {
+        let context = work_task_service::cancel_with_context(
+            &self.db.conn,
+            task_id,
+            reason.as_deref(),
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+        let Some(context) = context else {
             return Err("task cannot be canceled in its current state".to_string());
-        }
+        };
         self.emit_upsert(task_id);
+        self.cleanup_canceled_execution(&context).await;
+        Ok(())
+    }
 
-        // Kill a running init command BEFORE waiting on the task lock: the
-        // launch holds that lock for its whole setup, so waiting first would
-        // mean waiting out the very `pnpm install` we are trying to stop. The
-        // run_seq we just canceled scopes the kill to this generation (cancel
-        // does not bump it, so the row still carries it).
-        if let Ok(task) = work_task_service::get_model(&self.db.conn, task_id).await {
-            self.kill_setup_child(task_id, task.run_seq).await;
-        }
+    /// 清理由一次已提交取消冻结的执行代次；不得重新按 task_id 选择当前执行。
+    pub(crate) async fn cleanup_canceled_execution(
+        self: &Arc<Self>,
+        context: &work_task_service::CanceledExecutionContext,
+    ) {
+        // 先按冻结的 run_seq 请求停止 setup child，再等待 task lock；否则 launch
+        // 会持锁直到 init command 结束，取消反而无法及时停止它。
+        self.kill_setup_child(context.task_id, context.run_seq).await;
 
-        // Serialize the teardown with a possibly in-flight launch: the launch
-        // holds the task lock across spawn → prompt, and its status gates
-        // re-read after each step — so we tear down either before the prompt
-        // (gate aborts) or after the turn is truly in flight (manager.cancel
-        // aborts a real turn), never interleaved with the prompt enqueue.
-        let lock = self.task_lock(task_id).await;
+        // task lock 把 teardown 与 spawn → prompt 串行化；取得锁后仍只使用冻结坐标，
+        // 不重新按 task_id 选择可能已经启动的新代次。
+        let lock = self.task_lock(context.task_id).await;
         let _guard = lock.lock().await;
 
-        let conn_id = {
-            self.index
+        if let Some(conn_id) = context.connection_id.as_deref() {
+            let owns_canceled_generation = self
+                .index
                 .lock()
                 .await
-                .iter()
-                .find(|(_, (tid, _))| *tid == task_id)
-                .map(|(c, _)| c.clone())
-        };
-        if let Some(conn_id) = conn_id {
-            let _ = self.manager.cancel(&self.db.conn, &conn_id).await;
-            self.index.lock().await.remove(&conn_id);
-            self.forget_delegation_children_of(&conn_id).await;
-            let _ = self.manager.disconnect(&conn_id).await;
+                .get(conn_id)
+                .is_some_and(|entry| *entry == (context.task_id, context.run_seq));
+            if owns_canceled_generation {
+                let _ = self.manager.signal_cancel(conn_id).await;
+                self.retire_connection(conn_id, context.task_id).await;
+                let _ = self.manager.disconnect(conn_id).await;
+            }
         }
-        self.awaiting.lock().await.remove(&task_id);
 
-        // Converge a stranded InProgress conversation.
-        let task = work_task_service::get_model(&self.db.conn, task_id).await.ok();
-        if let Some(conv_id) = task.as_ref().and_then(|t| t.conversation_id) {
-            if self.conversation_status(conv_id).await == Some(ConversationStatus::InProgress) {
+        // 同一 conversation 可能已被新代次 resume；此时旧 cleanup 不能取消它。
+        let current = work_task_service::get_model(&self.db.conn, context.task_id)
+            .await
+            .ok();
+        if let Some(conv_id) = context.conversation_id {
+            let owned_by_new_generation = current.as_ref().is_some_and(|task| {
+                task.run_seq != context.run_seq && task.conversation_id == Some(conv_id)
+            });
+            if !owned_by_new_generation
+                && self.conversation_status(conv_id).await == Some(ConversationStatus::InProgress)
+            {
                 self.cancel_conversation(conv_id).await;
             }
         }
-        // The slot freed — refill from the queue (and an auto folder's todo).
-        if let Some(folder_id) = task.map(|t| t.folder_id) {
-            self.pump_folder(folder_id).await;
-        }
-        Ok(())
+        // 旧代次释放了执行槽，继续驱动该 Folder 的队列。
+        self.pump_folder(context.folder_id).await;
     }
 
     // ── scheduler ───────────────────────────────────────────────────────────
@@ -2027,8 +2029,18 @@ impl TaskEngine {
                 // wholesale. Only a LATER retirement that is the last one out
                 // (or a cancel) does that, so it outlasts every generation the
                 // orphan is actually lying about.
-                Some(run_seq) => Self::retract_keys(&mut awaiting, task_id, &orphaned)
-                    .then_some(run_seq),
+                Some(run_seq) => {
+                    if awaiting
+                        .get(&task_id)
+                        .is_some_and(|requests| requests.run_seq != run_seq)
+                    {
+                        awaiting.remove(&task_id);
+                        None
+                    } else {
+                        Self::retract_keys(&mut awaiting, task_id, run_seq, &orphaned)
+                            .then_some(run_seq)
+                    }
+                }
             }
         };
 
@@ -2049,22 +2061,28 @@ impl TaskEngine {
     /// reporting whether that is what emptied it (and so owes a flip back to
     /// `running`). An untouched set never reports `true`, however empty.
     fn retract_keys(
-        awaiting: &mut HashMap<i32, HashSet<String>>,
+        awaiting: &mut HashMap<i32, AwaitingRequests>,
         task_id: i32,
+        run_seq: i32,
         prefixes: &[String],
     ) -> bool {
         if prefixes.is_empty() {
             return false;
         }
-        let Some(set) = awaiting.get_mut(&task_id) else {
+        let Some(requests) = awaiting
+            .get_mut(&task_id)
+            .filter(|requests| requests.run_seq == run_seq)
+        else {
             return false;
         };
-        let before = set.len();
-        set.retain(|k| !prefixes.iter().any(|p| k.starts_with(p.as_str())));
-        if set.len() == before {
+        let before = requests.keys.len();
+        requests
+            .keys
+            .retain(|k| !prefixes.iter().any(|p| k.starts_with(p.as_str())));
+        if requests.keys.len() == before {
             return false; // nothing of this subtree's was outstanding
         }
-        if set.is_empty() {
+        if requests.keys.is_empty() {
             awaiting.remove(&task_id);
             return true;
         }
@@ -2090,7 +2108,7 @@ impl TaskEngine {
         let prefixes: Vec<String> = detached.iter().map(|c| format!("{c}#")).collect();
         let emptied = {
             let mut awaiting = self.awaiting.lock().await;
-            Self::retract_keys(&mut awaiting, task_id, &prefixes)
+            Self::retract_keys(&mut awaiting, task_id, run_seq, &prefixes)
         };
         if emptied {
             let flipped = work_task_service::flip_awaiting(&self.db.conn, task_id, run_seq, false)
@@ -2227,13 +2245,25 @@ impl TaskEngine {
         };
         let flip = {
             let mut awaiting = self.awaiting.lock().await;
-            let set = awaiting.entry(task_id).or_default();
+            let requests = awaiting.entry(task_id).or_insert_with(|| AwaitingRequests {
+                run_seq,
+                keys: HashSet::new(),
+            });
+            if requests.run_seq != run_seq {
+                if run_seq < requests.run_seq {
+                    return;
+                }
+                *requests = AwaitingRequests {
+                    run_seq,
+                    keys: HashSet::new(),
+                };
+            }
             if outstanding {
-                set.insert(key);
-                set.len() == 1
+                requests.keys.insert(key);
+                requests.keys.len() == 1
             } else {
-                set.remove(&key);
-                if set.is_empty() {
+                requests.keys.remove(&key);
+                if requests.keys.is_empty() {
                     awaiting.remove(&task_id);
                     true
                 } else {
@@ -5817,6 +5847,12 @@ struct LaunchOwner {
     token: u64,
 }
 
+/// 某个 WorkTask 当前执行代次尚未解决的阻塞请求。
+struct AwaitingRequests {
+    run_seq: i32,
+    keys: HashSet<String>,
+}
+
 /// A task's setup (init command) kill slot, open for the whole preparing phase.
 ///
 /// The slot deliberately does NOT hold the child's pid. Only the task that
@@ -7814,6 +7850,136 @@ mod tests {
         assert_eq!(status_of(&engine, task_id).await, WorkTaskStatus::Running);
     }
 
+    /// 平台取消已提交但 cleanup 尚未取得 task lock 时，本地可以先 requeue 并启动新代次；
+    /// 旧 cleanup 随后只能清理被冻结的 run_seq，不能触碰新连接、等待项、conversation 或 setup slot。
+    #[tokio::test]
+    async fn delayed_platform_cancel_cleanup_spares_a_requeued_generation() {
+        use crate::cerebro::task_link::commit_linked_cancel;
+        use crate::db::entities::cerebro_task_link;
+
+        let (engine, task_id) = running_task().await;
+        let old = work_task_service::get_model(&engine.db.conn, task_id)
+            .await
+            .expect("旧代次");
+        let conversation_id = old.conversation_id.expect("旧 conversation");
+        cerebro_task_link::ActiveModel {
+            platform_task_id: Set("platform-cleanup-race".to_string()),
+            local_work_task_id: Set(task_id),
+            cancel_command_id: Set(None),
+            created_at: Set(chrono::Utc::now()),
+        }
+        .insert(&engine.db.conn)
+        .await
+        .expect("插入平台 link");
+        engine
+            .track_request(PARENT_CONN, "old-permission".into(), true)
+            .await;
+
+        let committed = commit_linked_cancel(
+            &engine.db.conn,
+            "platform-cleanup-race",
+            "cancel-cleanup-race",
+            None,
+        )
+        .await
+        .expect("提交平台取消");
+        let context = committed.context.expect("本次取消应冻结旧执行上下文");
+        assert_eq!(context.run_seq, old.run_seq);
+        assert_eq!(context.connection_id.as_deref(), Some(PARENT_CONN));
+
+        let task_lock = engine.task_lock(task_id).await;
+        let launch_guard = task_lock.lock().await;
+        assert!(work_task_service::requeue_canceled(
+            &engine.db.conn,
+            task_id,
+            None,
+            &[],
+            false,
+        )
+        .await
+        .expect("requeue"));
+        let new_seq = work_task_service::claim_for_run(
+            &engine.db.conn,
+            task_id,
+            WorkTaskStatus::Todo,
+            "test",
+        )
+        .await
+        .expect("claim")
+        .expect("claimed");
+        assert_ne!(new_seq, old.run_seq);
+        assert!(work_task_service::begin_setup(&engine.db.conn, task_id, new_seq)
+            .await
+            .expect("begin setup"));
+        assert!(work_task_service::mark_running(
+            &engine.db.conn,
+            task_id,
+            new_seq,
+            conversation_id,
+            "conn-next",
+        )
+        .await
+        .expect("mark running"));
+        engine
+            .index
+            .lock()
+            .await
+            .insert("conn-next".into(), (task_id, new_seq));
+        engine
+            .track_request("conn-next", "new-permission".into(), true)
+            .await;
+        engine.setup_children.lock().await.insert(
+            task_id,
+            SetupChild {
+                kill_requested: false,
+                run_seq: new_seq,
+                wake: Arc::new(Notify::new()),
+            },
+        );
+
+        let cleanup_engine = engine.clone();
+        let cleanup = tokio::spawn(async move {
+            cleanup_engine.cleanup_canceled_execution(&context).await;
+        });
+        tokio::task::yield_now().await;
+        assert!(!cleanup.is_finished(), "旧 cleanup 应等待新 launch 持有的 task lock");
+        drop(launch_guard);
+        cleanup.await.expect("cleanup 完成");
+
+        let current = work_task_service::get_model(&engine.db.conn, task_id)
+            .await
+            .expect("新代次仍存在");
+        assert_eq!(current.run_seq, new_seq);
+        assert_eq!(current.status, WorkTaskStatus::AwaitingInput);
+        assert_eq!(current.connection_id.as_deref(), Some("conn-next"));
+        assert_eq!(
+            engine.index.lock().await.get("conn-next").copied(),
+            Some((task_id, new_seq))
+        );
+        assert_eq!(
+            engine
+                .awaiting
+                .lock()
+                .await
+                .get(&task_id)
+                .map(|requests| (requests.run_seq, requests.keys.clone())),
+            Some((
+                new_seq,
+                ["new-permission".to_string()].into_iter().collect()
+            ))
+        );
+        {
+            let setup_children = engine.setup_children.lock().await;
+            let setup = setup_children.get(&task_id).expect("新 setup slot 保留");
+            assert_eq!(setup.run_seq, new_seq);
+            assert!(!setup.kill_requested);
+        }
+        assert_eq!(
+            engine.conversation_status(conversation_id).await,
+            Some(ConversationStatus::InProgress)
+        );
+    }
+
     /// The mirror image of the case above, and the half sparing the set opens:
     /// a retired run's DELEGATION children are namespaced by connection id, so
     /// keeping the task's set keeps THEIR keys too — with nothing left that
@@ -9326,7 +9492,13 @@ mod tests {
             .awaiting
             .lock()
             .await
-            .insert(7, ["p:req-1".to_string()].into_iter().collect());
+            .insert(
+                7,
+                AwaitingRequests {
+                    run_seq: 2,
+                    keys: ["p:req-1".to_string()].into_iter().collect(),
+                },
+            );
 
         engine.retire_connection("conn-old", 7).await;
 
@@ -9336,7 +9508,12 @@ mod tests {
             assert!(index.contains_key("conn-new"), "and only that one");
         }
         assert_eq!(
-            engine.awaiting.lock().await.get(&7).map(|s| s.len()),
+            engine
+                .awaiting
+                .lock()
+                .await
+                .get(&7)
+                .map(|requests| requests.keys.len()),
             Some(1),
             "the live generation is still waiting on its permission"
         );

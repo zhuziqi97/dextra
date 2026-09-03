@@ -1569,6 +1569,25 @@ impl ConnectionManager {
         Ok(())
     }
 
+    /// 只向指定 ACP 连接发送取消，不推导或修改 conversation 状态。
+    ///
+    /// WorkTask engine 使用冻结的执行代次自行收束 conversation，避免旧连接取消
+    /// 覆盖已经被新代次 resume 的同一 conversation。
+    pub(crate) async fn signal_cancel(&self, conn_id: &str) -> Result<(), AcpError> {
+        let cmd_tx = {
+            let connections = self.connections.lock().await;
+            connections
+                .get(conn_id)
+                .ok_or_else(|| AcpError::ConnectionNotFound(conn_id.into()))?
+                .cmd_tx
+                .clone()
+        };
+        cmd_tx
+            .send(ConnectionCommand::Cancel)
+            .await
+            .map_err(|_| AcpError::ProcessExited)
+    }
+
     pub async fn respond_permission(
         &self,
         conn_id: &str,
