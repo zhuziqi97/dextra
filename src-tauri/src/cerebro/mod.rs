@@ -3,8 +3,10 @@
 //! 这里投影 Codeg 已有事实，不拥有 Folder、WorkTask 或 ACP 生命周期。
 
 pub mod target_projection;
+pub mod task_link;
 
 pub use target_projection::{
     project_folder_targets, FolderTargetProjection, TargetAvailability, TargetProjectionReason,
     TargetProjectionReasonCode,
 };
+pub use task_link::{create_linked_work_task, LinkedWorkTaskCreateOutcome};

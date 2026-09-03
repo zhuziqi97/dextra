@@ -55,7 +55,7 @@ pub fn queued_merge(pending_merge: Option<&str>) -> Option<WorkTaskQueuedMerge> 
     pending_merge.and_then(|s| serde_json::from_str::<WorkTaskQueuedMerge>(s).ok())
 }
 
-fn to_info(m: work_task::Model) -> WorkTaskInfo {
+pub(crate) fn to_info(m: work_task::Model) -> WorkTaskInfo {
     WorkTaskInfo {
         id: m.id,
         folder_id: m.folder_id,
@@ -433,10 +433,21 @@ fn validate_draft(draft: &WorkTaskDraft) -> Result<(), DbError> {
     Ok(())
 }
 
-pub async fn create(
+/// WorkTask 创建在事务外可完成的准备结果。
+///
+/// Cerebro adapter 只复用这个窄接口，不复制 Folder、draft、config 或排序规则，
+/// 也不改变原生 WorkTask engine 的创建语义。
+pub(crate) struct PreparedWorkTaskCreate {
+    draft: WorkTaskDraft,
+    config_str: String,
+    max_order: i32,
+    now: chrono::DateTime<Utc>,
+}
+
+pub(crate) async fn prepare_create(
     conn: &DatabaseConnection,
     draft: WorkTaskDraft,
-) -> Result<WorkTaskInfo, DbError> {
+) -> Result<PreparedWorkTaskCreate, DbError> {
     validate_draft(&draft)?;
     // The target folder must exist, be live, and be a project root (a task
     // bound to a worktree folder would nest worktrees at launch).
@@ -460,10 +471,42 @@ pub async fn create(
         .await?
         .map(|m| m.sort_order)
         .unwrap_or(0);
+    Ok(PreparedWorkTaskCreate {
+        draft,
+        config_str,
+        max_order,
+        now,
+    })
+}
 
+/// 在调用者事务中插入原生 todo WorkTask 及其 created event。
+///
+/// WorkTask INSERT 是第一条语句；依赖该顺序让 SQLite 先取得写锁，再由调用者
+/// 安全地完成去重查询和其它同事务事实写入。
+pub(crate) async fn insert_prepared_with_created_event<C: ConnectionTrait>(
+    conn: &C,
+    prepared: &PreparedWorkTaskCreate,
+) -> Result<work_task::Model, DbError> {
+    let row = insert_todo_row(
+        conn,
+        &prepared.draft,
+        prepared.config_str.clone(),
+        prepared.max_order,
+        prepared.now,
+        None,
+    )
+    .await?;
+    record_event(conn, row.id, "created", "user", None).await?;
+    Ok(row)
+}
+
+pub async fn create(
+    conn: &DatabaseConnection,
+    draft: WorkTaskDraft,
+) -> Result<WorkTaskInfo, DbError> {
+    let prepared = prepare_create(conn, draft).await?;
     let txn = conn.begin().await?;
-    let row = insert_todo_row(&txn, &draft, config_str, max_order, now, None).await?;
-    record_event(&txn, row.id, "created", "user", None).await?;
+    let row = insert_prepared_with_created_event(&txn, &prepared).await?;
     txn.commit().await?;
     Ok(to_info(row))
 }
