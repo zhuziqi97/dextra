@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::work_task::nudge_pump;
 use crate::db::entities::work_task::WorkTaskStatus;
-use crate::db::entities::{cerebro_task_link, work_task};
+use crate::db::entities::{cerebro_task_link, folder, work_task};
 use crate::db::error::DbError;
 use crate::db::service::work_task_service;
 use crate::models::{WorkTaskDraft, WorkTaskInfo};
@@ -58,6 +58,23 @@ pub struct LinkedWorkTaskSnapshot {
     pub result_summary: Option<String>,
     pub remote_workbench_available: bool,
     pub deleted: bool,
+}
+
+pub(super) fn project_result_summary(summary: &str, local_roots: &[String]) -> String {
+    let mut projected = summary.to_string();
+    let mut roots = local_roots
+        .iter()
+        .map(|root| root.trim_end_matches(['/', '\\']))
+        .filter(|root| !root.is_empty())
+        .collect::<Vec<_>>();
+    roots.sort_unstable_by_key(|root| std::cmp::Reverse(root.len()));
+    roots.dedup();
+    for root in roots {
+        projected = projected.replace(&format!("{root}/"), "");
+        projected = projected.replace(&format!("{root}\\"), "");
+        projected = projected.replace(root, ".");
+    }
+    projected
 }
 
 /// 把 Cerebro 平台 Task 原子关联到一个原生 WorkTask。
@@ -253,6 +270,19 @@ pub async fn reconcile_linked_work_task(
         .ok_or_else(|| DbError::NotFound(format!("work task {}", link.local_work_task_id)))?;
     let receipt_exists = link.cancel_command_id.is_some();
     let deleted = task.deleted_at.is_some();
+    let mut local_roots = Vec::new();
+    for folder_id in [Some(task.folder_id), task.worktree_folder_id]
+        .into_iter()
+        .flatten()
+    {
+        if let Some(local_folder) = folder::Entity::find_by_id(folder_id).one(conn).await? {
+            local_roots.push(local_folder.path);
+        }
+    }
+    let result_summary = task
+        .result_summary
+        .as_deref()
+        .map(|summary| project_result_summary(summary, &local_roots));
     let state = if receipt_exists {
         LinkedWorkTaskState::Cancelled
     } else if deleted {
@@ -281,7 +311,7 @@ pub async fn reconcile_linked_work_task(
         state,
         failure_reason: task.failure_reason,
         last_error: task.last_error,
-        result_summary: task.result_summary,
+        result_summary,
         remote_workbench_available: !receipt_exists
             && !deleted
             && task.status == WorkTaskStatus::Review,
@@ -317,6 +347,21 @@ mod tests {
     };
     use crate::models::agent::AgentType;
     use crate::web::event_bridge::{WebEventBroadcaster, WORK_TASK_CHANGED_EVENT};
+
+    #[test]
+    fn result_summary_projects_known_local_roots_to_repository_relative_text() {
+        let summary = "[README](/tmp/task-task-1/README.md:4), C:\\work\\task-1\\src\\lib.rs; cwd /tmp/task-task-1";
+        let projected = project_result_summary(
+            summary,
+            &[
+                "/tmp/task".into(),
+                "/tmp/task-task-1".into(),
+                "C:\\work\\task-1".into(),
+            ],
+        );
+
+        assert_eq!(projected, "[README](README.md:4), src\\lib.rs; cwd .");
+    }
 
     fn draft(folder_id: i32, title: &str) -> WorkTaskDraft {
         WorkTaskDraft {

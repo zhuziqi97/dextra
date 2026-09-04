@@ -5,6 +5,7 @@
 pub mod connection;
 pub mod identity;
 pub mod mcp;
+pub mod remote;
 pub mod target_projection;
 pub mod task_link;
 pub mod task_protocol;
@@ -15,6 +16,7 @@ pub use identity::{
     start_pairing, CerebroAuthState, CerebroMcpPrincipal, CerebroPairingPoll, CerebroPairingStart,
     CerebroRunnerAccess, PairingPollStatus,
 };
+pub use remote::CerebroRemoteRuntime;
 
 pub use target_projection::{
     project_folder_targets, FolderTargetProjection, TargetAvailability, TargetProjectionReason,

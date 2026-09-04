@@ -17,7 +17,10 @@
       "SEQUENCE": 3,
       "TYPE": "ARTIFACT_DECLARED"
     },
-    "AUTHENTICATE": { "TOKEN": "string", "TYPE": "AUTHENTICATE" },
+    "AUTHENTICATE": {
+      "TOKEN": "string",
+      "TYPE": "AUTHENTICATE"
+    },
     "COMMAND_ACK": {
       "COMMAND_ID": "00000000-0000-4000-8000-000000000006",
       "CORRELATION_ID": "00000000-0000-4000-8000-000000000005",
@@ -58,10 +61,138 @@
     "HELLO_ACK": {
       "MESSAGE_ID": "00000000-0000-4000-8000-000000000003",
       "OCCURRED_AT": "2026-01-01T00:00:00Z",
-      "PAYLOAD": { "HEARTBEAT_INTERVAL_SECONDS": 15 },
+      "PAYLOAD": {
+        "HEARTBEAT_INTERVAL_SECONDS": 15
+      },
       "PROTOCOL_VERSION": 1,
       "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
       "TYPE": "HELLO_ACK"
+    },
+    "REMOTE_ATTACH": {
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000019",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000018",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "LOCAL_WORK_TASK_REF": "opaque-work-task-ref",
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020",
+        "TARGET_ID": "dextra-target:00000000-0000-4000-8000-000000000000:folder:1"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "TYPE": "REMOTE_ATTACH"
+    },
+    "REMOTE_ATTACHED": {
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000019",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000025",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020",
+        "SNAPSHOT": {
+          "branch": "main",
+          "repository": "repository",
+          "rootPath": "/workspace",
+          "status": "READY",
+          "type": "workspace",
+          "workTaskId": "opaque-work-task-ref",
+          "workspace": "workspace"
+        }
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": null,
+      "TYPE": "REMOTE_ATTACHED"
+    },
+    "REMOTE_ATTACH_FAILED": {
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000019",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000026",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "ERROR": {
+          "CODE": "TARGET_UNAVAILABLE",
+          "DETAILS": {},
+          "MESSAGE": "Target is unavailable",
+          "RETRYABLE": false
+        },
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": null,
+      "TYPE": "REMOTE_ATTACH_FAILED"
+    },
+    "REMOTE_DETACH": {
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000024",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000023",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "TYPE": "REMOTE_DETACH"
+    },
+    "REMOTE_DETACHED": {
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000024",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000029",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "REASON": "CLIENT_DETACHED",
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": null,
+      "TYPE": "REMOTE_DETACHED"
+    },
+    "REMOTE_EVENT": {
+      "CORRELATION_ID": null,
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000028",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "FRAME": {
+          "channel": "task://changed",
+          "payload": {}
+        },
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": 1,
+      "TYPE": "REMOTE_EVENT"
+    },
+    "REMOTE_REQUEST": {
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000022",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000021",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "ARGUMENTS": {
+          "id": 1
+        },
+        "COMMAND_IDENTITY": {
+          "KIND": "CALL",
+          "NAME": "work_task_get"
+        },
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "TYPE": "REMOTE_REQUEST"
+    },
+    "REMOTE_RESPONSE": {
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000022",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000027",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "ERROR": null,
+        "REMOTE_SESSION_ID": "00000000-0000-4000-8000-000000000020",
+        "RESULT": {
+          "status": "review"
+        }
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": null,
+      "TYPE": "REMOTE_RESPONSE"
     },
     "TARGETS_REPORT": {
       "MESSAGE_ID": "00000000-0000-4000-8000-000000000004",
@@ -146,8 +277,12 @@
         "BINDING_ID": "00000000-0000-4000-8000-000000000012",
         "EXPIRES_AT": "2026-01-02T00:00:00Z",
         "MCP_SCOPE": {
-          "ALLOWED_CAPABILITY_IDS": ["MODULE_BOUND_MCP"],
-          "AUTHORIZED_MODULE_IDS": ["00000000-0000-4000-8000-000000000013"],
+          "ALLOWED_CAPABILITY_IDS": [
+            "MODULE_BOUND_MCP"
+          ],
+          "AUTHORIZED_MODULE_IDS": [
+            "00000000-0000-4000-8000-000000000013"
+          ],
           "CLAIM_ENDPOINT": "/api/v1/execution-task-principals/create"
         },
         "MODULE_ID": "00000000-0000-4000-8000-000000000013",
@@ -175,17 +310,148 @@
       "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
       "SEQUENCE": 1,
       "TYPE": "TASK_STATE"
+    },
+    "WORKBENCH_AUTHENTICATE": {
+      "TICKET": "one-time-ticket",
+      "TYPE": "AUTHENTICATE"
+    },
+    "WORKBENCH_REMOTE_DETACH": {
+      "TYPE": "REMOTE_DETACH"
+    },
+    "WORKBENCH_REMOTE_REQUEST": {
+      "ARGUMENTS": {
+        "id": 1
+      },
+      "COMMAND_IDENTITY": {
+        "KIND": "CALL",
+        "NAME": "work_task_get"
+      },
+      "REQUEST_ID": "browser-request-1",
+      "TYPE": "REMOTE_REQUEST"
     }
   },
   "messages": {
+    "RemoteWorkbenchAuthenticateFrame": {
+      "additionalProperties": false,
+      "description": "浏览器远程工作台的首帧 ticket。",
+      "properties": {
+        "TICKET": {
+          "minLength": 1,
+          "title": "Ticket",
+          "type": "string"
+        },
+        "TYPE": {
+          "const": "AUTHENTICATE",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "TYPE",
+        "TICKET"
+      ],
+      "title": "RemoteWorkbenchAuthenticateFrame",
+      "type": "object"
+    },
+    "RemoteWorkbenchDetachFrame": {
+      "additionalProperties": false,
+      "description": "owner 浏览器显式结束当前 relay。",
+      "properties": {
+        "TYPE": {
+          "const": "REMOTE_DETACH",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "TYPE"
+      ],
+      "title": "RemoteWorkbenchDetachFrame",
+      "type": "object"
+    },
+    "RemoteWorkbenchRequestFrame": {
+      "$defs": {
+        "RemoteCommandIdentity": {
+          "additionalProperties": false,
+          "description": "Codeg Transport 调用的种类与登记名称。",
+          "properties": {
+            "KIND": {
+              "enum": [
+                "CALL",
+                "CHANNEL_SUBSCRIBE",
+                "CHANNEL_UNSUBSCRIBE",
+                "STREAM_ATTACH",
+                "STREAM_DETACH"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "NAME": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "KIND",
+            "NAME"
+          ],
+          "title": "RemoteCommandIdentity",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "owner 浏览器发起的单个 Codeg Transport 请求。",
+      "properties": {
+        "ARGUMENTS": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "COMMAND_IDENTITY": {
+          "$ref": "#/$defs/RemoteCommandIdentity"
+        },
+        "REQUEST_ID": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Request Id",
+          "type": "string"
+        },
+        "TYPE": {
+          "const": "REMOTE_REQUEST",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "TYPE",
+        "REQUEST_ID",
+        "COMMAND_IDENTITY",
+        "ARGUMENTS"
+      ],
+      "title": "RemoteWorkbenchRequestFrame",
+      "type": "object"
+    },
     "RunnerAuthenticateFrame": {
       "additionalProperties": false,
       "description": "WebSocket 建连后的首帧短期身份。",
       "properties": {
-        "TOKEN": { "minLength": 1, "title": "Token", "type": "string" },
-        "TYPE": { "const": "AUTHENTICATE", "title": "Type", "type": "string" }
+        "TOKEN": {
+          "minLength": 1,
+          "title": "Token",
+          "type": "string"
+        },
+        "TYPE": {
+          "const": "AUTHENTICATE",
+          "title": "Type",
+          "type": "string"
+        }
       },
-      "required": ["TYPE", "TOKEN"],
+      "required": [
+        "TYPE",
+        "TOKEN"
+      ],
       "title": "RunnerAuthenticateFrame",
       "type": "object"
     },
@@ -201,9 +467,15 @@
               "title": "Reason",
               "type": "string"
             },
-            "TASK_ID": { "title": "Task Id", "type": "string" }
+            "TASK_ID": {
+              "title": "Task Id",
+              "type": "string"
+            }
           },
-          "required": ["TASK_ID", "REASON"],
+          "required": [
+            "TASK_ID",
+            "REASON"
+          ],
           "title": "TaskCancelPayload",
           "type": "object"
         },
@@ -212,13 +484,17 @@
           "description": "TASK_START 可领取 task principal 的最大范围。",
           "properties": {
             "ALLOWED_CAPABILITY_IDS": {
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "minItems": 1,
               "title": "Allowed Capability Ids",
               "type": "array"
             },
             "AUTHORIZED_MODULE_IDS": {
-              "items": { "type": "string" },
+              "items": {
+                "type": "string"
+              },
               "minItems": 1,
               "title": "Authorized Module Ids",
               "type": "array"
@@ -241,23 +517,40 @@
           "additionalProperties": false,
           "description": "平台发往 Dextra 的不可变 Task 启动事实。",
           "properties": {
-            "BINDING_ID": { "title": "Binding Id", "type": "string" },
+            "BINDING_ID": {
+              "title": "Binding Id",
+              "type": "string"
+            },
             "EXPIRES_AT": {
               "format": "date-time",
               "title": "Expires At",
               "type": "string"
             },
-            "MCP_SCOPE": { "$ref": "#/$defs/TaskMcpScope" },
-            "MODULE_ID": { "title": "Module Id", "type": "string" },
-            "OWNER_USER_ID": { "title": "Owner User Id", "type": "string" },
+            "MCP_SCOPE": {
+              "$ref": "#/$defs/TaskMcpScope"
+            },
+            "MODULE_ID": {
+              "title": "Module Id",
+              "type": "string"
+            },
+            "OWNER_USER_ID": {
+              "title": "Owner User Id",
+              "type": "string"
+            },
             "PROMPT": {
               "maxLength": 100000,
               "minLength": 1,
               "title": "Prompt",
               "type": "string"
             },
-            "TARGET_ID": { "title": "Target Id", "type": "string" },
-            "TASK_ID": { "title": "Task Id", "type": "string" }
+            "TARGET_ID": {
+              "title": "Target Id",
+              "type": "string"
+            },
+            "TASK_ID": {
+              "title": "Task Id",
+              "type": "string"
+            }
           },
           "required": [
             "TASK_ID",
@@ -276,9 +569,18 @@
       "additionalProperties": false,
       "description": "可靠 TASK_START/TASK_CANCEL 生产 serializer。",
       "properties": {
-        "COMMAND_ID": { "title": "Command Id", "type": "string" },
-        "CORRELATION_ID": { "title": "Correlation Id", "type": "string" },
-        "MESSAGE_ID": { "title": "Message Id", "type": "string" },
+        "COMMAND_ID": {
+          "title": "Command Id",
+          "type": "string"
+        },
+        "CORRELATION_ID": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "MESSAGE_ID": {
+          "title": "Message Id",
+          "type": "string"
+        },
         "OCCURRED_AT": {
           "format": "date-time",
           "title": "Occurred At",
@@ -286,8 +588,12 @@
         },
         "PAYLOAD": {
           "anyOf": [
-            { "$ref": "#/$defs/TaskStartPayload" },
-            { "$ref": "#/$defs/TaskCancelPayload" }
+            {
+              "$ref": "#/$defs/TaskStartPayload"
+            },
+            {
+              "$ref": "#/$defs/TaskCancelPayload"
+            }
           ],
           "title": "Payload"
         },
@@ -296,10 +602,20 @@
           "title": "Protocol Version",
           "type": "integer"
         },
-        "RUNNER_ID": { "title": "Runner Id", "type": "string" },
-        "SEQUENCE": { "minimum": 1, "title": "Sequence", "type": "integer" },
+        "RUNNER_ID": {
+          "title": "Runner Id",
+          "type": "string"
+        },
+        "SEQUENCE": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
         "TYPE": {
-          "enum": ["TASK_START", "TASK_CANCEL"],
+          "enum": [
+            "TASK_START",
+            "TASK_CANCEL"
+          ],
           "title": "Type",
           "type": "string"
         }
@@ -349,7 +665,11 @@
           "title": "Runner Id",
           "type": "string"
         },
-        "TYPE": { "const": "HEARTBEAT", "title": "Type", "type": "string" }
+        "TYPE": {
+          "const": "HEARTBEAT",
+          "title": "Type",
+          "type": "string"
+        }
       },
       "required": [
         "PROTOCOL_VERSION",
@@ -416,7 +736,9 @@
           "title": "Occurred At",
           "type": "string"
         },
-        "PAYLOAD": { "$ref": "#/$defs/RunnerHelloPayload" },
+        "PAYLOAD": {
+          "$ref": "#/$defs/RunnerHelloPayload"
+        },
         "PROTOCOL_VERSION": {
           "const": 1,
           "title": "Protocol Version",
@@ -428,7 +750,11 @@
           "title": "Runner Id",
           "type": "string"
         },
-        "TYPE": { "const": "HELLO", "title": "Type", "type": "string" }
+        "TYPE": {
+          "const": "HELLO",
+          "title": "Type",
+          "type": "string"
+        }
       },
       "required": [
         "PROTOCOL_VERSION",
@@ -441,11 +767,429 @@
       "title": "RunnerHelloEnvelope",
       "type": "object"
     },
+    "RunnerRemoteCommandEnvelope": {
+      "$defs": {
+        "RemoteAttachPayload": {
+          "additionalProperties": false,
+          "description": "平台请求 Dextra attach 指定 owner Target。",
+          "properties": {
+            "LOCAL_WORK_TASK_REF": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Local Work Task Ref"
+            },
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            },
+            "TARGET_ID": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Target Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID",
+            "TARGET_ID"
+          ],
+          "title": "RemoteAttachPayload",
+          "type": "object"
+        },
+        "RemoteCommandIdentity": {
+          "additionalProperties": false,
+          "description": "Codeg Transport 调用的种类与登记名称。",
+          "properties": {
+            "KIND": {
+              "enum": [
+                "CALL",
+                "CHANNEL_SUBSCRIBE",
+                "CHANNEL_UNSUBSCRIBE",
+                "STREAM_ATTACH",
+                "STREAM_DETACH"
+              ],
+              "title": "Kind",
+              "type": "string"
+            },
+            "NAME": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "KIND",
+            "NAME"
+          ],
+          "title": "RemoteCommandIdentity",
+          "type": "object"
+        },
+        "RemoteDetachPayload": {
+          "additionalProperties": false,
+          "description": "平台要求 Dextra 释放远程 route。",
+          "properties": {
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID"
+          ],
+          "title": "RemoteDetachPayload",
+          "type": "object"
+        },
+        "RemoteRequestPayload": {
+          "additionalProperties": false,
+          "description": "平台临时转发的 Codeg vendor request。",
+          "properties": {
+            "ARGUMENTS": {
+              "additionalProperties": true,
+              "title": "Arguments",
+              "type": "object"
+            },
+            "COMMAND_IDENTITY": {
+              "$ref": "#/$defs/RemoteCommandIdentity"
+            },
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID",
+            "COMMAND_IDENTITY",
+            "ARGUMENTS"
+          ],
+          "title": "RemoteRequestPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Cerebro 发往 Dextra 的非持久 REMOTE_* 帧。",
+      "properties": {
+        "CORRELATION_ID": {
+          "title": "Correlation Id",
+          "type": "string"
+        },
+        "MESSAGE_ID": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RemoteAttachPayload"
+            },
+            {
+              "$ref": "#/$defs/RemoteRequestPayload"
+            },
+            {
+              "$ref": "#/$defs/RemoteDetachPayload"
+            }
+          ],
+          "title": "Payload"
+        },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": {
+          "title": "Runner Id",
+          "type": "string"
+        },
+        "TYPE": {
+          "enum": [
+            "REMOTE_ATTACH",
+            "REMOTE_REQUEST",
+            "REMOTE_DETACH"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "RUNNER_ID",
+        "CORRELATION_ID",
+        "PAYLOAD"
+      ],
+      "title": "RunnerRemoteCommandEnvelope",
+      "type": "object"
+    },
+    "RunnerRemoteEventEnvelope": {
+      "$defs": {
+        "RemoteAttachFailedPayload": {
+          "additionalProperties": false,
+          "description": "Dextra attach 失败并保留真实错误。",
+          "properties": {
+            "ERROR": {
+              "$ref": "#/$defs/RunnerWireError"
+            },
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID",
+            "ERROR"
+          ],
+          "title": "RemoteAttachFailedPayload",
+          "type": "object"
+        },
+        "RemoteAttachedPayload": {
+          "additionalProperties": false,
+          "description": "Dextra attach 成功后返回的 Codeg snapshot。",
+          "properties": {
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            },
+            "SNAPSHOT": {
+              "additionalProperties": true,
+              "title": "Snapshot",
+              "type": "object"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID",
+            "SNAPSHOT"
+          ],
+          "title": "RemoteAttachedPayload",
+          "type": "object"
+        },
+        "RemoteDetachedPayload": {
+          "additionalProperties": false,
+          "description": "Dextra 主动结束一个远程 route。",
+          "properties": {
+            "REASON": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            },
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID",
+            "REASON"
+          ],
+          "title": "RemoteDetachedPayload",
+          "type": "object"
+        },
+        "RemoteEventPayload": {
+          "additionalProperties": false,
+          "description": "Dextra 临时转发的 Codeg event frame。",
+          "properties": {
+            "FRAME": {
+              "additionalProperties": true,
+              "title": "Frame",
+              "type": "object"
+            },
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID",
+            "FRAME"
+          ],
+          "title": "RemoteEventPayload",
+          "type": "object"
+        },
+        "RemoteResponsePayload": {
+          "additionalProperties": false,
+          "description": "单个远程调用的结果或真实错误。",
+          "properties": {
+            "ERROR": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/RunnerWireError"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null
+            },
+            "REMOTE_SESSION_ID": {
+              "title": "Remote Session Id",
+              "type": "string"
+            },
+            "RESULT": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "Result"
+            }
+          },
+          "required": [
+            "REMOTE_SESSION_ID"
+          ],
+          "title": "RemoteResponsePayload",
+          "type": "object"
+        },
+        "RunnerWireError": {
+          "additionalProperties": false,
+          "description": "Runner 协议保留的真实错误。",
+          "properties": {
+            "CODE": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "DETAILS": {
+              "additionalProperties": true,
+              "title": "Details",
+              "type": "object"
+            },
+            "MESSAGE": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Message",
+              "type": "string"
+            },
+            "RETRYABLE": {
+              "title": "Retryable",
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "CODE",
+            "MESSAGE",
+            "RETRYABLE",
+            "DETAILS"
+          ],
+          "title": "RunnerWireError",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Dextra 发回平台的 REMOTE_* 响应与事件。",
+      "properties": {
+        "CORRELATION_ID": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "MESSAGE_ID": {
+          "title": "Message Id",
+          "type": "string"
+        },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RemoteAttachedPayload"
+            },
+            {
+              "$ref": "#/$defs/RemoteAttachFailedPayload"
+            },
+            {
+              "$ref": "#/$defs/RemoteResponsePayload"
+            },
+            {
+              "$ref": "#/$defs/RemoteEventPayload"
+            },
+            {
+              "$ref": "#/$defs/RemoteDetachedPayload"
+            }
+          ],
+          "title": "Payload"
+        },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": {
+          "title": "Runner Id",
+          "type": "string"
+        },
+        "SEQUENCE": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sequence"
+        },
+        "TYPE": {
+          "enum": [
+            "REMOTE_ATTACHED",
+            "REMOTE_ATTACH_FAILED",
+            "REMOTE_RESPONSE",
+            "REMOTE_EVENT",
+            "REMOTE_DETACHED"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "RUNNER_ID",
+        "PAYLOAD"
+      ],
+      "title": "RunnerRemoteEventEnvelope",
+      "type": "object"
+    },
     "RunnerServerEnvelope": {
       "additionalProperties": false,
       "description": "平台返回给 Runner 的连接控制消息。",
       "properties": {
-        "MESSAGE_ID": { "title": "Message Id", "type": "string" },
+        "MESSAGE_ID": {
+          "title": "Message Id",
+          "type": "string"
+        },
         "OCCURRED_AT": {
           "format": "date-time",
           "title": "Occurred At",
@@ -461,9 +1205,15 @@
           "title": "Protocol Version",
           "type": "integer"
         },
-        "RUNNER_ID": { "title": "Runner Id", "type": "string" },
+        "RUNNER_ID": {
+          "title": "Runner Id",
+          "type": "string"
+        },
         "TYPE": {
-          "enum": ["HELLO_ACK", "HEARTBEAT_ACK"],
+          "enum": [
+            "HELLO_ACK",
+            "HEARTBEAT_ACK"
+          ],
           "title": "Type",
           "type": "string"
         }
@@ -487,26 +1237,43 @@
           "properties": {
             "AGENT_TYPE": {
               "anyOf": [
-                { "maxLength": 64, "type": "string" },
-                { "type": "null" }
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
               "title": "Agent Type"
             },
             "AVAILABILITY": {
-              "enum": ["AVAILABLE", "UNAVAILABLE"],
+              "enum": [
+                "AVAILABLE",
+                "UNAVAILABLE"
+              ],
               "title": "Availability",
               "type": "string"
             },
             "BACKGROUND_TASK_UNAVAILABLE_REASON": {
               "anyOf": [
-                { "$ref": "#/$defs/RunnerTargetReason" },
-                { "type": "null" }
+                {
+                  "$ref": "#/$defs/RunnerTargetReason"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "BRANCH": {
               "anyOf": [
-                { "maxLength": 255, "type": "string" },
-                { "type": "null" }
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
               "title": "Branch"
             },
@@ -518,15 +1285,25 @@
             },
             "MODE_DISPLAY_NAME": {
               "anyOf": [
-                { "maxLength": 128, "type": "string" },
-                { "type": "null" }
+                {
+                  "maxLength": 128,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
               "title": "Mode Display Name"
             },
             "REPOSITORY": {
               "anyOf": [
-                { "maxLength": 255, "type": "string" },
-                { "type": "null" }
+                {
+                  "maxLength": 255,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
               ],
               "title": "Repository"
             },
@@ -542,8 +1319,12 @@
             },
             "UNAVAILABLE_REASON": {
               "anyOf": [
-                { "$ref": "#/$defs/RunnerTargetReason" },
-                { "type": "null" }
+                {
+                  "$ref": "#/$defs/RunnerTargetReason"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "UPDATED_AT": {
@@ -592,7 +1373,10 @@
               "type": "string"
             }
           },
-          "required": ["CODE", "MESSAGE"],
+          "required": [
+            "CODE",
+            "MESSAGE"
+          ],
           "title": "RunnerTargetReason",
           "type": "object"
         },
@@ -601,13 +1385,17 @@
           "description": "一台 Runner 当前拥有的完整 Target 集合。",
           "properties": {
             "TARGETS": {
-              "items": { "$ref": "#/$defs/RunnerTargetProjection" },
+              "items": {
+                "$ref": "#/$defs/RunnerTargetProjection"
+              },
               "maxItems": 1000,
               "title": "Targets",
               "type": "array"
             }
           },
-          "required": ["TARGETS"],
+          "required": [
+            "TARGETS"
+          ],
           "title": "RunnerTargetsReportPayload",
           "type": "object"
         }
@@ -626,7 +1414,9 @@
           "title": "Occurred At",
           "type": "string"
         },
-        "PAYLOAD": { "$ref": "#/$defs/RunnerTargetsReportPayload" },
+        "PAYLOAD": {
+          "$ref": "#/$defs/RunnerTargetsReportPayload"
+        },
         "PROTOCOL_VERSION": {
           "const": 1,
           "title": "Protocol Version",
@@ -638,7 +1428,11 @@
           "title": "Runner Id",
           "type": "string"
         },
-        "TYPE": { "const": "TARGETS_REPORT", "title": "Type", "type": "string" }
+        "TYPE": {
+          "const": "TARGETS_REPORT",
+          "title": "Type",
+          "type": "string"
+        }
       },
       "required": [
         "PROTOCOL_VERSION",
@@ -657,7 +1451,10 @@
           "additionalProperties": false,
           "description": "Dextra 声明的 Task Artifact 元数据。",
           "properties": {
-            "ARTIFACT_ID": { "title": "Artifact Id", "type": "string" },
+            "ARTIFACT_ID": {
+              "title": "Artifact Id",
+              "type": "string"
+            },
             "DISPLAY_NAME": {
               "maxLength": 255,
               "minLength": 1,
@@ -675,7 +1472,10 @@
               "title": "Size Bytes",
               "type": "integer"
             },
-            "TASK_ID": { "title": "Task Id", "type": "string" }
+            "TASK_ID": {
+              "title": "Task Id",
+              "type": "string"
+            }
           },
           "required": [
             "TASK_ID",
@@ -692,23 +1492,46 @@
           "description": "Dextra 对可靠命令本地提交结果的 ACK。",
           "properties": {
             "ACK_STATUS": {
-              "enum": ["ACCEPTED", "DUPLICATE", "REJECTED"],
+              "enum": [
+                "ACCEPTED",
+                "DUPLICATE",
+                "REJECTED"
+              ],
               "title": "Ack Status",
               "type": "string"
             },
             "ERROR": {
               "anyOf": [
-                { "$ref": "#/$defs/RunnerWireError" },
-                { "type": "null" }
+                {
+                  "$ref": "#/$defs/RunnerWireError"
+                },
+                {
+                  "type": "null"
+                }
               ]
             },
             "LOCAL_WORK_TASK_REF": {
-              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
               "title": "Local Work Task Ref"
             },
-            "TASK_ID": { "title": "Task Id", "type": "string" }
+            "TASK_ID": {
+              "title": "Task Id",
+              "type": "string"
+            }
           },
-          "required": ["TASK_ID", "ACK_STATUS", "LOCAL_WORK_TASK_REF", "ERROR"],
+          "required": [
+            "TASK_ID",
+            "ACK_STATUS",
+            "LOCAL_WORK_TASK_REF",
+            "ERROR"
+          ],
           "title": "CommandAckPayload",
           "type": "object"
         },
@@ -733,9 +1556,17 @@
               "title": "Message",
               "type": "string"
             },
-            "RETRYABLE": { "title": "Retryable", "type": "boolean" }
+            "RETRYABLE": {
+              "title": "Retryable",
+              "type": "boolean"
+            }
           },
-          "required": ["CODE", "MESSAGE", "RETRYABLE", "DETAILS"],
+          "required": [
+            "CODE",
+            "MESSAGE",
+            "RETRYABLE",
+            "DETAILS"
+          ],
           "title": "RunnerWireError",
           "type": "object"
         },
@@ -745,22 +1576,39 @@
           "properties": {
             "CHANGESET": {
               "anyOf": [
-                { "additionalProperties": true, "type": "object" },
-                { "type": "null" }
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
               ],
               "title": "Changeset"
             },
-            "IS_PARTIAL": { "title": "Is Partial", "type": "boolean" },
+            "IS_PARTIAL": {
+              "title": "Is Partial",
+              "type": "boolean"
+            },
             "STATE": {
               "maxLength": 32,
               "minLength": 1,
               "title": "State",
               "type": "string"
             },
-            "SUMMARY": { "title": "Summary", "type": "string" },
-            "TASK_ID": { "title": "Task Id", "type": "string" },
+            "SUMMARY": {
+              "title": "Summary",
+              "type": "string"
+            },
+            "TASK_ID": {
+              "title": "Task Id",
+              "type": "string"
+            },
             "TESTS": {
-              "items": { "additionalProperties": true, "type": "object" },
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
               "title": "Tests",
               "type": "array"
             }
@@ -800,9 +1648,16 @@
               "title": "State At",
               "type": "string"
             },
-            "TASK_ID": { "title": "Task Id", "type": "string" }
+            "TASK_ID": {
+              "title": "Task Id",
+              "type": "string"
+            }
           },
-          "required": ["TASK_ID", "STATE", "STATE_AT"],
+          "required": [
+            "TASK_ID",
+            "STATE",
+            "STATE_AT"
+          ],
           "title": "TaskStatePayload",
           "type": "object"
         }
@@ -811,16 +1666,33 @@
       "description": "Dextra 返回 ACK/state/result/artifact 的生产 serializer。",
       "properties": {
         "COMMAND_ID": {
-          "anyOf": [{ "type": "string" }, { "type": "null" }],
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "default": null,
           "title": "Command Id"
         },
         "CORRELATION_ID": {
-          "anyOf": [{ "type": "string" }, { "type": "null" }],
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
           "default": null,
           "title": "Correlation Id"
         },
-        "MESSAGE_ID": { "title": "Message Id", "type": "string" },
+        "MESSAGE_ID": {
+          "title": "Message Id",
+          "type": "string"
+        },
         "OCCURRED_AT": {
           "format": "date-time",
           "title": "Occurred At",
@@ -828,10 +1700,18 @@
         },
         "PAYLOAD": {
           "anyOf": [
-            { "$ref": "#/$defs/CommandAckPayload" },
-            { "$ref": "#/$defs/TaskStatePayload" },
-            { "$ref": "#/$defs/TaskResultPayload" },
-            { "$ref": "#/$defs/ArtifactDeclaredPayload" }
+            {
+              "$ref": "#/$defs/CommandAckPayload"
+            },
+            {
+              "$ref": "#/$defs/TaskStatePayload"
+            },
+            {
+              "$ref": "#/$defs/TaskResultPayload"
+            },
+            {
+              "$ref": "#/$defs/ArtifactDeclaredPayload"
+            }
           ],
           "title": "Payload"
         },
@@ -840,8 +1720,15 @@
           "title": "Protocol Version",
           "type": "integer"
         },
-        "RUNNER_ID": { "title": "Runner Id", "type": "string" },
-        "SEQUENCE": { "minimum": 1, "title": "Sequence", "type": "integer" },
+        "RUNNER_ID": {
+          "title": "Runner Id",
+          "type": "string"
+        },
+        "SEQUENCE": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
         "TYPE": {
           "enum": [
             "COMMAND_ACK",

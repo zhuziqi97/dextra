@@ -255,11 +255,6 @@ async fn async_main() -> ExitCode {
         event_bus_metrics.clone(),
     ));
     let emitter = EventEmitter::web_only(broadcaster.clone(), acp_event_bus.clone());
-    tokio::spawn(codeg_lib::cerebro::run_runner_connection_supervisor(
-        db.conn.clone(),
-        emitter.clone(),
-    ));
-
     // Build AppState
     let pet_state_handle = codeg_lib::pet_state_mapper::new_pet_state_handle();
     let connection_manager = codeg_lib::app_state::default_connection_manager();
@@ -303,6 +298,16 @@ async fn async_main() -> ExitCode {
     state
         .connection_manager
         .install_chat_channel(state.chat_channel_manager.clone_ref());
+    tokio::spawn(codeg_lib::cerebro::run_runner_connection_supervisor(
+        codeg_lib::cerebro::CerebroRemoteRuntime::new(
+            state.db.conn.clone(),
+            state.connection_manager.clone_ref(),
+            state.terminal_manager.clone_ref(),
+            state.emitter.clone(),
+            state.event_broadcaster.clone(),
+            state.data_dir.clone(),
+        ),
+    ));
 
     // Logging phase 3: wire the emitter so the Logs viewer's live tail
     // (`logs://appended`) reaches WS clients.

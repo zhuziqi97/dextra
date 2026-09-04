@@ -4,13 +4,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
 use super::identity;
+use super::remote::{CerebroRemoteRuntime, RemoteRelay};
 use crate::cerebro_bridge::{runner_heartbeat, runner_hello, runner_targets_report};
-use crate::web::event_bridge::EventEmitter;
 
 const RUNNER_WEBSOCKET_PATH: &str = "api/v1/execution-runners/ws";
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
@@ -82,7 +82,7 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
 }
 
 async fn send_target_report<S>(
-    conn: &DatabaseConnection,
+    conn: &sea_orm::DatabaseConnection,
     sink: &mut S,
     runner_id: &str,
 ) -> Result<(), String>
@@ -96,7 +96,7 @@ where
     send_json(sink, &runner_targets_report(runner_id, targets)).await
 }
 
-async fn connect_once(conn: &DatabaseConnection, emitter: &EventEmitter) -> Result<(), String> {
+async fn connect_once(runtime: &CerebroRemoteRuntime, relay: &RemoteRelay) -> Result<(), String> {
     let access = identity::refresh_access_token()
         .await
         .map_err(|error| error.to_string())?;
@@ -136,7 +136,9 @@ async fn connect_once(conn: &DatabaseConnection, emitter: &EventEmitter) -> Resu
         access.cerebro_base_url
     );
 
-    send_target_report(conn, &mut sink, &access.runner_id).await?;
+    send_target_report(&runtime.db.conn, &mut sink, &access.runner_id).await?;
+
+    let (remote_outbound, mut remote_source) = mpsc::channel::<Value>(128);
 
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat.tick().await;
@@ -154,12 +156,12 @@ async fn connect_once(conn: &DatabaseConnection, emitter: &EventEmitter) -> Resu
                 send_json(&mut sink, &runner_heartbeat(&access.runner_id)).await?;
             }
             _ = target_report.tick() => {
-                send_target_report(conn, &mut sink, &access.runner_id).await?;
+                send_target_report(&runtime.db.conn, &mut sink, &access.runner_id).await?;
             }
             _ = task_report.tick() => {
                 task_sequence += 1;
                 for frame in super::task_protocol::linked_task_frames(
-                    conn,
+                    &runtime.db.conn,
                     &access.runner_id,
                     task_sequence,
                 ).await? {
@@ -174,29 +176,43 @@ async fn connect_once(conn: &DatabaseConnection, emitter: &EventEmitter) -> Resu
                 let message_type = value.get("TYPE").and_then(Value::as_str);
                 if matches!(message_type, Some("TASK_START" | "TASK_CANCEL")) {
                     for response in super::task_protocol::handle_task_command(
-                        emitter,
-                        conn,
+                        &runtime.emitter,
+                        &runtime.db.conn,
                         &access.runner_id,
                         value,
                     ).await? {
                         send_json(&mut sink, &response).await?;
                     }
+                } else if relay
+                    .handle_server_message(
+                        &access.runner_id,
+                        value.clone(),
+                        remote_outbound.clone(),
+                    )
+                    .await
+                {
+                    continue;
                 } else {
                     validate_server_message(&value, &access.runner_id)?;
                 }
+            }
+            Some(outgoing) = remote_source.recv() => {
+                send_json(&mut sink, &outgoing).await?;
             }
         }
     }
 }
 
-async fn run_supervisor(conn: DatabaseConnection, emitter: EventEmitter) {
+async fn run_supervisor(runtime: CerebroRemoteRuntime) {
+    let relay = RemoteRelay::new(runtime.clone());
     loop {
         let state = identity::get_auth_state().await;
         match state {
             Ok(state) if state.paired => {
-                if let Err(error) = connect_once(&conn, &emitter).await {
+                if let Err(error) = connect_once(&runtime, &relay).await {
                     tracing::warn!("[cerebro] Runner connection ended: {error}");
                 }
+                relay.close_all().await;
             }
             Ok(_) => {}
             Err(error) => {
@@ -211,11 +227,11 @@ async fn run_supervisor(conn: DatabaseConnection, emitter: EventEmitter) {
 }
 
 /// 运行当前 Dextra 进程唯一的 Runner 连接监督任务。
-pub async fn run_runner_connection_supervisor(conn: DatabaseConnection, emitter: EventEmitter) {
+pub async fn run_runner_connection_supervisor(runtime: CerebroRemoteRuntime) {
     if SUPERVISOR_STARTED.swap(true, Ordering::AcqRel) {
         return;
     }
-    run_supervisor(conn, emitter).await;
+    run_supervisor(runtime).await;
 }
 
 #[cfg(test)]

@@ -7,86 +7,79 @@
     {
       "command": "acp_connect",
       "group": "TASK_CONTROL",
-      "route": "OPERATION",
-      "operation": "SESSION_CREATE",
+      "route": "RELAY",
       "requiredScope": "SESSION_CONTROL",
       "effects": ["PROCESS"],
       "sharedUser": true,
       "idempotency": "COMMAND_ID",
       "timeoutMs": 60000,
-      "audit": "DOMAIN_OPERATION"
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_prompt",
       "group": "TASK_CONTROL",
-      "route": "OPERATION",
-      "operation": "TASK_START",
+      "route": "RELAY",
       "requiredScope": "TASK_CONTROL",
       "effects": ["AGENT_TURN"],
       "sharedUser": true,
       "idempotency": "COMMAND_ID",
       "timeoutMs": 60000,
-      "audit": "DOMAIN_OPERATION"
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_cancel",
       "group": "TASK_CONTROL",
-      "route": "OPERATION",
-      "operation": "TASK_CANCEL",
+      "route": "RELAY",
       "requiredScope": "TASK_CONTROL",
       "effects": ["PROCESS"],
       "sharedUser": true,
       "idempotency": "COMMAND_ID",
       "timeoutMs": 30000,
-      "audit": "DOMAIN_OPERATION"
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_disconnect",
       "group": "TASK_CONTROL",
-      "route": "OPERATION",
-      "operation": "SESSION_CLOSE",
+      "route": "RELAY",
       "requiredScope": "SESSION_CONTROL",
       "effects": ["PROCESS"],
       "sharedUser": true,
       "idempotency": "COMMAND_ID",
       "timeoutMs": 30000,
-      "audit": "DOMAIN_OPERATION"
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_respond_permission",
       "group": "APPROVAL_RESPONSE",
-      "route": "OPERATION",
-      "operation": "APPROVAL_DECIDE",
+      "route": "RELAY",
       "requiredScope": "APPROVAL_DECIDE",
       "effects": ["AGENT_TURN"],
       "sharedUser": true,
       "idempotency": "COMMAND_ID",
       "timeoutMs": 30000,
-      "audit": "DOMAIN_OPERATION"
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_answer_question",
       "group": "APPROVAL_RESPONSE",
-      "route": "OPERATION",
-      "operation": "APPROVAL_DECIDE",
+      "route": "RELAY",
       "requiredScope": "APPROVAL_DECIDE",
       "effects": ["AGENT_TURN"],
       "sharedUser": true,
       "idempotency": "COMMAND_ID",
       "timeoutMs": 30000,
-      "audit": "DOMAIN_OPERATION"
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_answer_plan_approval",
       "group": "APPROVAL_RESPONSE",
-      "route": "OPERATION",
-      "operation": "APPROVAL_DECIDE",
+      "route": "RELAY",
       "requiredScope": "APPROVAL_DECIDE",
       "effects": ["AGENT_TURN"],
       "sharedUser": true,
       "idempotency": "COMMAND_ID",
       "timeoutMs": 30000,
-      "audit": "DOMAIN_OPERATION"
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_list_connections",
@@ -101,72 +94,6 @@
     },
     {
       "command": "acp_get_session_snapshot",
-      "group": "SESSION_READ",
-      "route": "RELAY",
-      "requiredScope": "SESSION_READ",
-      "effects": [],
-      "sharedUser": true,
-      "idempotency": "READ_ONLY",
-      "timeoutMs": 30000,
-      "audit": "READ_METADATA"
-    },
-    {
-      "command": "acp_get_session_snapshot_by_conversation",
-      "group": "SESSION_READ",
-      "route": "RELAY",
-      "requiredScope": "SESSION_READ",
-      "effects": [],
-      "sharedUser": true,
-      "idempotency": "READ_ONLY",
-      "timeoutMs": 30000,
-      "audit": "READ_METADATA"
-    },
-    {
-      "command": "acp_find_connection_for_conversation",
-      "group": "SESSION_READ",
-      "route": "RELAY",
-      "requiredScope": "SESSION_READ",
-      "effects": [],
-      "sharedUser": true,
-      "idempotency": "READ_ONLY",
-      "timeoutMs": 30000,
-      "audit": "READ_METADATA"
-    },
-    {
-      "command": "acp_list_agents",
-      "group": "RUNTIME_READ",
-      "route": "RELAY",
-      "requiredScope": "RUNTIME_READ",
-      "effects": [],
-      "sharedUser": true,
-      "idempotency": "READ_ONLY",
-      "timeoutMs": 30000,
-      "audit": "READ_METADATA"
-    },
-    {
-      "command": "acp_get_agent_status",
-      "group": "RUNTIME_READ",
-      "route": "RELAY",
-      "requiredScope": "RUNTIME_READ",
-      "effects": [],
-      "sharedUser": true,
-      "idempotency": "READ_ONLY",
-      "timeoutMs": 30000,
-      "audit": "READ_METADATA"
-    },
-    {
-      "command": "list_conversations",
-      "group": "SESSION_READ",
-      "route": "RELAY",
-      "requiredScope": "SESSION_READ",
-      "effects": [],
-      "sharedUser": true,
-      "idempotency": "READ_ONLY",
-      "timeoutMs": 30000,
-      "audit": "READ_METADATA"
-    },
-    {
-      "command": "get_conversation",
       "group": "SESSION_READ",
       "route": "RELAY",
       "requiredScope": "SESSION_READ",
@@ -212,13 +139,13 @@
     {
       "command": "forge_merge_change",
       "group": "FORGE_MUTATE",
-      "route": "DENY",
-      "requiredScope": "NONE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
       "effects": ["EXTERNAL_WRITE"],
       "sharedUser": false,
       "idempotency": "NONE",
-      "timeoutMs": 0,
-      "audit": "DENIED"
+      "timeoutMs": 60000,
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "open_in_code",
@@ -245,24 +172,299 @@
     {
       "command": "terminal_spawn",
       "group": "TERMINAL",
-      "route": "DENY",
-      "requiredScope": "NONE",
+      "route": "RELAY",
+      "requiredScope": "TERMINAL",
       "effects": ["PROCESS"],
       "sharedUser": false,
       "idempotency": "NONE",
-      "timeoutMs": 0,
-      "audit": "DENIED"
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "terminal_write",
       "group": "TERMINAL",
-      "route": "DENY",
-      "requiredScope": "NONE",
+      "route": "RELAY",
+      "requiredScope": "TERMINAL",
       "effects": ["PROCESS"],
       "sharedUser": false,
       "idempotency": "NONE",
-      "timeoutMs": 0,
-      "audit": "DENIED"
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "terminal_resize",
+      "group": "TERMINAL",
+      "route": "RELAY",
+      "requiredScope": "TERMINAL",
+      "effects": ["PROCESS"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "terminal_kill",
+      "group": "TERMINAL",
+      "route": "RELAY",
+      "requiredScope": "TERMINAL",
+      "effects": ["PROCESS"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "terminal_list",
+      "group": "TERMINAL",
+      "route": "RELAY",
+      "requiredScope": "TERMINAL",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "get_file_tree",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "read_file_preview",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "read_file_for_edit",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "save_file_content",
+      "group": "WORKSPACE_WRITE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "save_file_copy",
+      "group": "WORKSPACE_WRITE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "rename_file_tree_entry",
+      "group": "WORKSPACE_WRITE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "move_file_tree_entry",
+      "group": "WORKSPACE_WRITE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "delete_file_tree_entry",
+      "group": "WORKSPACE_WRITE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "create_file_tree_entry",
+      "group": "WORKSPACE_WRITE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "git_status",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "git_diff",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "git_log",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "git_add_files",
+      "group": "GIT_MUTATE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 30000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "git_commit",
+      "group": "GIT_MUTATE",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_WRITE",
+      "effects": ["PROCESS", "FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 60000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "work_task_list",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "work_task_get",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "work_task_events",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "work_task_diff",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "work_task_changed_files",
+      "group": "WORKSPACE_READ",
+      "route": "RELAY",
+      "requiredScope": "WORKSPACE_READ",
+      "effects": [],
+      "sharedUser": false,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
+    },
+    {
+      "command": "work_task_return",
+      "group": "TASK_CONTROL",
+      "route": "RELAY",
+      "requiredScope": "TASK_CONTROL",
+      "effects": ["PROCESS", "FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 60000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "work_task_merge",
+      "group": "TASK_CONTROL",
+      "route": "RELAY",
+      "requiredScope": "TASK_CONTROL",
+      "effects": ["PROCESS", "FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 60000,
+      "audit": "REMOTE_RELAY"
+    },
+    {
+      "command": "work_task_complete",
+      "group": "TASK_CONTROL",
+      "route": "RELAY",
+      "requiredScope": "TASK_CONTROL",
+      "effects": ["FILESYSTEM"],
+      "sharedUser": false,
+      "idempotency": "NONE",
+      "timeoutMs": 60000,
+      "audit": "REMOTE_RELAY"
     },
     {
       "command": "acp_update_agent_env",
@@ -321,6 +523,24 @@
       "group": "RUNTIME_READ",
       "route": "RELAY",
       "requiredScope": "RUNTIME_READ"
+    },
+    {
+      "channel": "task://changed",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ"
+    },
+    {
+      "channel": "terminal://output/*",
+      "group": "RUNTIME_READ",
+      "route": "RELAY",
+      "requiredScope": "TERMINAL"
+    },
+    {
+      "channel": "terminal://exit/*",
+      "group": "RUNTIME_READ",
+      "route": "RELAY",
+      "requiredScope": "TERMINAL"
     }
   ]
 }

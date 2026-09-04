@@ -86,7 +86,13 @@ pub fn channel_policy(channel: &str) -> Option<&'static ChannelPolicy> {
     REGISTRY
         .channels
         .iter()
-        .find(|policy| policy.channel == channel)
+        .find(|policy| {
+            policy.channel == channel
+                || policy
+                    .channel
+                    .strip_suffix('*')
+                    .is_some_and(|prefix| channel.starts_with(prefix))
+        })
 }
 
 fn validate_registry(registry: &CommandRegistry) -> Result<(), String> {
@@ -150,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn task_writes_are_operations_and_sensitive_commands_are_denied() {
+    fn owner_workbench_operations_relay_and_local_admin_commands_are_denied() {
         for command in [
             "acp_connect",
             "acp_prompt",
@@ -160,18 +166,30 @@ mod tests {
         ] {
             assert_eq!(
                 command_policy(command).unwrap().route,
-                CommandRoute::Operation
+                CommandRoute::Relay
             );
         }
+        assert!(channel_policy("terminal://output/terminal-1").is_some());
+        assert!(channel_policy("credential://changed").is_none());
         for command in [
-            "forge_merge_change",
             "open_in_code",
-            "terminal_spawn",
             "acp_update_agent_env",
             "acp_download_agent_binary",
             "perform_app_update",
         ] {
             assert_eq!(command_policy(command).unwrap().route, CommandRoute::Deny);
+        }
+        for command in [
+            "read_file_for_edit",
+            "save_file_content",
+            "terminal_spawn",
+            "git_status",
+            "git_commit",
+            "work_task_diff",
+            "work_task_merge",
+            "forge_merge_change",
+        ] {
+            assert_eq!(command_policy(command).unwrap().route, CommandRoute::Relay);
         }
     }
 }

@@ -357,8 +357,16 @@ mod tauri_app {
                 let db = app.state::<db::AppDatabase>();
                 tauri::async_runtime::block_on(network::proxy::init_proxy_from_db(&db.conn));
                 tauri::async_runtime::spawn(crate::cerebro::run_runner_connection_supervisor(
-                    db.conn.clone(),
-                    crate::web::event_bridge::EventEmitter::Tauri(app.handle().clone()),
+                    crate::cerebro::CerebroRemoteRuntime::new(
+                        db.conn.clone(),
+                        app.state::<ConnectionManager>().clone_ref(),
+                        app.state::<TerminalManager>().clone_ref(),
+                        crate::web::event_bridge::EventEmitter::Tauri(app.handle().clone()),
+                        app.state::<std::sync::Arc<web::event_bridge::WebEventBroadcaster>>()
+                            .inner()
+                            .clone(),
+                        effective_data_dir.clone(),
+                    ),
                 ));
 
                 // Logging phase 2/3: override the default level from the
