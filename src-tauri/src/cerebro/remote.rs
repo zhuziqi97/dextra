@@ -1403,6 +1403,29 @@ mod tests {
         relay
             .handle_server_message(
                 "runner-1",
+                request_frame(
+                    "save-1",
+                    "save_file_content",
+                    json!({
+                        "rootPath": temp.path().join("other"),
+                        "path": "owned.txt",
+                        "content": "changed from remote workbench"
+                    }),
+                ),
+                outbound.clone(),
+            )
+            .await;
+        let saved = receiver.recv().await.unwrap();
+        assert_eq!(saved["TYPE"], "REMOTE_RESPONSE");
+        assert!(saved["PAYLOAD"].get("ERROR").is_none());
+        assert_eq!(
+            std::fs::read_to_string(temp.path().join("workspace/owned.txt")).unwrap(),
+            "changed from remote workbench"
+        );
+
+        relay
+            .handle_server_message(
+                "runner-1",
                 request_frame("denied-1", "acp_update_agent_env", json!({})),
                 outbound.clone(),
             )
@@ -1423,7 +1446,7 @@ mod tests {
         let after_error = receiver.recv().await.unwrap();
         assert_eq!(
             after_error["PAYLOAD"]["RESULT"]["content"],
-            "owner workspace"
+            "changed from remote workbench"
         );
     }
 }

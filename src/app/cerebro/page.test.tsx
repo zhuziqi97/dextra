@@ -88,6 +88,25 @@ function resultFor(command: string): unknown {
   if (command === "work_task_diff") {
     return "diff --git a/src/main.rs b/src/main.rs\n+ready"
   }
+  if (command === "read_file_for_edit") {
+    return {
+      path: "src/main.rs",
+      content: "fn main() {}\n",
+      etag: "before",
+      mtime_ms: 1,
+      readonly: false,
+      line_ending: "lf",
+    }
+  }
+  if (command === "save_file_content") {
+    return {
+      path: "src/main.rs",
+      etag: "after",
+      mtime_ms: 2,
+      readonly: false,
+      line_ending: "lf",
+    }
+  }
   if (command === "work_task_merge") return false
   return null
 }
@@ -136,7 +155,7 @@ afterEach(() => {
 })
 
 describe("CerebroWorkbenchPage", () => {
-  it("从父页面内存消息连接绑定任务，并通过 relay 发起合并", async () => {
+  it("从父页面内存消息连接绑定任务，并通过 relay 修改文件和合并", async () => {
     const { unmount } = render(<CerebroWorkbenchPage />)
     expect(window.parent.postMessage).toHaveBeenCalledWith(
       { TYPE: "CEREBRO_REMOTE_WORKBENCH_READY" },
@@ -169,6 +188,25 @@ describe("CerebroWorkbenchPage", () => {
     expect(document.body).not.toHaveTextContent("/workspace")
     expect(localStorage.getItem("short-lived-ticket")).toBeNull()
     expect(JSON.stringify(ws.sent.slice(1))).not.toContain("short-lived-ticket")
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑 src/main.rs" }))
+    const editor = await screen.findByRole("textbox", { name: "文件内容" })
+    fireEvent.change(editor, { target: { value: "fn main() { ready(); }\n" } })
+    fireEvent.click(screen.getByRole("button", { name: "保存文件" }))
+    await waitFor(() => {
+      expect(
+        ws.sent.some(
+          (frame) =>
+            (frame.COMMAND_IDENTITY as { NAME?: string } | undefined)?.NAME ===
+              "save_file_content" &&
+            (frame.ARGUMENTS as { path?: string; content?: string } | undefined)
+              ?.path === "src/main.rs" &&
+            (frame.ARGUMENTS as { content?: string } | undefined)?.content ===
+              "fn main() { ready(); }\n"
+        )
+      ).toBe(true)
+    })
+    expect(await screen.findByText("已保存 src/main.rs")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "合并变更" }))
     await waitFor(() => {

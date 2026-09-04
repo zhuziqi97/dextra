@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import {
   CheckCircle2,
+  FilePenLine,
   FileDiff,
   GitBranch,
   GitMerge,
   Loader2,
   RefreshCw,
+  Save,
   TriangleAlert,
 } from "lucide-react"
 
@@ -23,7 +25,10 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Textarea } from "@/components/ui/textarea"
 import {
+  readFileForEdit,
+  saveFileContent,
   workTaskChangedFiles,
   workTaskComplete,
   workTaskDiff,
@@ -37,7 +42,11 @@ import {
   clearCerebroRemoteTransport,
   configureCerebroRemoteTransport,
 } from "@/lib/transport"
-import type { WorkTask, WorkTaskChangedFile } from "@/lib/types"
+import type {
+  FileEditContent,
+  WorkTask,
+  WorkTaskChangedFile,
+} from "@/lib/types"
 
 const INIT_MESSAGE_TYPE = "CEREBRO_REMOTE_WORKBENCH_INIT"
 const READY_MESSAGE_TYPE = "CEREBRO_REMOTE_WORKBENCH_READY"
@@ -95,6 +104,9 @@ export default function CerebroWorkbenchPage() {
     null
   )
   const [notice, setNotice] = useState<string | null>(null)
+  const [editingFile, setEditingFile] = useState<FileEditContent | null>(null)
+  const [editingContent, setEditingContent] = useState("")
+  const [fileBusy, setFileBusy] = useState<"open" | "save" | null>(null)
 
   const loadTask = useCallback(async (taskId: number) => {
     const [task, files, diff] = await Promise.all([
@@ -226,6 +238,58 @@ export default function CerebroWorkbenchPage() {
     }
   }, [loadTask])
 
+  const openFile = useCallback((path: string) => {
+    setFileBusy("open")
+    setError(null)
+    setNotice(null)
+    void readFileForEdit("/workspace", path)
+      .then((file) => {
+        if (!mountedRef.current) return
+        setEditingFile(file)
+        setEditingContent(file.content)
+      })
+      .catch((cause) => {
+        if (mountedRef.current) setError(toErrorMessage(cause))
+      })
+      .finally(() => {
+        if (mountedRef.current) setFileBusy(null)
+      })
+  }, [])
+
+  const saveFile = useCallback(async () => {
+    if (!editingFile) return
+    setFileBusy("save")
+    setError(null)
+    setNotice(null)
+    try {
+      const saved = await saveFileContent(
+        "/workspace",
+        editingFile.path,
+        editingContent,
+        null
+      )
+      setEditingFile((current) =>
+        current
+          ? {
+              ...current,
+              content: editingContent,
+              etag: saved.etag,
+              mtime_ms: saved.mtime_ms,
+              readonly: saved.readonly,
+              line_ending: saved.line_ending,
+            }
+          : current
+      )
+      setNotice(`已保存 ${editingFile.path}`)
+      const taskId = taskIdRef.current
+      if (taskId) await loadTask(taskId)
+    } catch (cause) {
+      setError(toErrorMessage(cause))
+    } finally {
+      setFileBusy(null)
+    }
+  }, [editingContent, editingFile, loadTask])
+
   if (phase === "waiting" || phase === "connecting") {
     return (
       <CenteredState
@@ -325,14 +389,25 @@ export default function CerebroWorkbenchPage() {
                           key={file.file}
                           className="flex items-center justify-between gap-3"
                         >
-                          <span className="min-w-0 truncate">{file.file}</span>
-                          <span className="shrink-0 text-muted-foreground">
-                            <span className="text-green-600">
-                              +{file.additions}
-                            </span>{" "}
-                            <span className="text-red-600">
-                              -{file.deletions}
+                          <button
+                            type="button"
+                            className="min-w-0 truncate text-left hover:underline"
+                            onClick={() => openFile(file.file)}
+                            disabled={fileBusy !== null}
+                            aria-label={`编辑 ${file.file}`}
+                          >
+                            {file.file}
+                          </button>
+                          <span className="flex shrink-0 items-center gap-2 text-muted-foreground">
+                            <span>
+                              <span className="text-green-600">
+                                +{file.additions}
+                              </span>{" "}
+                              <span className="text-red-600">
+                                -{file.deletions}
+                              </span>
                             </span>
+                            <FilePenLine className="size-3.5" />
                           </span>
                         </li>
                       ))}
@@ -386,22 +461,62 @@ export default function CerebroWorkbenchPage() {
           </div>
         </ScrollArea>
 
-        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
-          <div className="flex shrink-0 items-center gap-2 border-b px-4 py-3 text-sm font-medium">
-            <FileDiff className="size-4" />
-            完整变更
+        <section className="flex min-h-0 flex-col gap-3 overflow-hidden">
+          {editingFile ? (
+            <div className="flex min-h-64 flex-1 flex-col overflow-hidden rounded-xl border bg-card">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-2">
+                <div className="min-w-0">
+                  <div className="truncate font-mono text-sm" dir="ltr">
+                    {editingFile.path}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    仓库相对路径
+                  </div>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => void saveFile()}
+                  disabled={
+                    fileBusy !== null ||
+                    editingFile.readonly ||
+                    editingContent === editingFile.content
+                  }
+                >
+                  {fileBusy === "save" ? (
+                    <Loader2 className="animate-spin" />
+                  ) : (
+                    <Save />
+                  )}
+                  保存文件
+                </Button>
+              </div>
+              <Textarea
+                aria-label="文件内容"
+                className="min-h-0 flex-1 resize-none rounded-none border-0 font-mono text-xs focus-visible:ring-0"
+                dir="ltr"
+                value={editingContent}
+                readOnly={editingFile.readonly}
+                onChange={(event) => setEditingContent(event.target.value)}
+              />
+            </div>
+          ) : null}
+          <div className="flex min-h-48 flex-1 flex-col overflow-hidden rounded-xl border bg-card">
+            <div className="flex shrink-0 items-center gap-2 border-b px-4 py-3 text-sm font-medium">
+              <FileDiff className="size-4" />
+              完整变更
+            </div>
+            <ScrollArea className="min-h-0 flex-1" x="scroll" dir="ltr">
+              {diff.trim() ? (
+                <div className="p-3">
+                  <UnifiedDiffPreview diffText={diff} unbounded />
+                </div>
+              ) : (
+                <div className="flex h-full min-h-48 items-center justify-center text-sm text-muted-foreground">
+                  没有可显示的差异。
+                </div>
+              )}
+            </ScrollArea>
           </div>
-          <ScrollArea className="min-h-0 flex-1" x="scroll" dir="ltr">
-            {diff.trim() ? (
-              <div className="p-3">
-                <UnifiedDiffPreview diffText={diff} unbounded />
-              </div>
-            ) : (
-              <div className="flex h-full min-h-48 items-center justify-center text-sm text-muted-foreground">
-                没有可显示的差异。
-              </div>
-            )}
-          </ScrollArea>
         </section>
       </div>
     </main>
