@@ -116,9 +116,12 @@ impl CerebroBridge {
 
     pub async fn dispatch(&self, envelope: Envelope) -> Result<DispatchResult, BridgeError> {
         envelope.validate()?;
-        if envelope.message_type == MessageType::Hello {
+        if matches!(
+            envelope.message_type,
+            MessageType::Hello | MessageType::Heartbeat
+        ) {
             return Err(BridgeError::invalid(
-                "HELLO is negotiated before command dispatch",
+                "connection control messages are handled before command dispatch",
             ));
         }
         let command_id = envelope
@@ -181,6 +184,7 @@ impl CerebroBridge {
                 Ok(BridgeResponse::CodegStreamDetached { result })
             }
             MessageType::Hello
+            | MessageType::Heartbeat
             | MessageType::SessionOpen
             | MessageType::TaskStart
             | MessageType::TaskCancel

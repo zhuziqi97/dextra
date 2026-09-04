@@ -8,7 +8,7 @@ use std::sync::{LazyLock, RwLock};
 use std::time::{Duration, Instant};
 
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
 
 use crate::app_error::{AppCommandError, AppErrorCode};
 
@@ -247,6 +247,7 @@ struct PairingManager {
 }
 
 static PAIRING_MANAGER: LazyLock<PairingManager> = LazyLock::new(PairingManager::default);
+static RUNNER_IDENTITY_CHANGED: LazyLock<Notify> = LazyLock::new(Notify::new);
 
 type ProxyKeyedClient = (Vec<(String, String)>, reqwest::Client);
 static HTTP_CLIENT: RwLock<Option<ProxyKeyedClient>> = RwLock::new(None);
@@ -501,6 +502,7 @@ async fn poll_pairing_with(
     };
 
     store.save(&credential)?;
+    RUNNER_IDENTITY_CHANGED.notify_waiters();
     let runner_id = credential.runner_id;
     *slot = None;
     Ok(CerebroPairingPoll {
@@ -626,6 +628,7 @@ pub async fn cancel_pairing(handle: &str) -> Result<CerebroAuthState, AppCommand
 
 pub fn forget_runner_credential() -> Result<CerebroAuthState, AppCommandError> {
     SystemCredentialStore.clear()?;
+    RUNNER_IDENTITY_CHANGED.notify_waiters();
     Ok(CerebroAuthState {
         paired: false,
         cerebro_base_url: None,
@@ -637,6 +640,11 @@ pub fn forget_runner_credential() -> Result<CerebroAuthState, AppCommandError> {
 pub async fn refresh_access_token() -> Result<CerebroRunnerAccess, AppCommandError> {
     let client = http_client()?;
     refresh_access_token_with(&SystemCredentialStore, &client).await
+}
+
+/// 等待配对或断开动作唤醒后台 Runner 连接。
+pub(crate) async fn wait_for_runner_identity_change() {
+    RUNNER_IDENTITY_CHANGED.notified().await;
 }
 
 #[cfg(test)]

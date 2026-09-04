@@ -226,6 +226,7 @@ async fn async_main() -> ExitCode {
     // reqwest clients (including the LazyLock in check_app_update) cache the proxy
     // config at build time, so this must run before the first one is constructed.
     codeg_lib::init_proxy_from_db(&db.conn).await;
+    tokio::spawn(codeg_lib::cerebro::run_runner_connection_supervisor());
 
     // Reclaim orphaned chat scratch dirs (pre-send drafts that never bound to a
     // conversation, plus dirs left behind by deleted chat conversations).

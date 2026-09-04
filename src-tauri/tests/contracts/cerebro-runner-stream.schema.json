@@ -1,0 +1,209 @@
+{
+  "examples": {
+    "AUTHENTICATE": { "TOKEN": "string", "TYPE": "AUTHENTICATE" },
+    "HEARTBEAT": {
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000002",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {},
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "TYPE": "HEARTBEAT"
+    },
+    "HELLO": {
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000001",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "CODEG_API_REVISION": 1,
+        "CODEG_UPSTREAM_COMMIT": "769610c626f1fc4b18c11d3e289326acf097b99f",
+        "CODEG_UPSTREAM_VERSION": "v0.29.0",
+        "RUNNER_BUILD_ID": "string"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "TYPE": "HELLO"
+    },
+    "HELLO_ACK": {
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000003",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": { "HEARTBEAT_INTERVAL_SECONDS": 15 },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "TYPE": "HELLO_ACK"
+    }
+  },
+  "messages": {
+    "RunnerAuthenticateFrame": {
+      "additionalProperties": false,
+      "description": "WebSocket 建连后的首帧短期身份。",
+      "properties": {
+        "TOKEN": { "minLength": 1, "title": "Token", "type": "string" },
+        "TYPE": { "const": "AUTHENTICATE", "title": "Type", "type": "string" }
+      },
+      "required": ["TYPE", "TOKEN"],
+      "title": "RunnerAuthenticateFrame",
+      "type": "object"
+    },
+    "RunnerHeartbeatEnvelope": {
+      "additionalProperties": false,
+      "description": "当前连接持有者发送的保活消息。",
+      "properties": {
+        "MESSAGE_ID": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Runner Id",
+          "type": "string"
+        },
+        "TYPE": { "const": "HEARTBEAT", "title": "Type", "type": "string" }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "PAYLOAD",
+        "RUNNER_ID"
+      ],
+      "title": "RunnerHeartbeatEnvelope",
+      "type": "object"
+    },
+    "RunnerHelloEnvelope": {
+      "$defs": {
+        "RunnerHelloPayload": {
+          "additionalProperties": false,
+          "description": "Dextra 与固定 Codeg 边界的构建信息。",
+          "properties": {
+            "CODEG_API_REVISION": {
+              "minimum": 1,
+              "title": "Codeg Api Revision",
+              "type": "integer"
+            },
+            "CODEG_UPSTREAM_COMMIT": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Codeg Upstream Commit",
+              "type": "string"
+            },
+            "CODEG_UPSTREAM_VERSION": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Codeg Upstream Version",
+              "type": "string"
+            },
+            "RUNNER_BUILD_ID": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Runner Build Id",
+              "type": "string"
+            }
+          },
+          "required": [
+            "RUNNER_BUILD_ID",
+            "CODEG_API_REVISION",
+            "CODEG_UPSTREAM_VERSION",
+            "CODEG_UPSTREAM_COMMIT"
+          ],
+          "title": "RunnerHelloPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Runner 认证后发送的首个协议消息。",
+      "properties": {
+        "MESSAGE_ID": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": { "$ref": "#/$defs/RunnerHelloPayload" },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Runner Id",
+          "type": "string"
+        },
+        "TYPE": { "const": "HELLO", "title": "Type", "type": "string" }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "PAYLOAD",
+        "RUNNER_ID"
+      ],
+      "title": "RunnerHelloEnvelope",
+      "type": "object"
+    },
+    "RunnerServerEnvelope": {
+      "additionalProperties": false,
+      "description": "平台返回给 Runner 的连接控制消息。",
+      "properties": {
+        "MESSAGE_ID": { "title": "Message Id", "type": "string" },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": {
+          "additionalProperties": true,
+          "title": "Payload",
+          "type": "object"
+        },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": { "title": "Runner Id", "type": "string" },
+        "TYPE": {
+          "enum": ["HELLO_ACK", "HEARTBEAT_ACK"],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "RUNNER_ID",
+        "PAYLOAD"
+      ],
+      "title": "RunnerServerEnvelope",
+      "type": "object"
+    }
+  },
+  "schema_version": 1
+}
