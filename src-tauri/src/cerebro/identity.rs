@@ -83,6 +83,19 @@ struct PairingCreateData {
     interval: u64,
 }
 
+#[derive(Debug, Serialize)]
+struct PairingCreateRequest {}
+
+#[derive(Debug, Serialize)]
+struct PairingExchangeRequest<'a> {
+    device_code: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct TokenRefreshRequest<'a> {
+    refresh_credential: &'a str,
+}
+
 #[derive(Debug, Deserialize)]
 struct PairingExchangeData {
     runner_id: String,
@@ -285,10 +298,10 @@ fn endpoint(base_url: &str, relative_path: &str) -> Result<reqwest::Url, AppComm
     Ok(url)
 }
 
-async fn post_json<T: DeserializeOwned>(
+async fn post_json<T: DeserializeOwned, B: Serialize + ?Sized>(
     client: &reqwest::Client,
     url: reqwest::Url,
-    body: serde_json::Value,
+    body: &B,
 ) -> Result<T, ClientError> {
     let response = client
         .post(url)
@@ -373,7 +386,7 @@ async fn start_pairing_with(
     let created: PairingCreateData = post_json(
         client,
         endpoint(&base_url, PAIRING_CREATE_PATH)?,
-        serde_json::json!({}),
+        &PairingCreateRequest {},
     )
     .await
     .map_err(ClientError::into_app_error)?;
@@ -438,7 +451,9 @@ async fn poll_pairing_with(
             let exchanged: PairingExchangeData = match post_json(
                 client,
                 endpoint(&pending.cerebro_base_url, PAIRING_EXCHANGE_PATH)?,
-                serde_json::json!({ "device_code": device_code }),
+                &PairingExchangeRequest {
+                    device_code: &device_code,
+                },
             )
             .await
             {
@@ -549,7 +564,9 @@ async fn refresh_access_token_with(
     let refreshed: TokenRefreshData = match post_json(
         client,
         endpoint(&credential.cerebro_base_url, TOKEN_REFRESH_PATH)?,
-        serde_json::json!({ "refresh_credential": credential.refresh_credential }),
+        &TokenRefreshRequest {
+            refresh_credential: &credential.refresh_credential,
+        },
     )
     .await
     {
@@ -630,6 +647,53 @@ mod tests {
     use axum::{extract::State, routing::post, Json, Router};
 
     use super::*;
+
+    fn contract_example(path: &str, kind: &str) -> serde_json::Value {
+        let fixture: serde_json::Value = serde_json::from_str(include_str!(
+            "../../tests/contracts/cerebro-runner.openapi.json"
+        ))
+        .unwrap();
+        fixture["x-dextra-contract-examples"][path][kind].clone()
+    }
+
+    #[test]
+    fn production_identity_dtos_match_the_cerebro_openapi_fixture() {
+        let create_path = format!("/{PAIRING_CREATE_PATH}");
+        let exchange_path = format!("/{PAIRING_EXCHANGE_PATH}");
+        let refresh_path = format!("/{TOKEN_REFRESH_PATH}");
+
+        assert_eq!(
+            serde_json::to_value(PairingCreateRequest {}).unwrap(),
+            contract_example(&create_path, "request")
+        );
+        assert_eq!(
+            serde_json::to_value(PairingExchangeRequest {
+                device_code: "string"
+            })
+            .unwrap(),
+            contract_example(&exchange_path, "request")
+        );
+        assert_eq!(
+            serde_json::to_value(TokenRefreshRequest {
+                refresh_credential: "string"
+            })
+            .unwrap(),
+            contract_example(&refresh_path, "request")
+        );
+
+        let created: CerebroEnvelope<PairingCreateData> =
+            serde_json::from_value(contract_example(&create_path, "response")).unwrap();
+        assert!(created.success);
+        assert!(created.data.is_some());
+        let exchanged: CerebroEnvelope<PairingExchangeData> =
+            serde_json::from_value(contract_example(&exchange_path, "response")).unwrap();
+        assert!(exchanged.success);
+        assert!(exchanged.data.is_some());
+        let refreshed: CerebroEnvelope<TokenRefreshData> =
+            serde_json::from_value(contract_example(&refresh_path, "response")).unwrap();
+        assert!(refreshed.success);
+        assert!(refreshed.data.is_some());
+    }
 
     #[derive(Default)]
     struct MemoryStore {
