@@ -121,6 +121,44 @@
         "tags": ["Dextra执行端"]
       }
     },
+    "/api/v1/execution-runner-mcp-sessions/create": {
+      "post": {
+        "description": "让 Runner 为本人的 ACTIVE Binding 领取短期 MCP principal。",
+        "operationId": "create_runner_mcp_session_principal_api_v1_execution_runner_mcp_sessions_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerMCPSessionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerMCPPrincipalResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Runner Mcp Session Principal",
+        "tags": ["Dextra执行端"]
+      }
+    },
     "/api/v1/execution-runner-tokens/refresh": {
       "post": {
         "description": "使用设备 refresh credential 签发短期 access token。",
@@ -322,6 +360,43 @@
         "title": "RunnerListRequest",
         "type": "object"
       },
+      "RunnerMCPPrincipalResponse": {
+        "additionalProperties": false,
+        "description": "单次 Agent 启动使用的 Cerebro MCP HTTP 配置。",
+        "properties": {
+          "access_token": { "title": "Access Token", "type": "string" },
+          "expires_in": { "title": "Expires In", "type": "integer" },
+          "mcp_url": { "title": "Mcp Url", "type": "string" },
+          "token_type": {
+            "const": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": ["mcp_url", "access_token", "token_type", "expires_in"],
+        "title": "RunnerMCPPrincipalResponse",
+        "type": "object"
+      },
+      "RunnerMCPSessionCreateRequest": {
+        "additionalProperties": false,
+        "description": "Runner 为一个本地 Agent 会话领取短期 MCP principal。",
+        "properties": {
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": ["binding_id", "session_id"],
+        "title": "RunnerMCPSessionCreateRequest",
+        "type": "object"
+      },
       "RunnerPairingApproveRequest": {
         "additionalProperties": false,
         "description": "当前浏览器用户批准设备配对。",
@@ -497,6 +572,16 @@
         "title": "RunnerTokenResponse",
         "type": "object"
       },
+      "SuccessResponse_RunnerMCPPrincipalResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": { "$ref": "#/components/schemas/RunnerMCPPrincipalResponse" },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerMCPPrincipalResponse]",
+        "type": "object"
+      },
       "SuccessResponse_RunnerPairingApproveResponse_": {
         "additionalProperties": false,
         "properties": {
@@ -596,6 +681,21 @@
       "request": { "device_code": "string" },
       "response": {
         "data": { "refresh_credential": "string", "runner_id": "string" },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-mcp-sessions/create": {
+      "request": {
+        "binding_id": "00000000-0000-4000-8000-000000000000",
+        "session_id": "string"
+      },
+      "response": {
+        "data": {
+          "access_token": "string",
+          "expires_in": 1,
+          "mcp_url": "string",
+          "token_type": "bearer"
+        },
         "success": true
       }
     },

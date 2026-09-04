@@ -15,6 +15,7 @@ use crate::app_error::{AppCommandError, AppErrorCode};
 const PAIRING_CREATE_PATH: &str = "api/v1/execution-runner-pairings/create";
 const PAIRING_EXCHANGE_PATH: &str = "api/v1/execution-runner-pairings/exchange";
 const TOKEN_REFRESH_PATH: &str = "api/v1/execution-runner-tokens/refresh";
+const MCP_SESSION_CREATE_PATH: &str = "api/v1/execution-runner-mcp-sessions/create";
 const RUNNER_CREDENTIAL_INVALID: &str = "RUNNER_CREDENTIAL_INVALID";
 const RUNNER_REVOKED: &str = "RUNNER_REVOKED";
 const RUNNER_PAIRING_PENDING: &str = "RUNNER_PAIRING_PENDING";
@@ -68,6 +69,19 @@ pub struct CerebroRunnerAccess {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CerebroMcpPrincipal {
+    #[serde(alias = "mcp_url")]
+    pub mcp_url: String,
+    #[serde(alias = "access_token")]
+    pub access_token: String,
+    #[serde(alias = "token_type")]
+    pub token_type: String,
+    #[serde(alias = "expires_in")]
+    pub expires_in: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 struct RunnerCredential {
     cerebro_base_url: String,
     runner_id: String,
@@ -94,6 +108,12 @@ struct PairingExchangeRequest<'a> {
 #[derive(Debug, Serialize)]
 struct TokenRefreshRequest<'a> {
     refresh_credential: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct McpSessionCreateRequest<'a> {
+    binding_id: &'a str,
+    session_id: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -303,10 +323,13 @@ async fn post_json<T: DeserializeOwned, B: Serialize + ?Sized>(
     client: &reqwest::Client,
     url: reqwest::Url,
     body: &B,
+    bearer_token: Option<&str>,
 ) -> Result<T, ClientError> {
-    let response = client
-        .post(url)
-        .json(&body)
+    let mut request = client.post(url).json(&body);
+    if let Some(token) = bearer_token {
+        request = request.bearer_auth(token);
+    }
+    let response = request
         .send()
         .await
         .map_err(|error| ClientError::Network(error.to_string()))?;
@@ -388,6 +411,7 @@ async fn start_pairing_with(
         client,
         endpoint(&base_url, PAIRING_CREATE_PATH)?,
         &PairingCreateRequest {},
+        None,
     )
     .await
     .map_err(ClientError::into_app_error)?;
@@ -455,6 +479,7 @@ async fn poll_pairing_with(
                 &PairingExchangeRequest {
                     device_code: &device_code,
                 },
+                None,
             )
             .await
             {
@@ -569,6 +594,7 @@ async fn refresh_access_token_with(
         &TokenRefreshRequest {
             refresh_credential: &credential.refresh_credential,
         },
+        None,
     )
     .await
     {
@@ -642,6 +668,51 @@ pub async fn refresh_access_token() -> Result<CerebroRunnerAccess, AppCommandErr
     refresh_access_token_with(&SystemCredentialStore, &client).await
 }
 
+async fn issue_mcp_session_principal_with(
+    store: &dyn CredentialStore,
+    client: &reqwest::Client,
+    binding_id: &str,
+    session_id: &str,
+) -> Result<CerebroMcpPrincipal, AppCommandError> {
+    let access = refresh_access_token_with(store, client).await?;
+    let principal: CerebroMcpPrincipal = post_json(
+        client,
+        endpoint(&access.cerebro_base_url, MCP_SESSION_CREATE_PATH)?,
+        &McpSessionCreateRequest {
+            binding_id,
+            session_id,
+        },
+        Some(&access.access_token),
+    )
+    .await
+    .map_err(ClientError::into_app_error)?;
+    if principal.mcp_url.trim().is_empty()
+        || principal.access_token.trim().is_empty()
+        || principal.token_type != "bearer"
+        || principal.expires_in == 0
+    {
+        return Err(AppCommandError::new(
+            AppErrorCode::NetworkError,
+            "Cerebro returned an invalid MCP principal",
+        ));
+    }
+    Ok(principal)
+}
+
+pub async fn issue_mcp_session_principal(
+    binding_id: &str,
+    session_id: &str,
+) -> Result<CerebroMcpPrincipal, AppCommandError> {
+    let client = http_client()?;
+    issue_mcp_session_principal_with(
+        &SystemCredentialStore,
+        &client,
+        binding_id,
+        session_id,
+    )
+    .await
+}
+
 /// 等待配对或断开动作唤醒后台 Runner 连接。
 pub(crate) async fn wait_for_runner_identity_change() {
     RUNNER_IDENTITY_CHANGED.notified().await;
@@ -652,7 +723,7 @@ mod tests {
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex as StdMutex};
 
-    use axum::{extract::State, routing::post, Json, Router};
+    use axum::{extract::State, http::HeaderMap, routing::post, Json, Router};
 
     use super::*;
 
@@ -669,6 +740,7 @@ mod tests {
         let create_path = format!("/{PAIRING_CREATE_PATH}");
         let exchange_path = format!("/{PAIRING_EXCHANGE_PATH}");
         let refresh_path = format!("/{TOKEN_REFRESH_PATH}");
+        let mcp_session_path = format!("/{MCP_SESSION_CREATE_PATH}");
 
         assert_eq!(
             serde_json::to_value(PairingCreateRequest {}).unwrap(),
@@ -688,6 +760,14 @@ mod tests {
             .unwrap(),
             contract_example(&refresh_path, "request")
         );
+        assert_eq!(
+            serde_json::to_value(McpSessionCreateRequest {
+                binding_id: "00000000-0000-4000-8000-000000000000",
+                session_id: "string",
+            })
+            .unwrap(),
+            contract_example(&mcp_session_path, "request")
+        );
 
         let created: CerebroEnvelope<PairingCreateData> =
             serde_json::from_value(contract_example(&create_path, "response")).unwrap();
@@ -701,6 +781,10 @@ mod tests {
             serde_json::from_value(contract_example(&refresh_path, "response")).unwrap();
         assert!(refreshed.success);
         assert!(refreshed.data.is_some());
+        let mcp_principal: CerebroEnvelope<CerebroMcpPrincipal> =
+            serde_json::from_value(contract_example(&mcp_session_path, "response")).unwrap();
+        assert!(mcp_principal.success);
+        assert!(mcp_principal.data.is_some());
     }
 
     #[derive(Default)]
@@ -748,6 +832,7 @@ mod tests {
         exchange_calls: Arc<AtomicUsize>,
         pending_first: Arc<AtomicBool>,
         revoke_refresh: Arc<AtomicBool>,
+        mcp_calls: Arc<AtomicUsize>,
         verification_uri: Arc<StdMutex<String>>,
     }
 
@@ -804,6 +889,29 @@ mod tests {
         }))
     }
 
+    async fn issue_mcp_principal(
+        State(state): State<MockCerebro>,
+        headers: HeaderMap,
+        Json(body): Json<serde_json::Value>,
+    ) -> Json<serde_json::Value> {
+        state.mcp_calls.fetch_add(1, Ordering::SeqCst);
+        assert_eq!(
+            headers.get("authorization").and_then(|value| value.to_str().ok()),
+            Some("Bearer short-lived-access")
+        );
+        assert_eq!(body["binding_id"], "binding-1");
+        assert_eq!(body["session_id"], "session-1");
+        Json(serde_json::json!({
+            "success": true,
+            "data": {
+                "mcp_url": "http://cerebro.test/mcp/stream",
+                "access_token": "mcp-short-lived",
+                "token_type": "bearer",
+                "expires_in": 600
+            }
+        }))
+    }
+
     async fn mock_server(
         pending_first: bool,
     ) -> (String, MockCerebro, tokio::task::JoinHandle<()>) {
@@ -825,6 +933,10 @@ mod tests {
             .route(
                 "/nested/api/v1/execution-runner-tokens/refresh",
                 post(refresh_token),
+            )
+            .route(
+                "/nested/api/v1/execution-runner-mcp-sessions/create",
+                post(issue_mcp_principal),
             )
             .with_state(state.clone());
         let task = tokio::spawn(async move {
@@ -881,6 +993,33 @@ mod tests {
         assert!(matches!(error.code, AppErrorCode::AuthenticationFailed));
         assert_eq!(error.detail.as_deref(), Some("RUNNER_REVOKED"));
         assert!(store.load().unwrap().is_none());
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn mcp_session_principal_uses_runner_access_header() {
+        let (base_url, server, task) = mock_server(false).await;
+        let store = MemoryStore::default();
+        store
+            .save(&RunnerCredential {
+                cerebro_base_url: normalize_base_url(&base_url).unwrap(),
+                runner_id: "runner-1".to_string(),
+                refresh_credential: "cvn_runner_credential.secret".to_string(),
+            })
+            .unwrap();
+
+        let principal = issue_mcp_session_principal_with(
+            &store,
+            &reqwest::Client::new(),
+            "binding-1",
+            "session-1",
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(principal.mcp_url, "http://cerebro.test/mcp/stream");
+        assert_eq!(principal.access_token, "mcp-short-lived");
+        assert_eq!(server.mcp_calls.load(Ordering::SeqCst), 1);
         task.abort();
     }
 

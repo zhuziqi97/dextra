@@ -4,6 +4,7 @@
 
 pub mod connection;
 pub mod identity;
+pub mod mcp;
 pub mod target_projection;
 pub mod task_link;
 
@@ -11,7 +12,7 @@ pub use connection::run_runner_connection_supervisor;
 pub use identity::{
     cancel_pairing, forget_runner_credential, get_auth_state, poll_pairing, refresh_access_token,
     start_pairing, CerebroAuthState, CerebroPairingPoll, CerebroPairingStart, CerebroRunnerAccess,
-    PairingPollStatus,
+    CerebroMcpPrincipal, PairingPollStatus,
 };
 
 pub use target_projection::{
