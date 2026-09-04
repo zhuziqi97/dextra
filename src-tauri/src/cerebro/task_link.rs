@@ -289,6 +289,18 @@ pub async fn reconcile_linked_work_task(
     })
 }
 
+/// 返回所有永久平台 link 的当前状态，供生产 Runner 周期收敛丢失的状态帧。
+pub async fn reconcile_all_linked_work_tasks(
+    conn: &DatabaseConnection,
+) -> Result<Vec<LinkedWorkTaskSnapshot>, DbError> {
+    let links = cerebro_task_link::Entity::find().all(conn).await?;
+    let mut snapshots = Vec::with_capacity(links.len());
+    for link in links {
+        snapshots.push(reconcile_linked_work_task(conn, &link.platform_task_id).await?);
+    }
+    Ok(snapshots)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

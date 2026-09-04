@@ -22,6 +22,17 @@ pub async fn server_for_binding(
     Ok(McpServer::Http(server))
 }
 
+pub async fn server_for_task(task_id: &str) -> Result<McpServer, AppCommandError> {
+    let principal = identity::issue_mcp_task_principal(task_id).await?;
+    let server = McpServerHttp::new(CEREBRO_MCP_SERVER_NAME, principal.mcp_url).headers(vec![
+        HttpHeader::new(
+            "Authorization",
+            format!("Bearer {}", principal.access_token),
+        ),
+    ]);
+    Ok(McpServer::Http(server))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -44,10 +55,7 @@ mod tests {
     #[test]
     fn principal_maps_to_streamable_http_header_shape() {
         let server = McpServerHttp::new(CEREBRO_MCP_SERVER_NAME, "http://cerebro/mcp/stream")
-            .headers(vec![HttpHeader::new(
-                "Authorization",
-                "Bearer short-lived",
-            )]);
+            .headers(vec![HttpHeader::new("Authorization", "Bearer short-lived")]);
         let serialized = serde_json::to_value(McpServer::Http(server)).unwrap();
 
         assert_eq!(serialized["type"], "http");

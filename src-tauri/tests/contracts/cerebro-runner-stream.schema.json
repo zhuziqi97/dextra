@@ -1,6 +1,39 @@
 {
   "examples": {
+    "ARTIFACT_DECLARED": {
+      "COMMAND_ID": null,
+      "CORRELATION_ID": null,
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000016",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "ARTIFACT_ID": "00000000-0000-4000-8000-000000000017",
+        "DISPLAY_NAME": "Task patch",
+        "KIND": "PATCH",
+        "SIZE_BYTES": 42,
+        "TASK_ID": "00000000-0000-4000-8000-000000000007"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": 3,
+      "TYPE": "ARTIFACT_DECLARED"
+    },
     "AUTHENTICATE": { "TOKEN": "string", "TYPE": "AUTHENTICATE" },
+    "COMMAND_ACK": {
+      "COMMAND_ID": "00000000-0000-4000-8000-000000000006",
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000005",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000008",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "ACK_STATUS": "ACCEPTED",
+        "ERROR": null,
+        "LOCAL_WORK_TASK_REF": "opaque-work-task-ref",
+        "TASK_ID": "00000000-0000-4000-8000-000000000007"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": 1,
+      "TYPE": "COMMAND_ACK"
+    },
     "HEARTBEAT": {
       "MESSAGE_ID": "00000000-0000-4000-8000-000000000002",
       "OCCURRED_AT": "2026-01-01T00:00:00Z",
@@ -71,6 +104,77 @@
       "PROTOCOL_VERSION": 1,
       "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
       "TYPE": "TARGETS_REPORT"
+    },
+    "TASK_CANCEL": {
+      "COMMAND_ID": "00000000-0000-4000-8000-000000000006",
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000005",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000005",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "REASON": "Cancel task",
+        "TASK_ID": "00000000-0000-4000-8000-000000000007"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": 1,
+      "TYPE": "TASK_CANCEL"
+    },
+    "TASK_RESULT": {
+      "COMMAND_ID": null,
+      "CORRELATION_ID": null,
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000015",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "CHANGESET": null,
+        "IS_PARTIAL": false,
+        "STATE": "RESULT_READY",
+        "SUMMARY": "Task completed",
+        "TASK_ID": "00000000-0000-4000-8000-000000000007",
+        "TESTS": []
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": 2,
+      "TYPE": "TASK_RESULT"
+    },
+    "TASK_START": {
+      "COMMAND_ID": "00000000-0000-4000-8000-000000000011",
+      "CORRELATION_ID": "00000000-0000-4000-8000-000000000010",
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000010",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "BINDING_ID": "00000000-0000-4000-8000-000000000012",
+        "EXPIRES_AT": "2026-01-02T00:00:00Z",
+        "MCP_SCOPE": {
+          "ALLOWED_CAPABILITY_IDS": ["MODULE_BOUND_MCP"],
+          "AUTHORIZED_MODULE_IDS": ["00000000-0000-4000-8000-000000000013"],
+          "CLAIM_ENDPOINT": "/api/v1/execution-task-principals/create"
+        },
+        "MODULE_ID": "00000000-0000-4000-8000-000000000013",
+        "OWNER_USER_ID": "00000000-0000-4000-8000-000000000014",
+        "PROMPT": "Implement the task",
+        "TARGET_ID": "dextra-target:00000000-0000-4000-8000-000000000000:folder:1",
+        "TASK_ID": "00000000-0000-4000-8000-000000000007"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": 2,
+      "TYPE": "TASK_START"
+    },
+    "TASK_STATE": {
+      "COMMAND_ID": null,
+      "CORRELATION_ID": null,
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000009",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "STATE": "CANCELLED",
+        "STATE_AT": "2026-01-01T00:00:00Z",
+        "TASK_ID": "00000000-0000-4000-8000-000000000007"
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "SEQUENCE": 1,
+      "TYPE": "TASK_STATE"
     }
   },
   "messages": {
@@ -83,6 +187,135 @@
       },
       "required": ["TYPE", "TOKEN"],
       "title": "RunnerAuthenticateFrame",
+      "type": "object"
+    },
+    "RunnerCommandEnvelope": {
+      "$defs": {
+        "TaskCancelPayload": {
+          "additionalProperties": false,
+          "description": "平台发往 Dextra 的取消意图。",
+          "properties": {
+            "REASON": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Reason",
+              "type": "string"
+            },
+            "TASK_ID": { "title": "Task Id", "type": "string" }
+          },
+          "required": ["TASK_ID", "REASON"],
+          "title": "TaskCancelPayload",
+          "type": "object"
+        },
+        "TaskMcpScope": {
+          "additionalProperties": false,
+          "description": "TASK_START 可领取 task principal 的最大范围。",
+          "properties": {
+            "ALLOWED_CAPABILITY_IDS": {
+              "items": { "type": "string" },
+              "minItems": 1,
+              "title": "Allowed Capability Ids",
+              "type": "array"
+            },
+            "AUTHORIZED_MODULE_IDS": {
+              "items": { "type": "string" },
+              "minItems": 1,
+              "title": "Authorized Module Ids",
+              "type": "array"
+            },
+            "CLAIM_ENDPOINT": {
+              "minLength": 1,
+              "title": "Claim Endpoint",
+              "type": "string"
+            }
+          },
+          "required": [
+            "AUTHORIZED_MODULE_IDS",
+            "ALLOWED_CAPABILITY_IDS",
+            "CLAIM_ENDPOINT"
+          ],
+          "title": "TaskMcpScope",
+          "type": "object"
+        },
+        "TaskStartPayload": {
+          "additionalProperties": false,
+          "description": "平台发往 Dextra 的不可变 Task 启动事实。",
+          "properties": {
+            "BINDING_ID": { "title": "Binding Id", "type": "string" },
+            "EXPIRES_AT": {
+              "format": "date-time",
+              "title": "Expires At",
+              "type": "string"
+            },
+            "MCP_SCOPE": { "$ref": "#/$defs/TaskMcpScope" },
+            "MODULE_ID": { "title": "Module Id", "type": "string" },
+            "OWNER_USER_ID": { "title": "Owner User Id", "type": "string" },
+            "PROMPT": {
+              "maxLength": 100000,
+              "minLength": 1,
+              "title": "Prompt",
+              "type": "string"
+            },
+            "TARGET_ID": { "title": "Target Id", "type": "string" },
+            "TASK_ID": { "title": "Task Id", "type": "string" }
+          },
+          "required": [
+            "TASK_ID",
+            "TARGET_ID",
+            "BINDING_ID",
+            "MODULE_ID",
+            "OWNER_USER_ID",
+            "PROMPT",
+            "MCP_SCOPE",
+            "EXPIRES_AT"
+          ],
+          "title": "TaskStartPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "可靠 TASK_START/TASK_CANCEL 生产 serializer。",
+      "properties": {
+        "COMMAND_ID": { "title": "Command Id", "type": "string" },
+        "CORRELATION_ID": { "title": "Correlation Id", "type": "string" },
+        "MESSAGE_ID": { "title": "Message Id", "type": "string" },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": {
+          "anyOf": [
+            { "$ref": "#/$defs/TaskStartPayload" },
+            { "$ref": "#/$defs/TaskCancelPayload" }
+          ],
+          "title": "Payload"
+        },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": { "title": "Runner Id", "type": "string" },
+        "SEQUENCE": { "minimum": 1, "title": "Sequence", "type": "integer" },
+        "TYPE": {
+          "enum": ["TASK_START", "TASK_CANCEL"],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "RUNNER_ID",
+        "CORRELATION_ID",
+        "COMMAND_ID",
+        "SEQUENCE",
+        "PAYLOAD"
+      ],
+      "title": "RunnerCommandEnvelope",
       "type": "object"
     },
     "RunnerHeartbeatEnvelope": {
@@ -416,6 +649,220 @@
         "RUNNER_ID"
       ],
       "title": "RunnerTargetsReportEnvelope",
+      "type": "object"
+    },
+    "RunnerTaskEventEnvelope": {
+      "$defs": {
+        "ArtifactDeclaredPayload": {
+          "additionalProperties": false,
+          "description": "Dextra 声明的 Task Artifact 元数据。",
+          "properties": {
+            "ARTIFACT_ID": { "title": "Artifact Id", "type": "string" },
+            "DISPLAY_NAME": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Display Name",
+              "type": "string"
+            },
+            "KIND": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Kind",
+              "type": "string"
+            },
+            "SIZE_BYTES": {
+              "minimum": 0,
+              "title": "Size Bytes",
+              "type": "integer"
+            },
+            "TASK_ID": { "title": "Task Id", "type": "string" }
+          },
+          "required": [
+            "TASK_ID",
+            "ARTIFACT_ID",
+            "KIND",
+            "DISPLAY_NAME",
+            "SIZE_BYTES"
+          ],
+          "title": "ArtifactDeclaredPayload",
+          "type": "object"
+        },
+        "CommandAckPayload": {
+          "additionalProperties": false,
+          "description": "Dextra 对可靠命令本地提交结果的 ACK。",
+          "properties": {
+            "ACK_STATUS": {
+              "enum": ["ACCEPTED", "DUPLICATE", "REJECTED"],
+              "title": "Ack Status",
+              "type": "string"
+            },
+            "ERROR": {
+              "anyOf": [
+                { "$ref": "#/$defs/RunnerWireError" },
+                { "type": "null" }
+              ]
+            },
+            "LOCAL_WORK_TASK_REF": {
+              "anyOf": [{ "type": "string" }, { "type": "null" }],
+              "title": "Local Work Task Ref"
+            },
+            "TASK_ID": { "title": "Task Id", "type": "string" }
+          },
+          "required": ["TASK_ID", "ACK_STATUS", "LOCAL_WORK_TASK_REF", "ERROR"],
+          "title": "CommandAckPayload",
+          "type": "object"
+        },
+        "RunnerWireError": {
+          "additionalProperties": false,
+          "description": "Runner 协议保留的真实错误。",
+          "properties": {
+            "CODE": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "DETAILS": {
+              "additionalProperties": true,
+              "title": "Details",
+              "type": "object"
+            },
+            "MESSAGE": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "Message",
+              "type": "string"
+            },
+            "RETRYABLE": { "title": "Retryable", "type": "boolean" }
+          },
+          "required": ["CODE", "MESSAGE", "RETRYABLE", "DETAILS"],
+          "title": "RunnerWireError",
+          "type": "object"
+        },
+        "TaskResultPayload": {
+          "additionalProperties": false,
+          "description": "Dextra 返回的 partial/final 结果。",
+          "properties": {
+            "CHANGESET": {
+              "anyOf": [
+                { "additionalProperties": true, "type": "object" },
+                { "type": "null" }
+              ],
+              "title": "Changeset"
+            },
+            "IS_PARTIAL": { "title": "Is Partial", "type": "boolean" },
+            "STATE": {
+              "maxLength": 32,
+              "minLength": 1,
+              "title": "State",
+              "type": "string"
+            },
+            "SUMMARY": { "title": "Summary", "type": "string" },
+            "TASK_ID": { "title": "Task Id", "type": "string" },
+            "TESTS": {
+              "items": { "additionalProperties": true, "type": "object" },
+              "title": "Tests",
+              "type": "array"
+            }
+          },
+          "required": [
+            "TASK_ID",
+            "STATE",
+            "IS_PARTIAL",
+            "SUMMARY",
+            "CHANGESET",
+            "TESTS"
+          ],
+          "title": "TaskResultPayload",
+          "type": "object"
+        },
+        "TaskStatePayload": {
+          "additionalProperties": false,
+          "description": "Dextra 投影的 WorkTask 当前状态。",
+          "properties": {
+            "STATE": {
+              "enum": [
+                "QUEUED",
+                "RUNNING",
+                "WAITING_FOR_USER",
+                "RESULT_READY",
+                "COMPLETED",
+                "FAILED",
+                "CANCELLED",
+                "EXPIRED",
+                "INTERRUPTED"
+              ],
+              "title": "State",
+              "type": "string"
+            },
+            "STATE_AT": {
+              "format": "date-time",
+              "title": "State At",
+              "type": "string"
+            },
+            "TASK_ID": { "title": "Task Id", "type": "string" }
+          },
+          "required": ["TASK_ID", "STATE", "STATE_AT"],
+          "title": "TaskStatePayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Dextra 返回 ACK/state/result/artifact 的生产 serializer。",
+      "properties": {
+        "COMMAND_ID": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }],
+          "default": null,
+          "title": "Command Id"
+        },
+        "CORRELATION_ID": {
+          "anyOf": [{ "type": "string" }, { "type": "null" }],
+          "default": null,
+          "title": "Correlation Id"
+        },
+        "MESSAGE_ID": { "title": "Message Id", "type": "string" },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": {
+          "anyOf": [
+            { "$ref": "#/$defs/CommandAckPayload" },
+            { "$ref": "#/$defs/TaskStatePayload" },
+            { "$ref": "#/$defs/TaskResultPayload" },
+            { "$ref": "#/$defs/ArtifactDeclaredPayload" }
+          ],
+          "title": "Payload"
+        },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": { "title": "Runner Id", "type": "string" },
+        "SEQUENCE": { "minimum": 1, "title": "Sequence", "type": "integer" },
+        "TYPE": {
+          "enum": [
+            "COMMAND_ACK",
+            "TASK_STATE",
+            "TASK_RESULT",
+            "ARTIFACT_DECLARED"
+          ],
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "RUNNER_ID",
+        "SEQUENCE",
+        "PAYLOAD"
+      ],
+      "title": "RunnerTaskEventEnvelope",
       "type": "object"
     }
   },

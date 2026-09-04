@@ -10,11 +10,13 @@ use tokio_tungstenite::tungstenite::Message;
 
 use super::identity;
 use crate::cerebro_bridge::{runner_heartbeat, runner_hello, runner_targets_report};
+use crate::web::event_bridge::EventEmitter;
 
 const RUNNER_WEBSOCKET_PATH: &str = "api/v1/execution-runners/ws";
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const TARGET_REPORT_INTERVAL: Duration = Duration::from_secs(30);
+const TASK_REPORT_INTERVAL: Duration = Duration::from_secs(2);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 static SUPERVISOR_STARTED: AtomicBool = AtomicBool::new(false);
@@ -94,7 +96,7 @@ where
     send_json(sink, &runner_targets_report(runner_id, targets)).await
 }
 
-async fn connect_once(conn: &DatabaseConnection) -> Result<(), String> {
+async fn connect_once(conn: &DatabaseConnection, emitter: &EventEmitter) -> Result<(), String> {
     let access = identity::refresh_access_token()
         .await
         .map_err(|error| error.to_string())?;
@@ -140,6 +142,9 @@ async fn connect_once(conn: &DatabaseConnection) -> Result<(), String> {
     heartbeat.tick().await;
     let mut target_report = tokio::time::interval(TARGET_REPORT_INTERVAL);
     target_report.tick().await;
+    let mut task_report = tokio::time::interval(TASK_REPORT_INTERVAL);
+    task_report.tick().await;
+    let mut task_sequence = 0_u64;
     loop {
         tokio::select! {
             _ = identity::wait_for_runner_identity_change() => {
@@ -151,23 +156,45 @@ async fn connect_once(conn: &DatabaseConnection) -> Result<(), String> {
             _ = target_report.tick() => {
                 send_target_report(conn, &mut sink, &access.runner_id).await?;
             }
+            _ = task_report.tick() => {
+                task_sequence += 1;
+                for frame in super::task_protocol::linked_task_frames(
+                    conn,
+                    &access.runner_id,
+                    task_sequence,
+                ).await? {
+                    send_json(&mut sink, &frame).await?;
+                }
+            }
             incoming = source.next() => {
                 let message = incoming
                     .ok_or_else(|| "Cerebro closed the Runner connection".to_string())?
                     .map_err(|error| format!("Runner WebSocket receive failed: {error}"))?;
                 let value = parse_server_message(message)?;
-                validate_server_message(&value, &access.runner_id)?;
+                let message_type = value.get("TYPE").and_then(Value::as_str);
+                if matches!(message_type, Some("TASK_START" | "TASK_CANCEL")) {
+                    for response in super::task_protocol::handle_task_command(
+                        emitter,
+                        conn,
+                        &access.runner_id,
+                        value,
+                    ).await? {
+                        send_json(&mut sink, &response).await?;
+                    }
+                } else {
+                    validate_server_message(&value, &access.runner_id)?;
+                }
             }
         }
     }
 }
 
-async fn run_supervisor(conn: DatabaseConnection) {
+async fn run_supervisor(conn: DatabaseConnection, emitter: EventEmitter) {
     loop {
         let state = identity::get_auth_state().await;
         match state {
             Ok(state) if state.paired => {
-                if let Err(error) = connect_once(&conn).await {
+                if let Err(error) = connect_once(&conn, &emitter).await {
                     tracing::warn!("[cerebro] Runner connection ended: {error}");
                 }
             }
@@ -184,11 +211,11 @@ async fn run_supervisor(conn: DatabaseConnection) {
 }
 
 /// 运行当前 Dextra 进程唯一的 Runner 连接监督任务。
-pub async fn run_runner_connection_supervisor(conn: DatabaseConnection) {
+pub async fn run_runner_connection_supervisor(conn: DatabaseConnection, emitter: EventEmitter) {
     if SUPERVISOR_STARTED.swap(true, Ordering::AcqRel) {
         return;
     }
-    run_supervisor(conn).await;
+    run_supervisor(conn, emitter).await;
 }
 
 #[cfg(test)]

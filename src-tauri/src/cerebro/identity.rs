@@ -16,6 +16,7 @@ const PAIRING_CREATE_PATH: &str = "api/v1/execution-runner-pairings/create";
 const PAIRING_EXCHANGE_PATH: &str = "api/v1/execution-runner-pairings/exchange";
 const TOKEN_REFRESH_PATH: &str = "api/v1/execution-runner-tokens/refresh";
 const MCP_SESSION_CREATE_PATH: &str = "api/v1/execution-runner-mcp-sessions/create";
+const MCP_TASK_CREATE_PATH: &str = "api/v1/execution-task-principals/create";
 const RUNNER_CREDENTIAL_INVALID: &str = "RUNNER_CREDENTIAL_INVALID";
 const RUNNER_REVOKED: &str = "RUNNER_REVOKED";
 const RUNNER_PAIRING_PENDING: &str = "RUNNER_PAIRING_PENDING";
@@ -114,6 +115,11 @@ struct TokenRefreshRequest<'a> {
 struct McpSessionCreateRequest<'a> {
     binding_id: &'a str,
     session_id: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+struct McpTaskCreateRequest<'a> {
+    task_id: &'a str,
 }
 
 #[derive(Debug, Deserialize)]
@@ -704,13 +710,34 @@ pub async fn issue_mcp_session_principal(
     session_id: &str,
 ) -> Result<CerebroMcpPrincipal, AppCommandError> {
     let client = http_client()?;
-    issue_mcp_session_principal_with(
-        &SystemCredentialStore,
+    issue_mcp_session_principal_with(&SystemCredentialStore, &client, binding_id, session_id).await
+}
+
+/// 为已经可靠投递到当前 Runner 的平台 Task 领取一次短期 MCP principal。
+pub async fn issue_mcp_task_principal(
+    task_id: &str,
+) -> Result<CerebroMcpPrincipal, AppCommandError> {
+    let client = http_client()?;
+    let access = refresh_access_token_with(&SystemCredentialStore, &client).await?;
+    let principal: CerebroMcpPrincipal = post_json(
         &client,
-        binding_id,
-        session_id,
+        endpoint(&access.cerebro_base_url, MCP_TASK_CREATE_PATH)?,
+        &McpTaskCreateRequest { task_id },
+        Some(&access.access_token),
     )
     .await
+    .map_err(ClientError::into_app_error)?;
+    if principal.mcp_url.trim().is_empty()
+        || principal.access_token.trim().is_empty()
+        || principal.token_type != "bearer"
+        || principal.expires_in == 0
+    {
+        return Err(AppCommandError::new(
+            AppErrorCode::NetworkError,
+            "Cerebro returned an invalid MCP principal",
+        ));
+    }
+    Ok(principal)
 }
 
 /// 等待配对或断开动作唤醒后台 Runner 连接。
@@ -741,6 +768,7 @@ mod tests {
         let exchange_path = format!("/{PAIRING_EXCHANGE_PATH}");
         let refresh_path = format!("/{TOKEN_REFRESH_PATH}");
         let mcp_session_path = format!("/{MCP_SESSION_CREATE_PATH}");
+        let mcp_task_path = format!("/{MCP_TASK_CREATE_PATH}");
 
         assert_eq!(
             serde_json::to_value(PairingCreateRequest {}).unwrap(),
@@ -768,6 +796,13 @@ mod tests {
             .unwrap(),
             contract_example(&mcp_session_path, "request")
         );
+        assert_eq!(
+            serde_json::to_value(McpTaskCreateRequest {
+                task_id: "00000000-0000-4000-8000-000000000000",
+            })
+            .unwrap(),
+            contract_example(&mcp_task_path, "request")
+        );
 
         let created: CerebroEnvelope<PairingCreateData> =
             serde_json::from_value(contract_example(&create_path, "response")).unwrap();
@@ -785,6 +820,10 @@ mod tests {
             serde_json::from_value(contract_example(&mcp_session_path, "response")).unwrap();
         assert!(mcp_principal.success);
         assert!(mcp_principal.data.is_some());
+        let task_mcp_principal: CerebroEnvelope<CerebroMcpPrincipal> =
+            serde_json::from_value(contract_example(&mcp_task_path, "response")).unwrap();
+        assert!(task_mcp_principal.success);
+        assert!(task_mcp_principal.data.is_some());
     }
 
     #[derive(Default)]
@@ -896,7 +935,9 @@ mod tests {
     ) -> Json<serde_json::Value> {
         state.mcp_calls.fetch_add(1, Ordering::SeqCst);
         assert_eq!(
-            headers.get("authorization").and_then(|value| value.to_str().ok()),
+            headers
+                .get("authorization")
+                .and_then(|value| value.to_str().ok()),
             Some("Bearer short-lived-access")
         );
         assert_eq!(body["binding_id"], "binding-1");

@@ -159,6 +159,44 @@
         "tags": ["Dextra执行端"]
       }
     },
+    "/api/v1/execution-task-principals/create": {
+      "post": {
+        "description": "让 Runner 为已可靠投递且仍有资格的 Task 领取 principal。",
+        "operationId": "create_runner_mcp_task_principal_api_v1_execution_task_principals_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerMCPTaskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerMCPPrincipalResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Runner Mcp Task Principal",
+        "tags": ["Dextra执行端"]
+      }
+    },
     "/api/v1/execution-runner-tokens/refresh": {
       "post": {
         "description": "使用设备 refresh credential 签发短期 access token。",
@@ -395,6 +433,16 @@
         },
         "required": ["binding_id", "session_id"],
         "title": "RunnerMCPSessionCreateRequest",
+        "type": "object"
+      },
+      "RunnerMCPTaskCreateRequest": {
+        "additionalProperties": false,
+        "description": "Runner 为已投递 Task 领取短期 MCP principal。",
+        "properties": {
+          "task_id": { "format": "uuid", "title": "Task Id", "type": "string" }
+        },
+        "required": ["task_id"],
+        "title": "RunnerMCPTaskCreateRequest",
         "type": "object"
       },
       "RunnerPairingApproveRequest": {
@@ -689,6 +737,18 @@
         "binding_id": "00000000-0000-4000-8000-000000000000",
         "session_id": "string"
       },
+      "response": {
+        "data": {
+          "access_token": "string",
+          "expires_in": 1,
+          "mcp_url": "string",
+          "token_type": "bearer"
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-task-principals/create": {
+      "request": { "task_id": "00000000-0000-4000-8000-000000000000" },
       "response": {
         "data": {
           "access_token": "string",
