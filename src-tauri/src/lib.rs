@@ -356,7 +356,9 @@ mod tauri_app {
                 // Restore and apply saved system proxy settings before any network operation.
                 let db = app.state::<db::AppDatabase>();
                 tauri::async_runtime::block_on(network::proxy::init_proxy_from_db(&db.conn));
-                tauri::async_runtime::spawn(cerebro::run_runner_connection_supervisor());
+                tauri::async_runtime::spawn(cerebro::run_runner_connection_supervisor(
+                    db.conn.clone(),
+                ));
 
                 // Logging phase 2/3: override the default level from the
                 // persisted `logging.level` now that the DB is open, then wire

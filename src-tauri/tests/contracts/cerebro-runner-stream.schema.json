@@ -29,6 +29,48 @@
       "PROTOCOL_VERSION": 1,
       "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
       "TYPE": "HELLO_ACK"
+    },
+    "TARGETS_REPORT": {
+      "MESSAGE_ID": "00000000-0000-4000-8000-000000000004",
+      "OCCURRED_AT": "2026-01-01T00:00:00Z",
+      "PAYLOAD": {
+        "TARGETS": [
+          {
+            "AGENT_TYPE": "codex",
+            "AVAILABILITY": "AVAILABLE",
+            "BACKGROUND_TASK_UNAVAILABLE_REASON": null,
+            "BRANCH": "main",
+            "DISPLAY_NAME": "Workspace",
+            "MODE_DISPLAY_NAME": "Full access",
+            "REPOSITORY": "repository",
+            "SUPPORTS_BACKGROUND_TASK": true,
+            "TARGET_ID": "dextra-target:00000000-0000-4000-8000-000000000000:folder:1",
+            "UNAVAILABLE_REASON": null,
+            "UPDATED_AT": "2026-01-01T00:00:00Z",
+            "WORKSPACE_DISPLAY_NAME": "workspace"
+          },
+          {
+            "AGENT_TYPE": "codex",
+            "AVAILABILITY": "AVAILABLE",
+            "BACKGROUND_TASK_UNAVAILABLE_REASON": {
+              "CODE": "NOT_GIT_REPOSITORY",
+              "MESSAGE": "Workspace is not inside a Git repository"
+            },
+            "BRANCH": null,
+            "DISPLAY_NAME": "Notes",
+            "MODE_DISPLAY_NAME": "Full access",
+            "REPOSITORY": null,
+            "SUPPORTS_BACKGROUND_TASK": false,
+            "TARGET_ID": "dextra-target:00000000-0000-4000-8000-000000000000:folder:2",
+            "UNAVAILABLE_REASON": null,
+            "UPDATED_AT": "2026-01-01T00:00:00Z",
+            "WORKSPACE_DISPLAY_NAME": "notes"
+          }
+        ]
+      },
+      "PROTOCOL_VERSION": 1,
+      "RUNNER_ID": "00000000-0000-4000-8000-000000000000",
+      "TYPE": "TARGETS_REPORT"
     }
   },
   "messages": {
@@ -202,6 +244,178 @@
         "PAYLOAD"
       ],
       "title": "RunnerServerEnvelope",
+      "type": "object"
+    },
+    "RunnerTargetsReportEnvelope": {
+      "$defs": {
+        "RunnerTargetProjection": {
+          "additionalProperties": false,
+          "description": "Dextra 从单个用户根 Folder 派生的非秘密投影。",
+          "properties": {
+            "AGENT_TYPE": {
+              "anyOf": [
+                { "maxLength": 64, "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Agent Type"
+            },
+            "AVAILABILITY": {
+              "enum": ["AVAILABLE", "UNAVAILABLE"],
+              "title": "Availability",
+              "type": "string"
+            },
+            "BACKGROUND_TASK_UNAVAILABLE_REASON": {
+              "anyOf": [
+                { "$ref": "#/$defs/RunnerTargetReason" },
+                { "type": "null" }
+              ]
+            },
+            "BRANCH": {
+              "anyOf": [
+                { "maxLength": 255, "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Branch"
+            },
+            "DISPLAY_NAME": {
+              "maxLength": 128,
+              "minLength": 1,
+              "title": "Display Name",
+              "type": "string"
+            },
+            "MODE_DISPLAY_NAME": {
+              "anyOf": [
+                { "maxLength": 128, "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Mode Display Name"
+            },
+            "REPOSITORY": {
+              "anyOf": [
+                { "maxLength": 255, "type": "string" },
+                { "type": "null" }
+              ],
+              "title": "Repository"
+            },
+            "SUPPORTS_BACKGROUND_TASK": {
+              "title": "Supports Background Task",
+              "type": "boolean"
+            },
+            "TARGET_ID": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Target Id",
+              "type": "string"
+            },
+            "UNAVAILABLE_REASON": {
+              "anyOf": [
+                { "$ref": "#/$defs/RunnerTargetReason" },
+                { "type": "null" }
+              ]
+            },
+            "UPDATED_AT": {
+              "format": "date-time",
+              "title": "Updated At",
+              "type": "string"
+            },
+            "WORKSPACE_DISPLAY_NAME": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Workspace Display Name",
+              "type": "string"
+            }
+          },
+          "required": [
+            "TARGET_ID",
+            "DISPLAY_NAME",
+            "WORKSPACE_DISPLAY_NAME",
+            "REPOSITORY",
+            "BRANCH",
+            "SUPPORTS_BACKGROUND_TASK",
+            "BACKGROUND_TASK_UNAVAILABLE_REASON",
+            "AVAILABILITY",
+            "UNAVAILABLE_REASON",
+            "AGENT_TYPE",
+            "MODE_DISPLAY_NAME",
+            "UPDATED_AT"
+          ],
+          "title": "RunnerTargetProjection",
+          "type": "object"
+        },
+        "RunnerTargetReason": {
+          "additionalProperties": false,
+          "description": "Target 能力或可用性的真实原因。",
+          "properties": {
+            "CODE": {
+              "maxLength": 64,
+              "minLength": 1,
+              "title": "Code",
+              "type": "string"
+            },
+            "MESSAGE": {
+              "maxLength": 512,
+              "minLength": 1,
+              "title": "Message",
+              "type": "string"
+            }
+          },
+          "required": ["CODE", "MESSAGE"],
+          "title": "RunnerTargetReason",
+          "type": "object"
+        },
+        "RunnerTargetsReportPayload": {
+          "additionalProperties": false,
+          "description": "一台 Runner 当前拥有的完整 Target 集合。",
+          "properties": {
+            "TARGETS": {
+              "items": { "$ref": "#/$defs/RunnerTargetProjection" },
+              "maxItems": 1000,
+              "title": "Targets",
+              "type": "array"
+            }
+          },
+          "required": ["TARGETS"],
+          "title": "RunnerTargetsReportPayload",
+          "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Dextra 主动上报的完整 Target 投影。",
+      "properties": {
+        "MESSAGE_ID": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Message Id",
+          "type": "string"
+        },
+        "OCCURRED_AT": {
+          "format": "date-time",
+          "title": "Occurred At",
+          "type": "string"
+        },
+        "PAYLOAD": { "$ref": "#/$defs/RunnerTargetsReportPayload" },
+        "PROTOCOL_VERSION": {
+          "const": 1,
+          "title": "Protocol Version",
+          "type": "integer"
+        },
+        "RUNNER_ID": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Runner Id",
+          "type": "string"
+        },
+        "TYPE": { "const": "TARGETS_REPORT", "title": "Type", "type": "string" }
+      },
+      "required": [
+        "PROTOCOL_VERSION",
+        "TYPE",
+        "MESSAGE_ID",
+        "OCCURRED_AT",
+        "PAYLOAD",
+        "RUNNER_ID"
+      ],
+      "title": "RunnerTargetsReportEnvelope",
       "type": "object"
     }
   },

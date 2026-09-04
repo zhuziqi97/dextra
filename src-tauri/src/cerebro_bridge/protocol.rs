@@ -4,6 +4,7 @@ use serde_json::Value;
 
 use super::error::{BridgeError, BridgeErrorCode};
 use super::registry::registry;
+use crate::cerebro::FolderTargetProjection;
 
 /// P0-C 验证所需的最小消息集合；具体 Codeg DTO 仍封装在 PAYLOAD 内。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -11,6 +12,7 @@ use super::registry::registry;
 pub enum MessageType {
     Hello,
     Heartbeat,
+    TargetsReport,
     // acp_connect 是创建执行会话的写操作，必须先经过平台 SESSION_CREATE。
     SessionOpen,
     TaskStart,
@@ -65,7 +67,7 @@ impl Envelope {
         require_option(&self.runner_id, "RUNNER_ID")?;
         if matches!(
             self.message_type,
-            MessageType::Hello | MessageType::Heartbeat
+            MessageType::Hello | MessageType::Heartbeat | MessageType::TargetsReport
         ) {
             return Ok(());
         }
@@ -96,7 +98,7 @@ impl Envelope {
             | MessageType::CodegChannelUnsubscribe => {
                 require_option(&self.target_id, "TARGET_ID")?;
             }
-            MessageType::Hello | MessageType::Heartbeat => {
+            MessageType::Hello | MessageType::Heartbeat | MessageType::TargetsReport => {
                 unreachable!("handled above")
             }
         }
@@ -157,6 +159,25 @@ pub fn runner_heartbeat(runner_id: impl Into<String>) -> Envelope {
         message_id: uuid::Uuid::new_v4().to_string(),
         occurred_at: Utc::now(),
         payload: serde_json::json!({}),
+        runner_id: Some(runner_id.into()),
+        correlation_id: None,
+        command_id: None,
+        target_id: None,
+        session_id: None,
+        task_id: None,
+    }
+}
+
+pub fn runner_targets_report(
+    runner_id: impl Into<String>,
+    targets: Vec<FolderTargetProjection>,
+) -> Envelope {
+    Envelope {
+        protocol_version: registry().protocol_version,
+        message_type: MessageType::TargetsReport,
+        message_id: uuid::Uuid::new_v4().to_string(),
+        occurred_at: Utc::now(),
+        payload: serde_json::json!({"TARGETS": targets}),
         runner_id: Some(runner_id.into()),
         correlation_id: None,
         command_id: None,

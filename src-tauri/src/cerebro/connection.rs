@@ -4,15 +4,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
+use sea_orm::DatabaseConnection;
 use serde_json::{json, Value};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::identity;
-use crate::cerebro_bridge::{runner_heartbeat, runner_hello};
+use crate::cerebro_bridge::{runner_heartbeat, runner_hello, runner_targets_report};
 
 const RUNNER_WEBSOCKET_PATH: &str = "api/v1/execution-runners/ws";
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
+const TARGET_REPORT_INTERVAL: Duration = Duration::from_secs(30);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 static SUPERVISOR_STARTED: AtomicBool = AtomicBool::new(false);
@@ -77,7 +79,22 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
     Ok(())
 }
 
-async fn connect_once() -> Result<(), String> {
+async fn send_target_report<S>(
+    conn: &DatabaseConnection,
+    sink: &mut S,
+    runner_id: &str,
+) -> Result<(), String>
+where
+    S: futures_util::Sink<Message> + Unpin,
+    S::Error: std::fmt::Display,
+{
+    let targets = super::project_folder_targets(conn, runner_id)
+        .await
+        .map_err(|error| format!("Failed to project Dextra Folder Targets: {error}"))?;
+    send_json(sink, &runner_targets_report(runner_id, targets)).await
+}
+
+async fn connect_once(conn: &DatabaseConnection) -> Result<(), String> {
     let access = identity::refresh_access_token()
         .await
         .map_err(|error| error.to_string())?;
@@ -117,8 +134,12 @@ async fn connect_once() -> Result<(), String> {
         access.cerebro_base_url
     );
 
+    send_target_report(conn, &mut sink, &access.runner_id).await?;
+
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat.tick().await;
+    let mut target_report = tokio::time::interval(TARGET_REPORT_INTERVAL);
+    target_report.tick().await;
     loop {
         tokio::select! {
             _ = identity::wait_for_runner_identity_change() => {
@@ -126,6 +147,9 @@ async fn connect_once() -> Result<(), String> {
             }
             _ = heartbeat.tick() => {
                 send_json(&mut sink, &runner_heartbeat(&access.runner_id)).await?;
+            }
+            _ = target_report.tick() => {
+                send_target_report(conn, &mut sink, &access.runner_id).await?;
             }
             incoming = source.next() => {
                 let message = incoming
@@ -138,12 +162,12 @@ async fn connect_once() -> Result<(), String> {
     }
 }
 
-async fn run_supervisor() {
+async fn run_supervisor(conn: DatabaseConnection) {
     loop {
         let state = identity::get_auth_state().await;
         match state {
             Ok(state) if state.paired => {
-                if let Err(error) = connect_once().await {
+                if let Err(error) = connect_once(&conn).await {
                     tracing::warn!("[cerebro] Runner connection ended: {error}");
                 }
             }
@@ -160,11 +184,11 @@ async fn run_supervisor() {
 }
 
 /// 运行当前 Dextra 进程唯一的 Runner 连接监督任务。
-pub async fn run_runner_connection_supervisor() {
+pub async fn run_runner_connection_supervisor(conn: DatabaseConnection) {
     if SUPERVISOR_STARTED.swap(true, Ordering::AcqRel) {
         return;
     }
-    run_supervisor().await;
+    run_supervisor(conn).await;
 }
 
 #[cfg(test)]
@@ -217,5 +241,13 @@ mod tests {
             serde_json::to_value(heartbeat).unwrap(),
             contract_example("HEARTBEAT")
         );
+
+        let expected_report = contract_example("TARGETS_REPORT");
+        let targets: Vec<crate::cerebro::FolderTargetProjection> =
+            serde_json::from_value(expected_report["PAYLOAD"]["TARGETS"].clone()).unwrap();
+        let mut report = runner_targets_report("00000000-0000-4000-8000-000000000000", targets);
+        report.message_id = "00000000-0000-4000-8000-000000000004".into();
+        report.occurred_at = "2026-01-01T00:00:00Z".parse().unwrap();
+        assert_eq!(serde_json::to_value(report).unwrap(), expected_report);
     }
 }

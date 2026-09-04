@@ -118,7 +118,7 @@ impl CerebroBridge {
         envelope.validate()?;
         if matches!(
             envelope.message_type,
-            MessageType::Hello | MessageType::Heartbeat
+            MessageType::Hello | MessageType::Heartbeat | MessageType::TargetsReport
         ) {
             return Err(BridgeError::invalid(
                 "connection control messages are handled before command dispatch",
@@ -185,6 +185,7 @@ impl CerebroBridge {
             }
             MessageType::Hello
             | MessageType::Heartbeat
+            | MessageType::TargetsReport
             | MessageType::SessionOpen
             | MessageType::TaskStart
             | MessageType::TaskCancel
