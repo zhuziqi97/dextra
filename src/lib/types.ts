@@ -3321,6 +3321,38 @@ export interface SystemProxySettings {
   proxy_url: string | null
 }
 
+export type CerebroPairingPollStatus = "PENDING" | "PAIRED"
+
+export interface CerebroPairingStart {
+  handle: string
+  cerebroBaseUrl: string
+  userCode: string
+  verificationUri: string
+  expiresIn: number
+  interval: number
+}
+
+export interface CerebroPairingPoll {
+  status: CerebroPairingPollStatus
+  runnerId: string | null
+  retryAfter: number | null
+}
+
+export interface CerebroAuthState {
+  paired: boolean
+  cerebroBaseUrl: string | null
+  runnerId: string | null
+  pairing: CerebroPairingStart | null
+}
+
+export interface CerebroRunnerAccess {
+  cerebroBaseUrl: string
+  runnerId: string
+  accessToken: string
+  tokenType: string
+  expiresIn: number
+}
+
 export type AppLocale =
   | "en"
   | "zh_cn"

@@ -170,6 +170,10 @@ import type {
   TokenUsageReport,
   TokenUsageSyncResult,
   TokenUsageSyncStatus,
+  CerebroAuthState,
+  CerebroPairingPoll,
+  CerebroPairingStart,
+  CerebroRunnerAccess,
 } from "./types"
 
 export async function listConversations(params?: {
@@ -203,6 +207,38 @@ export async function getStats(): Promise<AgentStats> {
 
 export async function getSidebarData(): Promise<SidebarData> {
   return getTransport().call("get_sidebar_data")
+}
+
+export async function getCerebroAuthState(): Promise<CerebroAuthState> {
+  return getTransport().call("cerebro_get_auth_state")
+}
+
+export async function startCerebroPairing(
+  cerebroBaseUrl: string
+): Promise<CerebroPairingStart> {
+  return getTransport().call("cerebro_start_pairing", {
+    cerebroBaseUrl,
+  })
+}
+
+export async function pollCerebroPairing(
+  handle: string
+): Promise<CerebroPairingPoll> {
+  return getTransport().call("cerebro_poll_pairing", { handle })
+}
+
+export async function cancelCerebroPairing(
+  handle: string
+): Promise<CerebroAuthState> {
+  return getTransport().call("cerebro_cancel_pairing", { handle })
+}
+
+export async function forgetCerebroRunner(): Promise<CerebroAuthState> {
+  return getTransport().call("cerebro_forget_runner")
+}
+
+export async function refreshCerebroAccessToken(): Promise<CerebroRunnerAccess> {
+  return getTransport().call("cerebro_refresh_access_token")
 }
 
 // ACP commands
