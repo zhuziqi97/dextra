@@ -304,6 +304,7 @@
       "PAYLOAD": {
         "STATE": "CANCELLED",
         "STATE_AT": "2026-01-01T00:00:00Z",
+        "STATE_REASON": null,
         "TASK_ID": "00000000-0000-4000-8000-000000000007"
       },
       "PROTOCOL_VERSION": 1,
@@ -1647,6 +1648,19 @@
               "format": "date-time",
               "title": "State At",
               "type": "string"
+            },
+            "STATE_REASON": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": null,
+              "title": "State Reason"
             },
             "TASK_ID": {
               "title": "Task Id",

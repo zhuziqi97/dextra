@@ -198,17 +198,27 @@ pub async fn handle_task_command(
                         Some(task.id.to_string()),
                         None,
                     ),
-                    task_state(runner_id, command.sequence, &payload.task_id, "QUEUED"),
+                    task_state(
+                        runner_id,
+                        command.sequence,
+                        &payload.task_id,
+                        "QUEUED",
+                        None,
+                    ),
                 ]),
-                Ok(LinkedWorkTaskCreateOutcome::Duplicate(task)) => Ok(vec![
-                    ack(
+                Ok(LinkedWorkTaskCreateOutcome::Duplicate(task)) => {
+                    let snapshot = super::reconcile_linked_work_task(conn, &payload.task_id)
+                        .await
+                        .map_err(|error| error.to_string())?;
+                    let mut responses = vec![ack(
                         &command,
                         AckStatus::Duplicate,
                         Some(task.id.to_string()),
                         None,
-                    ),
-                    task_state(runner_id, command.sequence, &payload.task_id, "QUEUED"),
-                ]),
+                    )];
+                    responses.extend(task_projection(runner_id, command.sequence, snapshot));
+                    Ok(responses)
+                }
                 Err(error) => Ok(vec![rejection(
                     &command,
                     "WORK_TASK_CREATE_FAILED",
@@ -243,7 +253,13 @@ pub async fn handle_task_command(
                         Some(receipt.local_work_task_id.to_string()),
                         None,
                     ),
-                    task_state(runner_id, command.sequence, &payload.task_id, "CANCELLED"),
+                    task_state(
+                        runner_id,
+                        command.sequence,
+                        &payload.task_id,
+                        "CANCELLED",
+                        None,
+                    ),
                 ]),
                 Ok(super::LinkedWorkTaskCancelOutcome::Duplicate { local_work_task_id }) => {
                     Ok(vec![
@@ -253,7 +269,13 @@ pub async fn handle_task_command(
                             Some(local_work_task_id.to_string()),
                             None,
                         ),
-                        task_state(runner_id, command.sequence, &payload.task_id, "CANCELLED"),
+                        task_state(
+                            runner_id,
+                            command.sequence,
+                            &payload.task_id,
+                            "CANCELLED",
+                            None,
+                        ),
                     ])
                 }
                 Err(error) => Ok(vec![rejection(
@@ -266,24 +288,51 @@ pub async fn handle_task_command(
     }
 }
 
-fn task_state(runner_id: &str, sequence: u64, task_id: &str, state: &str) -> Value {
+fn task_state(
+    runner_id: &str,
+    sequence: u64,
+    task_id: &str,
+    state: &str,
+    state_reason: Option<Value>,
+) -> Value {
     envelope(
         runner_id,
         "TASK_STATE",
         sequence,
-        json!({"TASK_ID": task_id, "STATE": state, "STATE_AT": Utc::now()}),
+        json!({
+            "TASK_ID": task_id,
+            "STATE": state,
+            "STATE_AT": Utc::now(),
+            "STATE_REASON": state_reason,
+        }),
     )
+}
+
+fn projected_state_reason(task: &LinkedWorkTaskSnapshot) -> Option<Value> {
+    let code = task
+        .failure_reason
+        .as_deref()
+        .unwrap_or("WORK_TASK_FAILED")
+        .to_ascii_uppercase();
+    let message = task
+        .last_error
+        .as_deref()
+        .or(task.failure_reason.as_deref())?
+        .to_string();
+    Some(json!({"code": code, "message": message}))
 }
 
 fn task_projection(runner_id: &str, sequence: u64, task: LinkedWorkTaskSnapshot) -> Vec<Value> {
     let state =
         serde_json::to_value(task.state).expect("LinkedWorkTaskState serialization cannot fail");
     let state = state.as_str().expect("state serializes as string");
+    let state_reason = projected_state_reason(&task);
     let mut frames = vec![task_state(
         runner_id,
         sequence,
         &task.platform_task_id,
         state,
+        state_reason,
     )];
     if let Some(summary) = task.result_summary {
         frames.push(envelope(
@@ -322,7 +371,7 @@ pub async fn linked_task_frames(
 mod tests {
     use std::process::Command;
 
-    use sea_orm::{EntityTrait, PaginatorTrait};
+    use sea_orm::{ActiveModelTrait, EntityTrait, PaginatorTrait, Set};
     use tempfile::TempDir;
 
     use super::*;
@@ -422,6 +471,7 @@ mod tests {
             expected_state["SEQUENCE"].as_u64().unwrap(),
             expected_state["PAYLOAD"]["TASK_ID"].as_str().unwrap(),
             expected_state["PAYLOAD"]["STATE"].as_str().unwrap(),
+            None,
         );
         normalize_generated_fields(&mut actual_state, &expected_state);
         assert_eq!(actual_state, expected_state);
@@ -447,6 +497,28 @@ mod tests {
         let mut actual_result = projection[1].clone();
         normalize_generated_fields(&mut actual_result, &expected_result);
         assert_eq!(actual_result, expected_result);
+
+        let interrupted = task_projection(
+            expected_result["RUNNER_ID"].as_str().unwrap(),
+            2,
+            LinkedWorkTaskSnapshot {
+                platform_task_id: "interrupted-task".into(),
+                local_work_task_id: 2,
+                state: crate::cerebro::LinkedWorkTaskState::Interrupted,
+                failure_reason: Some("interrupted".into()),
+                last_error: Some("interrupted by restart".into()),
+                result_summary: Some("partial response".into()),
+                remote_workbench_available: false,
+                deleted: false,
+            },
+        );
+        assert_eq!(interrupted[0]["PAYLOAD"]["STATE"], "INTERRUPTED");
+        assert_eq!(
+            interrupted[0]["PAYLOAD"]["STATE_REASON"],
+            json!({"code": "INTERRUPTED", "message": "interrupted by restart"})
+        );
+        assert_eq!(interrupted[1]["PAYLOAD"]["IS_PARTIAL"], true);
+        assert_eq!(interrupted[1]["PAYLOAD"]["SUMMARY"], "partial response");
     }
 
     #[tokio::test]
@@ -467,12 +539,29 @@ mod tests {
         let first = handle_task_command(&EventEmitter::Noop, &db.conn, runner_id, command.clone())
             .await
             .unwrap();
+        let local_task_id = first[0]["PAYLOAD"]["LOCAL_WORK_TASK_REF"]
+            .as_str()
+            .unwrap()
+            .parse::<i32>()
+            .unwrap();
+        work_task::ActiveModel {
+            id: Set(local_task_id),
+            status: Set(crate::db::entities::work_task::WorkTaskStatus::Review),
+            result_summary: Set(Some("ready after lost ACK".into())),
+            ..Default::default()
+        }
+        .update(&db.conn)
+        .await
+        .unwrap();
         let repeated = handle_task_command(&EventEmitter::Noop, &db.conn, runner_id, command)
             .await
             .unwrap();
 
         assert_eq!(first[0]["PAYLOAD"]["ACK_STATUS"], "ACCEPTED");
         assert_eq!(repeated[0]["PAYLOAD"]["ACK_STATUS"], "DUPLICATE");
+        assert_eq!(repeated[1]["PAYLOAD"]["STATE"], "RESULT_READY");
+        assert_eq!(repeated[2]["PAYLOAD"]["IS_PARTIAL"], false);
+        assert_eq!(repeated[2]["PAYLOAD"]["SUMMARY"], "ready after lost ACK");
         assert_eq!(
             first[0]["PAYLOAD"]["LOCAL_WORK_TASK_REF"],
             repeated[0]["PAYLOAD"]["LOCAL_WORK_TASK_REF"]

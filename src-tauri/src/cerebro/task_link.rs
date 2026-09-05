@@ -45,6 +45,7 @@ pub enum LinkedWorkTaskState {
     Completed,
     Failed,
     Cancelled,
+    Interrupted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -300,6 +301,9 @@ pub async fn reconcile_linked_work_task(
             WorkTaskStatus::AwaitingInput => LinkedWorkTaskState::WaitingForUser,
             WorkTaskStatus::Review => LinkedWorkTaskState::ResultReady,
             WorkTaskStatus::Done => LinkedWorkTaskState::Completed,
+            WorkTaskStatus::Failed if task.failure_reason.as_deref() == Some("interrupted") => {
+                LinkedWorkTaskState::Interrupted
+            }
             WorkTaskStatus::Failed => LinkedWorkTaskState::Failed,
             WorkTaskStatus::Canceled => LinkedWorkTaskState::Cancelled,
         }
@@ -361,6 +365,46 @@ mod tests {
         );
 
         assert_eq!(projected, "[README](README.md:4), src\\lib.rs; cwd .");
+    }
+
+    #[tokio::test]
+    async fn restart_interruption_projects_partial_and_real_error() {
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, "/tmp/cerebro-interrupted").await;
+        let created = create_linked_work_task(
+            &EventEmitter::Noop,
+            &db.conn,
+            "platform-interrupted",
+            draft(folder_id, "interrupted"),
+        )
+        .await
+        .unwrap();
+        let task = match created {
+            LinkedWorkTaskCreateOutcome::Created(task) => task,
+            LinkedWorkTaskCreateOutcome::Duplicate(_) => unreachable!(),
+        };
+        let row = work_task::Entity::find_by_id(task.id)
+            .one(&db.conn)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut update = row.into_active_model();
+        update.status = Set(WorkTaskStatus::Failed);
+        update.failure_reason = Set(Some("interrupted".into()));
+        update.last_error = Set(Some("interrupted by restart".into()));
+        update.result_summary = Set(Some("partial response".into()));
+        update.update(&db.conn).await.unwrap();
+
+        let snapshot = reconcile_linked_work_task(&db.conn, "platform-interrupted")
+            .await
+            .unwrap();
+        assert_eq!(snapshot.state, LinkedWorkTaskState::Interrupted);
+        assert_eq!(snapshot.result_summary.as_deref(), Some("partial response"));
+        assert_eq!(snapshot.failure_reason.as_deref(), Some("interrupted"));
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("interrupted by restart")
+        );
     }
 
     fn draft(folder_id: i32, title: &str) -> WorkTaskDraft {
