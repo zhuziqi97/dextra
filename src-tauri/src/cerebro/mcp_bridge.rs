@@ -3,7 +3,10 @@
 use super::CerebroMcpPrincipal;
 use crate::acp::delegation::transport::{client_credentials_round_trip, client_watch_token};
 use async_trait::async_trait;
-use futures::{future::{BoxFuture, Shared}, FutureExt, StreamExt};
+use futures::{
+    future::{BoxFuture, Shared},
+    FutureExt, StreamExt,
+};
 use serde_json::{json, Value};
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -41,11 +44,13 @@ struct CachedPrincipal {
     deadline: Instant,
 }
 
+type PrincipalRefresh = Shared<BoxFuture<'static, Result<CerebroMcpPrincipal, String>>>;
+
 pub struct Bridge {
     client: reqwest::Client,
     source: Arc<dyn PrincipalSource>,
     cached: Arc<Mutex<Option<CachedPrincipal>>>,
-    refreshing: Mutex<Option<Shared<BoxFuture<'static, Result<CerebroMcpPrincipal, String>>>>>,
+    refreshing: Mutex<Option<PrincipalRefresh>>,
     session_id: RwLock<Option<String>>,
     protocol_version: RwLock<Option<String>>,
 }
@@ -88,7 +93,9 @@ impl Bridge {
                 value: value.clone(),
             });
             Ok(value)
-        }.boxed().shared();
+        }
+        .boxed()
+        .shared();
         *refreshing = Some(pending.clone());
         drop(refreshing);
         self.finish_refresh(pending).await
@@ -96,12 +103,15 @@ impl Bridge {
 
     async fn finish_refresh(
         &self,
-        pending: Shared<BoxFuture<'static, Result<CerebroMcpPrincipal, String>>>,
+        pending: PrincipalRefresh,
     ) -> Result<CerebroMcpPrincipal, String> {
         let result = pending.clone().await;
         let mut refreshing = self.refreshing.lock().await;
         // 迟到的等待者不能清除下一批已经开始的刷新。
-        if refreshing.as_ref().is_some_and(|current| current.ptr_eq(&pending)) {
+        if refreshing
+            .as_ref()
+            .is_some_and(|current| current.ptr_eq(&pending))
+        {
             refreshing.take();
         }
         result
@@ -410,7 +420,10 @@ mod tests {
         assert!(futures::poll!(&mut batch).is_pending());
         assert_eq!(source.calls.load(Ordering::SeqCst), 1);
         source.release.add_permits(1);
-        assert!(batch.await.into_iter().all(|result| result.unwrap_err() == "凭据服务不可用"));
+        assert!(batch
+            .await
+            .into_iter()
+            .all(|result| result.unwrap_err() == "凭据服务不可用"));
         assert_eq!(source.calls.load(Ordering::SeqCst), 1);
         source.release.add_permits(1);
         assert_eq!(bridge.principal().await.unwrap_err(), "凭据服务不可用");
