@@ -1,7 +1,7 @@
 //! Cerebro Runner Task 命令与状态回传的生产 DTO/adapter。
 
 use chrono::{DateTime, Utc};
-use sea_orm::DatabaseConnection;
+use sea_orm::{DatabaseConnection, EntityTrait};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
@@ -145,6 +145,25 @@ pub async fn handle_task_command(
         TaskCommandType::TaskStart => {
             let payload: TaskStartPayload = serde_json::from_value(command.payload.clone())
                 .map_err(|error| format!("Invalid TASK_START payload: {error}"))?;
+            // 已提交关联的补发只恢复事实，不重新判断首次接收期限和当前 Folder 可用性。
+            if crate::db::entities::cerebro_task_link::Entity::find_by_id(&payload.task_id)
+                .one(conn)
+                .await
+                .map_err(|error| error.to_string())?
+                .is_some()
+            {
+                let snapshot = super::reconcile_linked_work_task(conn, &payload.task_id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let mut responses = vec![ack(
+                    &command,
+                    AckStatus::Duplicate,
+                    Some(snapshot.local_work_task_id.to_string()),
+                    None,
+                )];
+                responses.extend(task_projection(runner_id, command.sequence, snapshot));
+                return Ok(responses);
+            }
             if payload.expires_at <= Utc::now() {
                 return Ok(vec![rejection(
                     &command,
@@ -522,6 +541,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn expired_first_start_does_not_create_a_work_task() {
+        let db = fresh_in_memory_db().await;
+        let runner_id = "00000000-0000-4000-8000-000000000000";
+        let mut command = start_command(runner_id, "unavailable-target");
+        command["PAYLOAD"]["EXPIRES_AT"] = json!(Utc::now() - chrono::Duration::days(1));
+        let frames = handle_task_command(&EventEmitter::Noop, &db.conn, runner_id, command)
+            .await
+            .unwrap();
+        assert_eq!(frames[0]["PAYLOAD"]["ACK_STATUS"], "REJECTED");
+        assert_eq!(frames[0]["PAYLOAD"]["ERROR"]["CODE"], "TASK_EXPIRED");
+        assert_eq!(work_task::Entity::find().count(&db.conn).await.unwrap(), 0);
+        assert_eq!(
+            cerebro_task_link::Entity::find()
+                .count(&db.conn)
+                .await
+                .unwrap(),
+            0
+        );
+    }
+
+    #[tokio::test]
     async fn disconnect_before_local_dispatch_reconnect_creates_one_work_task() {
         let temp = TempDir::new().unwrap();
         init_repo(temp.path());
@@ -593,6 +633,12 @@ mod tests {
         .await
         .unwrap();
         // 首次返回帧在网络断线中丢失；重连补发原命令。
+        let mut command = command;
+        command["PAYLOAD"]["EXPIRES_AT"] = json!(Utc::now() - chrono::Duration::days(1));
+        // 已有任务不再依赖可用 Folder；同时覆盖重新解析 Target 会失败的场景。
+        folder_service::update_folder_default_agent(&db.conn, folder_id, None)
+            .await
+            .unwrap();
         let repeated = handle_task_command(&EventEmitter::Noop, &db.conn, runner_id, command)
             .await
             .unwrap();
