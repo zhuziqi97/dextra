@@ -9,6 +9,7 @@ const runnerPaths = [
   "/api/v1/execution-runner-pairings/create",
   "/api/v1/execution-runner-pairings/exchange",
   "/api/v1/execution-runner-mcp-sessions/create",
+  "/api/v1/execution-runner-target-bindings/query",
   "/api/v1/execution-task-principals/create",
   "/api/v1/execution-runner-tokens/refresh",
   "/api/v1/execution-runners/list",

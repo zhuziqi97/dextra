@@ -17,6 +17,7 @@ const PAIRING_EXCHANGE_PATH: &str = "api/v1/execution-runner-pairings/exchange";
 const TOKEN_REFRESH_PATH: &str = "api/v1/execution-runner-tokens/refresh";
 const MCP_SESSION_CREATE_PATH: &str = "api/v1/execution-runner-mcp-sessions/create";
 const MCP_TASK_CREATE_PATH: &str = "api/v1/execution-task-principals/create";
+const TARGET_BINDING_QUERY_PATH: &str = "api/v1/execution-runner-target-bindings/query";
 const RUNNER_CREDENTIAL_INVALID: &str = "RUNNER_CREDENTIAL_INVALID";
 const RUNNER_REVOKED: &str = "RUNNER_REVOKED";
 const RUNNER_PAIRING_PENDING: &str = "RUNNER_PAIRING_PENDING";
@@ -80,6 +81,27 @@ pub struct CerebroMcpPrincipal {
     pub token_type: String,
     #[serde(alias = "expires_in")]
     pub expires_in: u64,
+}
+
+/// 本地会话的唯一模块绑定；不可用原因不等同于没有绑定。
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CerebroTargetBinding {
+    pub binding_id: String,
+    pub module_path: String,
+    pub module_display_name: String,
+    pub status: String,
+    pub unavailable_code: Option<String>,
+    pub unavailable_message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TargetBindingQueryResult {
+    binding: Option<CerebroTargetBinding>,
+}
+
+#[derive(Serialize)]
+struct TargetBindingQueryRequest<'a> {
+    target_id: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -713,6 +735,22 @@ pub async fn issue_mcp_session_principal(
     issue_mcp_session_principal_with(&SystemCredentialStore, &client, binding_id, session_id).await
 }
 
+async fn query_target_binding_with(
+    store: &dyn CredentialStore, client: &reqwest::Client, target_id: &str,
+) -> Result<Option<CerebroTargetBinding>, AppCommandError> {
+    let access = refresh_access_token_with(store, client).await?;
+    let result: TargetBindingQueryResult = post_json(
+        client, endpoint(&access.cerebro_base_url, TARGET_BINDING_QUERY_PATH)?,
+        &TargetBindingQueryRequest { target_id }, Some(&access.access_token),
+    ).await.map_err(ClientError::into_app_error)?;
+    Ok(result.binding)
+}
+
+/// 使用当前设备身份查询目录；网络、权限和身份错误均原样返回。
+pub async fn query_target_binding(target_id: &str) -> Result<Option<CerebroTargetBinding>, AppCommandError> {
+    query_target_binding_with(&SystemCredentialStore, &http_client()?, target_id).await
+}
+
 /// 为已经可靠投递到当前 Runner 的平台 Task 领取一次短期 MCP principal。
 pub async fn issue_mcp_task_principal(
     task_id: &str,
@@ -764,6 +802,14 @@ mod tests {
 
     #[test]
     fn production_identity_dtos_match_the_cerebro_openapi_fixture() {
+        let query_path = format!("/{TARGET_BINDING_QUERY_PATH}");
+        assert_eq!(
+            serde_json::to_value(TargetBindingQueryRequest { target_id: "string" }).unwrap(),
+            contract_example(&query_path, "request")
+        );
+        let queried: CerebroEnvelope<TargetBindingQueryResult> =
+            serde_json::from_value(contract_example(&query_path, "response")).unwrap();
+        assert!(queried.data.unwrap().binding.is_some());
         let create_path = format!("/{PAIRING_CREATE_PATH}");
         let exchange_path = format!("/{PAIRING_EXCHANGE_PATH}");
         let refresh_path = format!("/{TOKEN_REFRESH_PATH}");
@@ -953,6 +999,25 @@ mod tests {
         }))
     }
 
+    async fn query_binding(
+        headers: HeaderMap, Json(body): Json<serde_json::Value>,
+    ) -> Json<serde_json::Value> {
+        assert_eq!(headers.get("authorization").unwrap(), "Bearer short-lived-access");
+        let binding = match body["target_id"].as_str().unwrap() {
+            "empty" => serde_json::Value::Null,
+            "denied" => return Json(serde_json::json!({
+                "success": false, "error": {"code": "TARGET_NOT_FOUND", "message": "目录不属于当前 Runner"}
+            })),
+            target => serde_json::json!({
+                "binding_id": "binding-1", "module_path": "owner/project/module",
+                "module_display_name": "Module", "status": if target == "disabled" { "DISABLED" } else { "ACTIVE" },
+                "unavailable_code": if target == "disabled" { Some("BINDING_NOT_ACTIVE") } else { None },
+                "unavailable_message": if target == "disabled" { Some("模块执行绑定当前未启用") } else { None },
+            }),
+        };
+        Json(serde_json::json!({"success": true, "data": {"binding": binding}}))
+    }
+
     async fn mock_server(
         pending_first: bool,
     ) -> (String, MockCerebro, tokio::task::JoinHandle<()>) {
@@ -978,6 +1043,9 @@ mod tests {
             .route(
                 "/nested/api/v1/execution-runner-mcp-sessions/create",
                 post(issue_mcp_principal),
+            )
+            .route(
+                "/nested/api/v1/execution-runner-target-bindings/query", post(query_binding),
             )
             .with_state(state.clone());
         let task = tokio::spawn(async move {
@@ -1061,6 +1129,26 @@ mod tests {
         assert_eq!(principal.mcp_url, "http://cerebro.test/mcp/stream");
         assert_eq!(principal.access_token, "mcp-short-lived");
         assert_eq!(server.mcp_calls.load(Ordering::SeqCst), 1);
+        task.abort();
+    }
+
+    #[tokio::test]
+    async fn target_binding_query_preserves_empty_disabled_and_error() {
+        let (base_url, _, task) = mock_server(false).await;
+        let store = MemoryStore::default();
+        store.save(&RunnerCredential {
+            cerebro_base_url: normalize_base_url(&base_url).unwrap(),
+            runner_id: "runner-1".to_string(), refresh_credential: "credential".to_string(),
+        }).unwrap();
+        let client = reqwest::Client::new();
+        assert!(query_target_binding_with(&store, &client, "empty").await.unwrap().is_none());
+        let available = query_target_binding_with(&store, &client, "available").await.unwrap().unwrap();
+        assert_eq!(available.binding_id, "binding-1");
+        assert!(available.unavailable_code.is_none());
+        let disabled = query_target_binding_with(&store, &client, "disabled").await.unwrap().unwrap();
+        assert_eq!(disabled.unavailable_code.as_deref(), Some("BINDING_NOT_ACTIVE"));
+        let error = query_target_binding_with(&store, &client, "denied").await.unwrap_err();
+        assert!(error.to_string().contains("目录不属于当前 Runner"));
         task.abort();
     }
 
