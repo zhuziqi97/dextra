@@ -18,7 +18,7 @@ COPY src-tauri/ ./
 # (see acp/delegation/companion.rs). It must ship next to codeg-server so
 # `locate_codeg_mcp_binary()` finds it via the exe-sibling lookup.
 RUN cargo build --release --bin codeg-server --no-default-features \
- && cargo build --release --bin codeg-mcp --no-default-features
+ && cargo build --release --bin codeg-mcp --bin cerebro-mcp-bridge --no-default-features
 
 # Stage 3: Runtime
 FROM node:24-bookworm-slim
@@ -42,6 +42,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY --from=backend /app/src-tauri/target/release/codeg-server /usr/local/bin/codeg-server
 COPY --from=backend /app/src-tauri/target/release/codeg-mcp /usr/local/bin/codeg-mcp
+COPY --from=backend /app/src-tauri/target/release/cerebro-mcp-bridge /usr/local/bin/cerebro-mcp-bridge
 COPY --from=frontend /app/out /app/web
 
 ENV CODEG_STATIC_DIR=/app/web

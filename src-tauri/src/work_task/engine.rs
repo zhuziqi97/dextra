@@ -1104,10 +1104,10 @@ impl TaskEngine {
             .map_err(|e| e.to_string())?;
 
         let additional_mcp_servers = match cerebro_task_id.as_deref() {
-            Some(platform_task_id) => vec![crate::cerebro::mcp::server_for_task(platform_task_id)
+            Some(platform_task_id) => crate::cerebro::mcp::server_for_task(&self.manager, platform_task_id)
                 .await
-                .map_err(|error| error.to_string())?],
-            None => Vec::new(),
+                .map_err(|error| error.to_string())?,
+            None => Vec::new().into(),
         };
 
         // Cancel gate before spawning the CLI.

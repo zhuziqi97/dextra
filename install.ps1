@@ -20,7 +20,7 @@ $Artifact = "codeg-server-windows-x64"
 # layer spawns per session for delegation. Both must live in the same
 # directory — `locate_codeg_mcp_binary()` in src-tauri/src/acp/connection.rs
 # resolves the companion as a sibling of the running server executable.
-$ManagedBins = @("codeg-server", "codeg-mcp")
+$ManagedBins = @("codeg-server", "codeg-mcp", "cerebro-mcp-bridge")
 
 # Stale codeg-server / codeg-mcp binaries elsewhere in PATH are removed by
 # default so the user's `codeg-server` command always runs the freshly
@@ -199,12 +199,12 @@ if ($ServerProcesses) {
     Write-Host "codeg-server stopped."
 }
 
-$McpProcesses = Get-Process -Name "codeg-mcp" -ErrorAction SilentlyContinue
+$McpProcesses = Get-Process -Name "codeg-mcp", "cerebro-mcp-bridge" -ErrorAction SilentlyContinue
 if ($McpProcesses) {
     Write-Host "Stopping running codeg-mcp companion process(es)..."
     $McpProcesses | Stop-Process -Force
     Start-Sleep -Seconds 1
-    $StillRunning = Get-Process -Name "codeg-mcp" -ErrorAction SilentlyContinue
+    $StillRunning = Get-Process -Name "codeg-mcp", "cerebro-mcp-bridge" -ErrorAction SilentlyContinue
     if ($StillRunning) {
         $StillRunning | Stop-Process -Force
         Start-Sleep -Seconds 1
@@ -321,6 +321,7 @@ if (-not $InstalledVer) { $InstalledVer = $TargetVer }
 Write-Host ""
 Write-Host "codeg-server installed to $InstallDir\codeg-server.exe"
 Write-Host "codeg-mcp    installed to $InstallDir\codeg-mcp.exe"
+Write-Host "cerebro-mcp-bridge installed to $InstallDir\cerebro-mcp-bridge.exe"
 Write-Host "Version: $InstalledVer"
 
 # Final smoke: codeg-mcp.exe must exist next to codeg-server.exe so the
@@ -328,6 +329,11 @@ Write-Host "Version: $InstalledVer"
 # here means the zip was malformed or a previous Copy-Item was silently
 # blocked — surface it loudly rather than ship a half-broken install.
 $McpPath = Join-Path $InstallDir "codeg-mcp.exe"
+$BridgePath = Join-Path $InstallDir "cerebro-mcp-bridge.exe"
+if (-not (Test-Path -LiteralPath $BridgePath)) {
+    Write-Host "Error: $BridgePath missing after install."
+    $ExitStatus = 1
+}
 if (-not (Test-Path -LiteralPath $McpPath)) {
     Write-Host ""
     Write-Host "Error: $McpPath missing after install."

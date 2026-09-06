@@ -31,7 +31,7 @@ import process from "node:process"
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const SRC_TAURI = resolve(SCRIPT_DIR, "..")
 const BINARIES_DIR = join(SRC_TAURI, "binaries")
-const BIN_NAME = "codeg-mcp"
+const BIN_NAMES = ["codeg-mcp", "cerebro-mcp-bridge"]
 
 function log(msg) {
   console.log(`[prepare-sidecars] ${msg}`)
@@ -79,7 +79,7 @@ function main() {
   const ext = isWindows ? ".exe" : ""
 
   log(`target triple: ${target}`)
-  log(`building ${BIN_NAME} (--release --no-default-features)`)
+  log(`building ${BIN_NAMES.join(", ")} (--release --no-default-features)`)
 
   // cargo build needs to run from src-tauri so it resolves the local manifest
   // and shares the swatinem/rust-cache key with other cargo invocations.
@@ -91,8 +91,7 @@ function main() {
     [
       "build",
       "--release",
-      "--bin",
-      BIN_NAME,
+      ...BIN_NAMES.flatMap((name) => ["--bin", name]),
       "--no-default-features",
       "--target",
       target,
@@ -100,26 +99,34 @@ function main() {
     { stdio: "inherit", cwd: SRC_TAURI }
   )
 
-  const built = join(
-    SRC_TAURI,
-    "target",
-    target,
-    "release",
-    `${BIN_NAME}${ext}`
+  // 尊重 Cargo 的 target_directory（包括本机共享构建缓存）。
+  const metadata = JSON.parse(
+    execFileSync("cargo", ["metadata", "--no-deps", "--format-version", "1"], {
+      cwd: SRC_TAURI,
+      encoding: "utf8",
+    })
   )
-  if (!existsSync(built)) {
-    die(`expected ${built} after cargo build, but it does not exist`)
-  }
+  for (const binName of BIN_NAMES) {
+    const built = join(
+      metadata.target_directory,
+      target,
+      "release",
+      `${binName}${ext}`
+    )
+    if (!existsSync(built)) {
+      die(`expected ${built} after cargo build, but it does not exist`)
+    }
 
-  mkdirSync(BINARIES_DIR, { recursive: true })
-  const dest = join(BINARIES_DIR, `${BIN_NAME}-${target}${ext}`)
-  copyFileSync(built, dest)
-  if (!isWindows) {
-    // copyFileSync preserves modes on POSIX, but be explicit for tarball
-    // sources that may strip the +x bit.
-    chmodSync(dest, 0o755)
+    mkdirSync(BINARIES_DIR, { recursive: true })
+    const dest = join(BINARIES_DIR, `${binName}-${target}${ext}`)
+    copyFileSync(built, dest)
+    if (!isWindows) {
+      // copyFileSync preserves modes on POSIX, but be explicit for tarball
+      // sources that may strip the +x bit.
+      chmodSync(dest, 0o755)
+    }
+    log(`sidecar staged at ${dest}`)
   }
-  log(`sidecar staged at ${dest}`)
 }
 
 main()

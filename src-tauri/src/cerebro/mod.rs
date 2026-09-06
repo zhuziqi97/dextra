@@ -5,6 +5,7 @@
 pub mod connection;
 pub mod identity;
 pub mod mcp;
+pub mod mcp_bridge;
 pub mod remote;
 pub mod target_projection;
 pub mod task_link;

@@ -1013,17 +1013,23 @@ fn tag_mcp_suspect(
 struct ConnectionCleanupGuard {
     connections: Arc<tokio::sync::Mutex<HashMap<String, AgentConnection>>>,
     connection_id: String,
+    tokens: Option<Arc<crate::acp::delegation::listener::TokenRegistry>>,
+    runtime: tokio::runtime::Handle,
 }
 
 impl Drop for ConnectionCleanupGuard {
     fn drop(&mut self) {
+        if let Some(tokens) = self.tokens.take() {
+            let connection_id = self.connection_id.clone();
+            self.runtime.spawn(async move { tokens.revoke_by_parent(&connection_id).await; });
+        }
         if let Ok(mut guard) = self.connections.try_lock() {
             guard.remove(&self.connection_id);
             return;
         }
         let connections = self.connections.clone();
         let connection_id = std::mem::take(&mut self.connection_id);
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             connections.lock().await.remove(&connection_id);
         });
     }
@@ -2034,6 +2040,8 @@ pub async fn spawn_agent_connection(
     let cleanup_guard = ConnectionCleanupGuard {
         connections: cleanup_connections,
         connection_id: cleanup_connection_id,
+        tokens: delegation_injection.as_ref().map(|injection| injection.tokens.clone()),
+        runtime: connection_rt.clone(),
     };
     let connection_thread = std::thread::Builder::new()
         .name(format!("acp-conn-{conn_id}"))
@@ -2068,13 +2076,7 @@ pub async fn spawn_agent_connection(
         // best-effort: a missing token entry is a no-op, and both
         // `cancel_by_parent` calls are safe on an empty pending map.
         if let Some(inj) = delegation_for_cleanup {
-            let token = {
-                let snap = state_clone.read().await;
-                snap.delegation_token.clone()
-            };
-            if let Some(tok) = token {
-                inj.tokens.revoke(&tok).await;
-            }
+            inj.tokens.revoke_by_parent(&conn_id).await;
             inj.broker.cancel_by_parent(&conn_id).await;
             // Reclaim a parked `ask_user_question` instead of waiting for the
             // companion's ask socket to close (which a reparented/hard-killed

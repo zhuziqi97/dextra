@@ -51,6 +51,22 @@ const USER_PROMPT_PREVIEW_MAX_CHARS: usize = 500;
 /// `kill_tree`.
 const DISCONNECT_ALL_GRACE: Duration = Duration::from_millis(500);
 
+/// 在连接去重之后准备临时 MCP 配置，作用域与父连接生命周期绑定。
+#[async_trait::async_trait]
+pub trait ScopedMcpServers: Send + Sync {
+    async fn prepare(&self, parent_connection_id: &str) -> Result<Vec<sacp::schema::McpServer>, AcpError>;
+}
+
+#[derive(Clone)]
+pub enum AdditionalMcpServers {
+    Static(Vec<sacp::schema::McpServer>),
+    Scoped(Arc<dyn ScopedMcpServers>),
+}
+
+impl From<Vec<sacp::schema::McpServer>> for AdditionalMcpServers {
+    fn from(servers: Vec<sacp::schema::McpServer>) -> Self { Self::Static(servers) }
+}
+
 /// True for ids in the parsers' turn-id namespace (`turn-<digits>`), which every
 /// parser assigns via `format!("turn-{}", n)`. A broadcast `message_id` must
 /// never land here: it would collide with a persisted transcript turn id and let
@@ -322,6 +338,11 @@ impl ConnectionManager {
         self.delegation_injection.get().cloned()
     }
 
+    /// 启动 adapter 复用现有伴生进程 IPC，不另开凭据服务。
+    pub fn companion_transport(&self) -> Option<(Arc<crate::acp::delegation::listener::TokenRegistry>, PathBuf)> {
+        self.delegation_snapshot().map(|injection| (injection.tokens, injection.socket_path))
+    }
+
     /// Returns the shared terminal-shell setting consumed by ACP terminal
     /// runtimes. Keeping the handle shared makes saves apply immediately to
     /// connections that are already running.
@@ -472,7 +493,7 @@ impl ConnectionManager {
         emitter: EventEmitter,
         preferred_mode_id: Option<String>,
         preferred_config_values: BTreeMap<String, String>,
-        additional_mcp_servers: Vec<sacp::schema::McpServer>,
+        additional_mcp_servers: impl Into<AdditionalMcpServers>,
     ) -> Result<String, AcpError> {
         // Connection dedup: when resuming an agent session (session_id is
         // Some), look for a live AgentConnection that already represents
@@ -523,6 +544,10 @@ impl ConnectionManager {
         }
 
         let connection_id = uuid::Uuid::new_v4().to_string();
+        let additional_mcp_servers = match additional_mcp_servers.into() {
+            AdditionalMcpServers::Static(servers) => servers,
+            AdditionalMcpServers::Scoped(provider) => provider.prepare(&connection_id).await?,
+        };
         tracing::info!(
             "[ACP] spawning connection id={} owner_window={} agent={:?}",
             connection_id, owner_window_label, agent_type
@@ -547,7 +572,16 @@ impl ConnectionManager {
             self.terminal_shell_config.clone(),
             additional_mcp_servers,
         )
-        .await?;
+        .await;
+        let session_started_rx = match session_started_rx {
+            Ok(receiver) => receiver,
+            Err(error) => {
+                if let Some((tokens, _)) = self.companion_transport() {
+                    tokens.revoke_by_parent(&connection_id).await;
+                }
+                return Err(error);
+            }
+        };
 
         // When dedup is active, hold the lock until the agent's
         // SessionStarted has applied (so external_id is populated for the

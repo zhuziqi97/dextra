@@ -326,6 +326,7 @@ jobs:
             exit 1
           fi
           ls -la "$file"
+          test -s "src-tauri/binaries/cerebro-mcp-bridge-${{ matrix.target }}${ext}"
 
       - name: Import Apple Developer ID certificate
         if: contains(matrix.target, 'apple-darwin')
@@ -671,7 +672,7 @@ jobs:
         # runtime deps.
         run: |
           cargo build --release --bin codeg-server --no-default-features --target ${{ matrix.target }}
-          cargo build --release --bin codeg-mcp --no-default-features --target ${{ matrix.target }}
+          cargo build --release --bin codeg-mcp --bin cerebro-mcp-bridge --no-default-features --target ${{ matrix.target }}
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
@@ -679,6 +680,8 @@ jobs:
           mkdir -p dist/${{ matrix.artifact }}
           cp src-tauri/target/${{ matrix.target }}/release/codeg-server dist/${{ matrix.artifact }}/
           cp src-tauri/target/${{ matrix.target }}/release/codeg-mcp dist/${{ matrix.artifact }}/
+          cp src-tauri/target/${{ matrix.target }}/release/cerebro-mcp-bridge dist/${{ matrix.artifact }}/
+          chmod +x dist/${{ matrix.artifact }}/cerebro-mcp-bridge
           chmod +x dist/${{ matrix.artifact }}/codeg-server dist/${{ matrix.artifact }}/codeg-mcp
           cp -r out dist/${{ matrix.artifact }}/web
           cd dist && tar czf ${{ matrix.artifact }}.tar.gz ${{ matrix.artifact }}
@@ -690,6 +693,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist/${{ matrix.artifact }}
           Copy-Item src-tauri/target/${{ matrix.target }}/release/codeg-server.exe dist/${{ matrix.artifact }}/
           Copy-Item src-tauri/target/${{ matrix.target }}/release/codeg-mcp.exe dist/${{ matrix.artifact }}/
+          Copy-Item src-tauri/target/${{ matrix.target }}/release/cerebro-mcp-bridge.exe dist/${{ matrix.artifact }}/
           Copy-Item -Recurse out dist/${{ matrix.artifact }}/web
           Compress-Archive -Path dist/${{ matrix.artifact }} -DestinationPath dist/${{ matrix.artifact }}.zip
 
@@ -699,6 +703,7 @@ jobs:
           set -euo pipefail
           test -x "dist/${{ matrix.artifact }}/codeg-server"
           test -x "dist/${{ matrix.artifact }}/codeg-mcp"
+          test -x "dist/${{ matrix.artifact }}/cerebro-mcp-bridge"
           # `codeg-mcp --help` exits 0 without flags and prints the usage
           # line. Only run it for native targets; cross-compiled arm64
           # binaries on x64 runners can't execute.
@@ -706,6 +711,7 @@ jobs:
              [ "${{ matrix.target }}" = "x86_64-apple-darwin" ] || \
              [ "${{ matrix.target }}" = "aarch64-apple-darwin" ]; then
             "dist/${{ matrix.artifact }}/codeg-mcp" --help | grep -F 'codeg-mcp --parent-connection-id'
+            "dist/${{ matrix.artifact }}/cerebro-mcp-bridge" --help | grep -F 'cerebro-mcp-bridge --socket-path'
           else
             echo "skipping codeg-mcp --help on cross-target ${{ matrix.target }}"
           fi
@@ -723,6 +729,10 @@ jobs:
           $help = & "dist/${{ matrix.artifact }}/codeg-mcp.exe" --help
           if ($help -notlike "*codeg-mcp --parent-connection-id*") {
             throw "codeg-mcp --help output unexpected: $help"
+          }
+          $bridgeHelp = & "dist/${{ matrix.artifact }}/cerebro-mcp-bridge.exe" --help
+          if ($LASTEXITCODE -ne 0 -or $bridgeHelp -notlike "*cerebro-mcp-bridge --socket-path*") {
+            throw "cerebro-mcp-bridge missing or unusable"
           }
 
       - name: Upload artifact for Docker build (Linux only)
@@ -809,14 +819,17 @@ jobs:
           mkdir -p dist/amd64 dist/arm64
           cp artifacts/linux-x64/codeg-server dist/amd64/codeg-server
           cp artifacts/linux-x64/codeg-mcp dist/amd64/codeg-mcp
+          cp artifacts/linux-x64/cerebro-mcp-bridge dist/amd64/cerebro-mcp-bridge
           cp artifacts/linux-arm64/codeg-server dist/arm64/codeg-server
           cp artifacts/linux-arm64/codeg-mcp dist/arm64/codeg-mcp
+          cp artifacts/linux-arm64/cerebro-mcp-bridge dist/arm64/cerebro-mcp-bridge
           cp -r artifacts/linux-x64/web dist/web
           chmod +x dist/amd64/codeg-server dist/amd64/codeg-mcp \
-                   dist/arm64/codeg-server dist/arm64/codeg-mcp
+                   dist/arm64/codeg-server dist/arm64/codeg-mcp \
+                   dist/amd64/cerebro-mcp-bridge dist/arm64/cerebro-mcp-bridge
           # Fail fast if any companion went missing — Docker would otherwise
           # produce an image where delegation silently degrades.
-          for f in dist/amd64/codeg-mcp dist/arm64/codeg-mcp; do
+          for f in dist/amd64/codeg-mcp dist/arm64/codeg-mcp dist/amd64/cerebro-mcp-bridge dist/arm64/cerebro-mcp-bridge; do
             test -x "$f" || { echo "FATAL: $f missing or non-exec"; exit 1; }
           done
 
