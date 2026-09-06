@@ -3,7 +3,7 @@
 use super::CerebroMcpPrincipal;
 use crate::acp::delegation::transport::{client_credentials_round_trip, client_watch_token};
 use async_trait::async_trait;
-use futures::StreamExt;
+use futures::{future::{BoxFuture, Shared}, FutureExt, StreamExt};
 use serde_json::{json, Value};
 use std::{sync::Arc, time::Duration};
 use tokio::{
@@ -44,7 +44,8 @@ struct CachedPrincipal {
 pub struct Bridge {
     client: reqwest::Client,
     source: Arc<dyn PrincipalSource>,
-    cached: Mutex<Option<CachedPrincipal>>,
+    cached: Arc<Mutex<Option<CachedPrincipal>>>,
+    refreshing: Mutex<Option<Shared<BoxFuture<'static, Result<CerebroMcpPrincipal, String>>>>>,
     session_id: RwLock<Option<String>>,
     protocol_version: RwLock<Option<String>>,
 }
@@ -54,29 +55,56 @@ impl Bridge {
         Self {
             client: reqwest::Client::new(),
             source,
-            cached: Mutex::new(None),
+            cached: Arc::new(Mutex::new(None)),
+            refreshing: Mutex::new(None),
             session_id: RwLock::new(None),
             protocol_version: RwLock::new(None),
         }
     }
 
     async fn principal(&self) -> Result<CerebroMcpPrincipal, String> {
-        // 只合并凭据领取，不串行化业务请求。
-        let mut cached = self.cached.lock().await;
+        // 同一批调用共享领取结果（包括错误），不串行化业务请求。
+        let mut refreshing = self.refreshing.lock().await;
+        if let Some(pending) = refreshing.as_ref() {
+            let pending = pending.clone();
+            drop(refreshing);
+            return self.finish_refresh(pending).await;
+        }
+        let cached = self.cached.lock().await;
         if let Some(current) = cached.as_ref() {
             if current.deadline.saturating_duration_since(Instant::now()) >= Duration::from_secs(30)
             {
                 return Ok(current.value.clone());
             }
         }
-        let started = Instant::now();
-        let value = self.source.issue().await?;
-        let deadline = started + Duration::from_secs(value.expires_in);
-        *cached = Some(CachedPrincipal {
-            value: value.clone(),
-            deadline,
-        });
-        Ok(value)
+        drop(cached);
+        let source = self.source.clone();
+        let cache = self.cached.clone();
+        let pending = async move {
+            let started = Instant::now();
+            let value = source.issue().await?;
+            *cache.lock().await = Some(CachedPrincipal {
+                deadline: started + Duration::from_secs(value.expires_in),
+                value: value.clone(),
+            });
+            Ok(value)
+        }.boxed().shared();
+        *refreshing = Some(pending.clone());
+        drop(refreshing);
+        self.finish_refresh(pending).await
+    }
+
+    async fn finish_refresh(
+        &self,
+        pending: Shared<BoxFuture<'static, Result<CerebroMcpPrincipal, String>>>,
+    ) -> Result<CerebroMcpPrincipal, String> {
+        let result = pending.clone().await;
+        let mut refreshing = self.refreshing.lock().await;
+        // 迟到的等待者不能清除下一批已经开始的刷新。
+        if refreshing.as_ref().is_some_and(|current| current.ptr_eq(&pending)) {
+            refreshing.take();
+        }
+        result
     }
 
     async fn request(&self, method: reqwest::Method) -> Result<reqwest::RequestBuilder, String> {
@@ -354,6 +382,39 @@ mod tests {
             values,
             vec![json!({"jsonrpc":"2.0", "id":1, "result":"本轮输出"})]
         );
+    }
+
+    #[tokio::test]
+    async fn concurrent_refresh_failure_is_shared_and_next_call_retries() {
+        struct BlockedSource {
+            calls: AtomicUsize,
+            release: tokio::sync::Semaphore,
+        }
+        #[async_trait]
+        impl PrincipalSource for BlockedSource {
+            async fn issue(&self) -> Result<CerebroMcpPrincipal, String> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                self.release.acquire().await.unwrap().forget();
+                Err("凭据服务不可用".into())
+            }
+        }
+        let source = Arc::new(BlockedSource {
+            calls: AtomicUsize::new(0),
+            release: tokio::sync::Semaphore::new(0),
+        });
+        let bridge = Bridge::new(source.clone());
+        let (output, _) = mpsc::channel(8);
+        let call = json!({"jsonrpc":"2.0", "id":1, "method":"tools/call"});
+        let batch = futures::future::join_all((0..8).map(|_| bridge.forward(&call, &output)));
+        tokio::pin!(batch);
+        assert!(futures::poll!(&mut batch).is_pending());
+        assert_eq!(source.calls.load(Ordering::SeqCst), 1);
+        source.release.add_permits(1);
+        assert!(batch.await.into_iter().all(|result| result.unwrap_err() == "凭据服务不可用"));
+        assert_eq!(source.calls.load(Ordering::SeqCst), 1);
+        source.release.add_permits(1);
+        assert_eq!(bridge.principal().await.unwrap_err(), "凭据服务不可用");
+        assert_eq!(source.calls.load(Ordering::SeqCst), 2);
     }
 
     #[tokio::test]
