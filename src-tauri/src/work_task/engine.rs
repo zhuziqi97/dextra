@@ -1822,6 +1822,37 @@ impl TaskEngine {
             AcpEvent::TurnComplete { stop_reason, .. } => {
                 self.on_turn_complete(&env.connection_id, stop_reason).await;
             }
+            AcpEvent::Error {
+                message,
+                code,
+                terminal: true,
+                ..
+            } => {
+                self.settle_turn(
+                    &env.connection_id,
+                    "error",
+                    Some((
+                        code.clone().unwrap_or_else(|| "agent_error".into()),
+                        message.clone(),
+                    )),
+                )
+                .await;
+            }
+            AcpEvent::SessionFailure { record }
+                if record.severity == "error" && !record.resolved =>
+            {
+                // provider 的终止错误可能随后携带 end_turn，必须先按真实错误结算。
+                let message = match record.details.as_deref() {
+                    Some(details) if !details.is_empty() => format!("{}\n{details}", record.title),
+                    _ => record.title.clone(),
+                };
+                self.settle_turn(
+                    &env.connection_id,
+                    "error",
+                    Some((record.category.clone(), message)),
+                )
+                .await;
+            }
             AcpEvent::QuestionRequest { question_id, .. } => {
                 self.track_request(&env.connection_id, format!("q:{question_id}"), true)
                     .await;
@@ -2139,16 +2170,28 @@ impl TaskEngine {
     }
 
     async fn on_turn_complete(self: &Arc<Self>, conn_id: &str, stop_reason: &str) {
+        self.settle_turn(conn_id, stop_reason, None).await;
+    }
+
+    /// 使用当前连接代次结算，显式终止错误优先于协议的停止原因。
+    async fn settle_turn(
+        self: &Arc<Self>,
+        conn_id: &str,
+        stop_reason: &str,
+        terminal_error: Option<(String, String)>,
+    ) {
         let entry = { self.index.lock().await.get(conn_id).copied() };
         let Some((task_id, run_seq)) = entry else {
             return; // not a task run
         };
 
-        let summary = self.capture_summary(conn_id).await;
+        let (summary, captured_error) = self.capture_turn_output(conn_id).await;
         self.retire_connection(conn_id, task_id).await;
         let _ = self.manager.disconnect(conn_id).await;
 
-        let task = work_task_service::get_model(&self.db.conn, task_id).await.ok();
+        let task = work_task_service::get_model(&self.db.conn, task_id)
+            .await
+            .ok();
 
         // A merge generation settles from git truth whatever the stop reason —
         // the agent may have landed the merge and then errored or been stopped.
@@ -2222,16 +2265,22 @@ impl TaskEngine {
                     .await
                     .unwrap_or(false)
             }
-            other => work_task_service::fail(
-                &self.db.conn,
-                task_id,
-                &[WorkTaskStatus::Running, WorkTaskStatus::AwaitingInput],
-                Some(run_seq),
-                "agent_error",
-                Some(format!("agent stopped: {other}")),
-            )
-            .await
-            .unwrap_or(false),
+            other => {
+                let (failure_reason, last_error) =
+                    terminal_error.or(captured_error).unwrap_or_else(|| {
+                        ("agent_error".to_string(), format!("agent stopped: {other}"))
+                    });
+                work_task_service::fail(
+                    &self.db.conn,
+                    task_id,
+                    &[WorkTaskStatus::Running, WorkTaskStatus::AwaitingInput],
+                    Some(run_seq),
+                    &failure_reason,
+                    Some(last_error),
+                )
+                .await
+                .unwrap_or(false)
+            }
         };
         if changed {
             self.emit_upsert(task_id);
@@ -2517,12 +2566,29 @@ impl TaskEngine {
         }
     }
 
-    /// Best-effort: the turn's final assistant text (cleared at next turn
-    /// start) becomes the task's result summary.
-    async fn capture_summary(&self, conn_id: &str) -> Option<String> {
-        let (state, _) = self.manager.get_state_and_emitter(conn_id).await?;
-        let text = state.read().await.last_assistant_text.clone();
-        text.filter(|t| !t.trim().is_empty())
+    /// 在连接退休前取得本轮的最终摘要与最新真实错误。
+    async fn capture_turn_output(
+        &self,
+        conn_id: &str,
+    ) -> (Option<String>, Option<(String, String)>) {
+        let Some((state, _)) = self.manager.get_state_and_emitter(conn_id).await else {
+            return (None, None);
+        };
+        let state = state.read().await;
+        let summary = state
+            .last_assistant_text
+            .clone()
+            .filter(|text| !text.trim().is_empty());
+        let error = state.last_error.as_ref().map(|error| {
+            let code = error
+                .code
+                .as_deref()
+                .filter(|code| !code.trim().is_empty())
+                .unwrap_or("agent_error")
+                .to_string();
+            (code, error.message.clone())
+        });
+        (summary, error)
     }
 
     // ── accept without merging ─────────────────────────────────────────────
@@ -7951,6 +8017,105 @@ mod tests {
                 .state,
             LinkedWorkTaskState::Cancelled
         );
+    }
+
+    #[tokio::test]
+    async fn failed_turn_preserves_latest_agent_error() {
+        let (engine, task_id) = running_task().await;
+        engine
+            .manager
+            .insert_test_connection(PARENT_CONN, AgentType::Codex, None, EventEmitter::Noop)
+            .await;
+        let state = engine.manager.get_state(PARENT_CONN).await.unwrap();
+        for (code, message) in [
+            ("initialize_timeout", "首次连接超时"),
+            ("process_exited", "Agent 进程退出，最后一次错误"),
+        ] {
+            state.write().await.apply_event(&AcpEvent::Error {
+                message: message.into(),
+                agent_type: "codex".into(),
+                code: Some(code.into()),
+                details: None,
+                terminal: false,
+            });
+        }
+        engine.on_turn_complete(PARENT_CONN, "unknown").await;
+        let task = work_task_service::get_model(&engine.db.conn, task_id)
+            .await
+            .unwrap();
+        assert_eq!(task.status, WorkTaskStatus::Failed);
+        assert_eq!(task.failure_reason.as_deref(), Some("process_exited"));
+        assert_eq!(
+            task.last_error.as_deref(),
+            Some("Agent 进程退出，最后一次错误")
+        );
+    }
+
+    #[tokio::test]
+    async fn terminal_provider_errors_cannot_become_successful_tasks() {
+        use crate::acp::types::SessionFailureRecord;
+        for terminal in [
+            AcpEvent::Error {
+                message: "Agent transport closed".into(),
+                agent_type: "codex".into(),
+                code: Some("process_exited".into()),
+                details: None,
+                terminal: true,
+            },
+            AcpEvent::SessionFailure {
+                record: SessionFailureRecord {
+                    id: "terminal".into(),
+                    revision: 1,
+                    category: "connection".into(),
+                    severity: "error".into(),
+                    title: "Agent transport closed".into(),
+                    details: None,
+                    actions: vec![],
+                    resolved: false,
+                },
+            },
+        ] {
+            let (engine, task_id) = running_task().await;
+            let warning = AcpEvent::SessionFailure {
+                record: SessionFailureRecord {
+                    id: "retry".into(),
+                    revision: 1,
+                    category: "connection".into(),
+                    severity: "warning".into(),
+                    title: "正在重试".into(),
+                    details: None,
+                    actions: vec![],
+                    resolved: false,
+                },
+            };
+            engine
+                .on_event(&EventEnvelope {
+                    seq: 1,
+                    connection_id: PARENT_CONN.into(),
+                    payload: warning,
+                })
+                .await;
+            assert_eq!(status_of(&engine, task_id).await, WorkTaskStatus::Running);
+            let expected_code = match &terminal {
+                AcpEvent::Error { code, .. } => code.clone().unwrap(),
+                AcpEvent::SessionFailure { record } => record.category.clone(),
+                _ => unreachable!(),
+            };
+            engine
+                .on_event(&EventEnvelope {
+                    seq: 2,
+                    connection_id: PARENT_CONN.into(),
+                    payload: terminal,
+                })
+                .await;
+            engine.on_turn_complete(PARENT_CONN, "end_turn").await;
+            let task = work_task_service::get_model(&engine.db.conn, task_id)
+                .await
+                .unwrap();
+            assert_eq!(task.status, WorkTaskStatus::Failed);
+            assert_eq!(task.failure_reason.as_deref(), Some(expected_code.as_str()));
+            assert_eq!(task.last_error.as_deref(), Some("Agent transport closed"));
+        }
     }
 
     #[tokio::test]

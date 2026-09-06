@@ -522,7 +522,46 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn repeated_task_start_creates_exactly_one_linked_work_task() {
+    async fn disconnect_before_local_dispatch_reconnect_creates_one_work_task() {
+        let temp = TempDir::new().unwrap();
+        init_repo(temp.path());
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, temp.path().to_str().unwrap()).await;
+        folder_service::update_folder_default_agent(&db.conn, folder_id, Some(AgentType::Codex))
+            .await
+            .unwrap();
+        let runner_id = "00000000-0000-4000-8000-000000000000";
+        let command = start_command(
+            runner_id,
+            &super::super::target_projection::target_id(runner_id, folder_id),
+        );
+
+        // 首次连接在本地 dispatch 前断开，没有任何本地事实可提交。
+        assert_eq!(work_task::Entity::find().count(&db.conn).await.unwrap(), 0);
+        assert_eq!(
+            cerebro_task_link::Entity::find()
+                .count(&db.conn)
+                .await
+                .unwrap(),
+            0
+        );
+
+        let reconnected = handle_task_command(&EventEmitter::Noop, &db.conn, runner_id, command)
+            .await
+            .unwrap();
+        assert_eq!(reconnected[0]["PAYLOAD"]["ACK_STATUS"], "ACCEPTED");
+        assert_eq!(work_task::Entity::find().count(&db.conn).await.unwrap(), 1);
+        assert_eq!(
+            cerebro_task_link::Entity::find()
+                .count(&db.conn)
+                .await
+                .unwrap(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn disconnect_after_local_commit_before_ack_reconnects_to_same_work_task() {
         let temp = TempDir::new().unwrap();
         init_repo(temp.path());
         let db = fresh_in_memory_db().await;
@@ -553,6 +592,7 @@ mod tests {
         .update(&db.conn)
         .await
         .unwrap();
+        // 首次返回帧在网络断线中丢失；重连补发原命令。
         let repeated = handle_task_command(&EventEmitter::Noop, &db.conn, runner_id, command)
             .await
             .unwrap();
