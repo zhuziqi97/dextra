@@ -276,6 +276,8 @@ mod tests {
         );
         let row = work_task_service::get_model(&conn, task.id).await.unwrap();
         assert_eq!(row.last_error.as_deref(), Some("interrupted by restart"));
+        let recovered_conversation = conversation_service::get_by_id(&conn, conversation.id).await.unwrap();
+        assert_eq!(recovered_conversation.status, "cancelled");
         assert_eq!(
             work_task_service::boot_reconcile_interrupted(&conn)
                 .await

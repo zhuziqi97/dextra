@@ -23,7 +23,7 @@ use sea_orm::{
 };
 
 use crate::db::entities::work_task::WorkTaskStatus;
-use crate::db::entities::{folder, work_task, work_task_event, work_task_settings, work_task_template};
+use crate::db::entities::{conversation, folder, work_task, work_task_event, work_task_settings, work_task_template};
 use crate::db::error::DbError;
 use crate::models::{
     WorkTaskConfig, WorkTaskDraft, WorkTaskEventInfo, WorkTaskFolderSettings, WorkTaskInfo,
@@ -1539,6 +1539,17 @@ pub async fn fail(
     if res.rows_affected != 1 {
         txn.rollback().await?;
         return Ok(false);
+    }
+    // 结算已取得当前任务代次的写锁；会话停止状态必须与失败结果一起提交。
+    let task = work_task::Entity::find_by_id(id).one(&txn).await?
+        .ok_or_else(|| DbError::NotFound(format!("work task {id}")))?;
+    if let Some(conversation_id) = task.conversation_id {
+        conversation::Entity::update_many()
+            .col_expr(conversation::Column::Status, Expr::value(conversation::ConversationStatus::Cancelled))
+            .col_expr(conversation::Column::UpdatedAt, Expr::value(now))
+            .filter(conversation::Column::Id.eq(conversation_id))
+            .filter(conversation::Column::Status.eq(conversation::ConversationStatus::InProgress))
+            .exec(&txn).await?;
     }
     status_changed_event(
         &txn,
@@ -3312,6 +3323,30 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(seq2, seq + 1);
+    }
+
+    #[tokio::test]
+    async fn interrupted_settlement_stops_only_the_owned_running_conversation() {
+        use crate::db::test_helpers::seed_conversation;
+        use conversation::ConversationStatus;
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, "/tmp/interrupted-conversation").await;
+        for status in [ConversationStatus::InProgress, ConversationStatus::PendingReview, ConversationStatus::Completed] {
+            let conversation_id = seed_conversation(&db, folder_id, crate::models::AgentType::Codex).await;
+            conversation::Entity::update_many()
+                .col_expr(conversation::Column::Status, Expr::value(status.clone()))
+                .filter(conversation::Column::Id.eq(conversation_id)).exec(&db.conn).await.unwrap();
+            let task = create(&db.conn, draft(folder_id, "中断会话状态")).await.unwrap();
+            let seq = claim_for_run(&db.conn, task.id, WorkTaskStatus::Todo, "user").await.unwrap().unwrap();
+            assert!(start_running(&db.conn, task.id, seq, conversation_id, "owned").await.unwrap());
+            assert!(!fail(&db.conn, task.id, &[WorkTaskStatus::Running], Some(seq - 1),
+                "interrupted", Some("旧 owner".into()), None).await.unwrap());
+            assert_eq!(conversation::Entity::find_by_id(conversation_id).one(&db.conn).await.unwrap().unwrap().status, status);
+            assert!(fail(&db.conn, task.id, &[WorkTaskStatus::Running], Some(seq),
+                "interrupted", Some("interrupted by restart".into()), None).await.unwrap());
+            let expected = if status == ConversationStatus::InProgress { ConversationStatus::Cancelled } else { status };
+            assert_eq!(conversation::Entity::find_by_id(conversation_id).one(&db.conn).await.unwrap().unwrap().status, expected);
+        }
     }
 
     #[tokio::test]
