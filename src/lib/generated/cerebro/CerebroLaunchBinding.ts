@@ -2,4 +2,4 @@
 import type { CerebroSelection } from "./CerebroSelection";
 import type { CerebroTargetBinding } from "./CerebroTargetBinding";
 
-export type CerebroLaunchBinding = { binding: CerebroTargetBinding | null, selection: CerebroSelection | null, platform_task: boolean, };
+export type CerebroLaunchBinding = { binding: CerebroTargetBinding | null, selection: CerebroSelection | null, platform_task: boolean, binding_query_error: string | null, };

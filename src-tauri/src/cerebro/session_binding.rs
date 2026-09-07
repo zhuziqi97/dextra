@@ -23,6 +23,7 @@ pub struct CerebroLaunchBinding {
     pub binding: Option<CerebroTargetBinding>,
     pub selection: Option<CerebroSelection>,
     pub platform_task: bool,
+    pub binding_query_error: Option<String>,
 }
 
 /// 已有入口可能只传 provider session ID；仍须恢复同一会话保存的选择。
@@ -56,8 +57,22 @@ pub async fn query_launch_binding(
     } else if let Some(id) = conversation_id {
         (platform_task_for_conversation(conn, id).await?.is_some(), load_conversation_selection(conn, id).await?)
     } else { (false, None) };
-    let binding = if platform_task { None } else { query_folder_binding(conn, folder_id).await? };
-    Ok(CerebroLaunchBinding { binding, selection, platform_task })
+    let lookup = if platform_task { Ok(None) } else { query_folder_binding(conn, folder_id).await };
+    launch_binding_context(platform_task, selection, lookup)
+}
+
+fn launch_binding_context(
+    platform_task: bool,
+    selection: Option<CerebroSelection>,
+    lookup: Result<Option<CerebroTargetBinding>, AppCommandError>,
+) -> Result<CerebroLaunchBinding, AppCommandError> {
+    let (binding, binding_query_error) = match lookup {
+        Ok(binding) => (binding, None),
+        // 已明确保存纯本地时，模块查询只影响选择展示，不影响本地启动。
+        Err(error) if selection == Some(CerebroSelection::Local) => (None, Some(error.to_string())),
+        Err(error) => return Err(error),
+    };
+    Ok(CerebroLaunchBinding { binding, selection, platform_task, binding_query_error })
 }
 
 pub async fn prepare_work_task_draft(
@@ -256,6 +271,19 @@ pub async fn resolve_folder_selection(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saved_local_remains_ready_without_hiding_binding_query_failure() {
+        let error = || AppCommandError::new(AppErrorCode::ConfigurationInvalid, "Cerebro 连接被拒绝");
+        let local = launch_binding_context(false, Some(CerebroSelection::Local), Err(error())).unwrap();
+        assert_eq!(local.selection, Some(CerebroSelection::Local));
+        assert!(local.binding.is_none());
+        assert!(local.binding_query_error.unwrap().contains("Cerebro 连接被拒绝"));
+        for selection in [None, Some(CerebroSelection::Binding { binding_id: "saved".into() })] {
+            assert_eq!(launch_binding_context(false, selection, Err(error())).unwrap_err().message,
+                "Cerebro 连接被拒绝");
+        }
+    }
 
     #[tokio::test]
     async fn normal_task_creation_saves_explicit_local_without_credentials() {

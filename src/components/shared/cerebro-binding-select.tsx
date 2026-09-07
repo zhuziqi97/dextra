@@ -27,6 +27,7 @@ export function CerebroBindingSelect({ folderId, conversationId, workTaskId, dis
     queryCerebroLaunchBinding(folderId, conversationId, workTaskId).then((value) => {
       if (cancelled) return
       setContext(value)
+      setError(value.binding_query_error)
       if (value.platform_task) {
         onChange(undefined, true)
         return
