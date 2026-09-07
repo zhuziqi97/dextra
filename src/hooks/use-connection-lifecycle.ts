@@ -101,6 +101,8 @@ export function shouldDisconnectOnUnmount(args: {
 }
 
 function normalizeErrorMessage(error: unknown): string {
+  const commandError = extractAppCommandError(error)
+  if (commandError) return commandError.message
   if (error instanceof Error) return error.message
   return String(error)
 }

@@ -1,5 +1,6 @@
 "use client"
 import type { CerebroSelection } from "@/lib/generated/cerebro/CerebroSelection"
+import { extractAppCommandError } from "@/lib/app-error"
 
 import {
   createContext,
@@ -2769,6 +2770,8 @@ function getAffectedKey(action: Action): string | null {
 }
 
 function normalizeErrorMessage(error: unknown): string {
+  const commandError = extractAppCommandError(error)
+  if (commandError) return commandError.message
   if (error instanceof Error) return error.message
   return String(error)
 }
