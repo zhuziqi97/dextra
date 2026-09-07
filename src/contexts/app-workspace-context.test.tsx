@@ -302,13 +302,16 @@ describe("AppWorkspaceProvider conversation://changed sync", () => {
     expect(screen.getByTestId("stat-messages")).toHaveTextContent("7")
   })
 
-  it("re-fetches the full list on transport reconnect (disconnect backstop)", async () => {
+  it("replaces a stale running status with the persisted stopped status on reconnect", async () => {
+    h.listAll.mockResolvedValue([makeSummary({ id: 5, status: "in_progress" })])
     await mountProvider()
-    expect(h.listAll).toHaveBeenCalledTimes(1) // initial mount fetch
+    expect(screen.getByTestId("statuses")).toHaveTextContent("5:in_progress")
+    h.listAll.mockResolvedValue([makeSummary({ id: 5, status: "cancelled" })])
     await act(async () => {
       h.reconnect?.()
     })
-    expect(h.listAll).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId("statuses")).toHaveTextContent("5:cancelled")
+    expect(screen.getByTestId("statuses")).not.toHaveTextContent("in_progress")
   })
 
   it("disposes the subscription and reconnect handler on unmount", async () => {
