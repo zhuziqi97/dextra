@@ -58,13 +58,33 @@ pub trait ScopedMcpServers: Send + Sync {
 }
 
 #[derive(Clone)]
-pub enum AdditionalMcpServers {
+enum McpServerSource {
     Static(Vec<sacp::schema::McpServer>),
     Scoped(Arc<dyn ScopedMcpServers>),
 }
 
+#[derive(Clone)]
+pub struct AdditionalMcpServers {
+    source: McpServerSource,
+    initial_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
+}
+
+impl AdditionalMcpServers {
+    pub fn scoped(provider: Arc<dyn ScopedMcpServers>) -> Self {
+        Self { source: McpServerSource::Scoped(provider), initial_selection: None }
+    }
+
+    /// 只携带适配层已解析的选择；manager 不查询或判断 Binding。
+    pub fn with_selection(mut self, selection: crate::cerebro::session_binding::CerebroSelection) -> Self {
+        self.initial_selection = Some(selection);
+        self
+    }
+}
+
 impl From<Vec<sacp::schema::McpServer>> for AdditionalMcpServers {
-    fn from(servers: Vec<sacp::schema::McpServer>) -> Self { Self::Static(servers) }
+    fn from(servers: Vec<sacp::schema::McpServer>) -> Self {
+        Self { source: McpServerSource::Static(servers), initial_selection: None }
+    }
 }
 
 /// True for ids in the parsers' turn-id namespace (`turn-<digits>`), which every
@@ -544,9 +564,10 @@ impl ConnectionManager {
         }
 
         let connection_id = uuid::Uuid::new_v4().to_string();
-        let additional_mcp_servers = match additional_mcp_servers.into() {
-            AdditionalMcpServers::Static(servers) => servers,
-            AdditionalMcpServers::Scoped(provider) => provider.prepare(&connection_id).await?,
+        let config = additional_mcp_servers.into();
+        let additional_mcp_servers = match config.source {
+            McpServerSource::Static(servers) => servers,
+            McpServerSource::Scoped(provider) => provider.prepare(&connection_id).await?,
         };
         tracing::info!(
             "[ACP] spawning connection id={} owner_window={} agent={:?}",
@@ -582,6 +603,11 @@ impl ConnectionManager {
                 return Err(error);
             }
         };
+
+        // 在释放同会话启动锁前固定选择，重用连接的调用方不能抢先写入另一作用域。
+        if let Some((state, _)) = self.get_state_and_emitter(&connection_id).await {
+            state.write().await.cerebro_selection = config.initial_selection;
+        }
 
         // When dedup is active, hold the lock until the agent's
         // SessionStarted has applied (so external_id is populated for the
@@ -1133,6 +1159,13 @@ impl ConnectionManager {
                             ));
                         }
                     };
+
+                    let selection = task_state.read().await.cerebro_selection.clone();
+                    if let Some(selection) = selection {
+                        crate::cerebro::session_binding::save_conversation_selection(
+                            &db_conn, linked_conversation_id, &selection,
+                        ).await.map_err(|error| AcpError::protocol(error.to_string()))?;
+                    }
 
                     // UI new-conversation path: SessionStarted applied
                     // state.external_id back during acp_connect, but
@@ -1973,6 +2006,7 @@ impl ConnectionManager {
                     // Inheriting (not forcing) keeps an auto-titled sibling
                     // eligible for later backfills.
                     let title_locked = current.title_locked;
+                    let cerebro_selection = current.cerebro_selection.clone();
                     // The sibling keeps the original's sidebar routing (a forked
                     // chat conversation must stay in the Chat group). `Delegate`
                     // is unreachable here — children are never forked from the
@@ -2058,6 +2092,7 @@ impl ConnectionManager {
                         deleted_at: Set(None),
                         pinned_at: Set(None),
                         origin_cwd: Set(None),
+                        cerebro_selection: Set(cerebro_selection),
                     };
                     let inserted = sibling.insert(txn).await?;
                     Ok(inserted.id)
@@ -5745,6 +5780,7 @@ mod tests {
             let mut s = state.write().await;
             s.external_id = Some("ext-1".into());
             s.status = ConnectionStatus::Connected;
+            s.cerebro_selection = Some(crate::cerebro::session_binding::CerebroSelection::Local);
         }
 
         // Same session_id + same agent + same working_dir -> reuse.
@@ -5752,6 +5788,19 @@ mod tests {
             .find_connection_for_reuse(AgentType::ClaudeCode, Some(&working_dir), Some("ext-1"))
             .await;
         assert_eq!(found.as_deref(), Some(existing_id));
+
+        // 实际启动入口复用存活连接，不能把后来请求的模块选择写入旧连接。
+        let reused = mgr.spawn_agent_with_additional_mcp_servers(
+            AgentType::ClaudeCode, Some(working_dir.to_string_lossy().into_owned()),
+            Some("ext-1".into()), BTreeMap::new(), "test".into(),
+            EventEmitter::test_web_only(broadcaster.clone()), None, BTreeMap::new(),
+            AdditionalMcpServers::from(Vec::new()).with_selection(
+                crate::cerebro::session_binding::CerebroSelection::Binding { binding_id: "different".into() },
+            ),
+        ).await.unwrap();
+        assert_eq!(reused, existing_id);
+        assert_eq!(mgr.get_state(existing_id).await.unwrap().read().await.cerebro_selection,
+            Some(crate::cerebro::session_binding::CerebroSelection::Local));
 
         // Different session_id -> no reuse.
         assert!(mgr

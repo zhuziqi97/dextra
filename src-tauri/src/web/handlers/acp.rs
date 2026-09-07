@@ -72,47 +72,21 @@ pub struct AcpConnectParams {
     pub preferred_mode_id: Option<String>,
     #[serde(default)]
     pub preferred_config_values: Option<BTreeMap<String, String>>,
+    pub conversation_id: Option<i32>,
+    pub cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
 }
 
 pub async fn acp_connect(
     Extension(state): Extension<Arc<AppState>>,
     Json(params): Json<AcpConnectParams>,
 ) -> Result<Json<String>, AppCommandError> {
-    let db = &state.db;
-    let manager = &state.connection_manager;
-
-    let runtime_env = acp_commands::build_session_runtime_env(
-        db,
-        params.agent_type,
-        params.session_id.as_deref(),
-        &state.data_dir,
-    )
-    .await
-    .map_err(|e| AppCommandError::task_execution_failed(e.to_string()))?;
-
-    // Guard: the session page must never trigger a download or install.
-    // If the agent isn't ready, return SdkNotInstalled here so the frontend
-    // can prompt the user to install it from Agent Settings.
-    acp_commands::verify_agent_installed(params.agent_type)
-        .await
-        .map_err(|e| AppCommandError::task_execution_failed(e.to_string()))?;
-
-    let emitter = state.emitter.clone();
-    let connection_id = manager
-        .spawn_agent(
-            params.agent_type,
-            params.working_dir,
-            params.session_id,
-            runtime_env,
-            "web".to_string(),
-            emitter,
-            params.preferred_mode_id,
-            params.preferred_config_values.unwrap_or_default(),
-        )
-        .await
-        .map_err(|e| AppCommandError::task_execution_failed(e.to_string()))?;
-
-    Ok(Json(connection_id))
+    acp_commands::acp_connect_core(
+        &state.db, &state.connection_manager, &state.data_dir,
+        state.emitter.clone(), "web".to_string(), params.agent_type,
+        params.working_dir, params.session_id, params.preferred_mode_id,
+        params.preferred_config_values.unwrap_or_default(),
+        params.conversation_id, params.cerebro_selection,
+    ).await.map(Json)
 }
 
 #[derive(Deserialize)]

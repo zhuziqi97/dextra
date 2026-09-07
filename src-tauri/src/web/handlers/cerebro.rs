@@ -9,6 +9,21 @@ use crate::commands::cerebro as commands;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct FolderBindingParams {
+    pub folder_id: i32,
+    pub conversation_id: Option<i32>,
+    pub work_task_id: Option<i32>,
+}
+
+pub async fn query_launch_binding(
+    axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>,
+    Json(params): Json<FolderBindingParams>,
+) -> Result<Json<crate::cerebro::session_binding::CerebroLaunchBinding>, AppCommandError> {
+    commands::cerebro_query_launch_binding_core(&state.db, params.folder_id, params.conversation_id, params.work_task_id).await.map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StartPairingParams {
     pub cerebro_base_url: String,
 }

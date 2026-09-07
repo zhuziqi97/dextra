@@ -621,6 +621,7 @@ pub fn build_router(
             "/cerebro_get_auth_state",
             post(handlers::cerebro::get_auth_state),
         )
+        .route("/cerebro_query_launch_binding", post(handlers::cerebro::query_launch_binding))
         .route(
             "/cerebro_start_pairing",
             post(handlers::cerebro::start_pairing),

@@ -84,7 +84,7 @@ pub struct CerebroMcpPrincipal {
 }
 
 /// 本地会话的唯一模块绑定；不可用原因不等同于没有绑定。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 pub struct CerebroTargetBinding {
     pub binding_id: String,
     pub module_path: String,

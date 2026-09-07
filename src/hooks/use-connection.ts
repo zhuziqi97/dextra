@@ -1,4 +1,5 @@
 "use client"
+import type { CerebroSelection } from "@/lib/generated/cerebro/CerebroSelection"
 
 import { useCallback, useMemo, useRef, useSyncExternalStore } from "react"
 import {
@@ -98,7 +99,8 @@ export interface UseConnectionReturn {
     agentType: AgentType,
     workingDir?: string,
     sessionId?: string,
-    conversationId?: number
+    conversationId?: number,
+    cerebroSelection?: CerebroSelection
   ) => Promise<void>
   disconnect: () => Promise<void>
   /** Restart the session (disconnect + resume same sessionId) so it picks up
@@ -244,14 +246,16 @@ export function useConnection(contextKey: string): UseConnectionReturn {
       agentType: AgentType,
       workingDir?: string,
       sessionId?: string,
-      conversationId?: number
+      conversationId?: number,
+      cerebroSelection?: CerebroSelection
     ) =>
       actions.connect(
         contextKey,
         agentType,
         workingDir,
         sessionId,
-        conversationId
+        conversationId,
+        cerebroSelection
       ),
     [actions, contextKey]
   )

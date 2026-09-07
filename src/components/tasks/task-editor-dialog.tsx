@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { CerebroBindingSelect } from "@/components/shared/cerebro-binding-select"
+import type { CerebroSelection } from "@/lib/generated/cerebro/CerebroSelection"
 import { useTranslations } from "next-intl"
 import { BookmarkPlus, LayoutTemplate, Trash2 } from "lucide-react"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
@@ -139,6 +141,12 @@ function TaskEditorBody({
   )
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [cerebroSelection, setCerebroSelection] = useState<CerebroSelection>()
+  const [cerebroReady, setCerebroReady] = useState(false)
+  const onCerebroChange = useCallback((selection: CerebroSelection | undefined, ready: boolean) => {
+    setCerebroSelection(selection)
+    setCerebroReady(ready)
+  }, [])
 
   // Saved blueprints (global). Applying one reseeds the composer via a key
   // bump — RichComposer only reads defaultText on mount.
@@ -251,6 +259,7 @@ function TaskEditorBody({
     // A brief that is only a screenshot is still a brief.
     if (!displayText && !hasAttachments) return setError(t("errorPrompt"))
     if (folderId == null) return setError(t("errorFolder"))
+    if (!cerebroReady) return setError("请先完成 Cerebro 模块选择，或明确选择纯本地")
     // An unsettled upload has no server-side uri yet, so the stored block would
     // carry nothing for the launch to hydrate from.
     if (composerRef.current?.hasUploadingImage()) {
@@ -262,7 +271,7 @@ function TaskEditorBody({
       const draft: WorkTaskDraft = {
         folder_id: folderId,
         title: title.trim(),
-        config: await buildConfig(),
+        config: { ...await buildConfig(), cerebro_selection: cerebroSelection },
       }
       await onSubmit(draft)
     } catch (e) {
@@ -440,6 +449,8 @@ function TaskEditorBody({
             />
           </div>
         </div>
+
+        <CerebroBindingSelect folderId={folderId} workTaskId={task?.id} onChange={onCerebroChange} disabled={saving} />
 
         {error ? (
           <p className="text-sm text-destructive" role="alert">

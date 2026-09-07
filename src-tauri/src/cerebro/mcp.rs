@@ -107,7 +107,7 @@ fn launch(
             ),
         ));
     }
-    Ok(AdditionalMcpServers::Scoped(Arc::new(CerebroLaunch {
+    Ok(AdditionalMcpServers::scoped(Arc::new(CerebroLaunch {
         tokens,
         socket_path,
         binary,
@@ -128,6 +128,20 @@ pub async fn server_for_binding(
             session_id: session_id.to_string(),
         },
     )
+}
+
+pub async fn server_for_selection(
+    manager: &ConnectionManager,
+    selection: &super::session_binding::CerebroSelection,
+    session_id: &str,
+) -> Result<AdditionalMcpServers, AppCommandError> {
+    let servers = match selection {
+        super::session_binding::CerebroSelection::Local => Ok(Vec::new().into()),
+        super::session_binding::CerebroSelection::Binding { binding_id } => {
+            server_for_binding(manager, binding_id, session_id).await
+        }
+    }?;
+    Ok(servers.with_selection(selection.clone()))
 }
 
 pub async fn server_for_task(

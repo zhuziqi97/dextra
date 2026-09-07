@@ -986,7 +986,7 @@ impl TaskEngine {
         // folder default agent. Audited via a config_effective event (values
         // are inherited live, never frozen).
         let cfg: WorkTaskConfig =
-            serde_json::from_str(&task.config).unwrap_or_default();
+            serde_json::from_str(&task.config).map_err(|error| format!("任务配置无法读取：{error}"))?;
         let settings = work_task_service::settings_get_effective(&self.db.conn, task.folder_id)
             .await
             .unwrap_or_default();
@@ -1107,7 +1107,16 @@ impl TaskEngine {
             Some(platform_task_id) => crate::cerebro::mcp::server_for_task(&self.manager, platform_task_id)
                 .await
                 .map_err(|error| error.to_string())?,
-            None => Vec::new().into(),
+            None => {
+                let selected = cfg.cerebro_selection.as_ref()
+                    .ok_or_else(|| "任务尚未保存模块选择，请编辑任务选择 Cerebro 模块或纯本地".to_string())?;
+                let selection = crate::cerebro::session_binding::resolve_folder_selection(
+                    &self.db.conn, task.folder_id, Some(selected),
+                ).await.map_err(|error| error.to_string())?;
+                crate::cerebro::mcp::server_for_selection(
+                    &self.manager, &selection, &format!("work-task:{}:{}", task.id, run_seq),
+                ).await.map_err(|error| error.to_string())?
+            },
         };
 
         // Cancel gate before spawning the CLI.
@@ -1201,6 +1210,13 @@ impl TaskEngine {
             }
             id
         };
+        if cerebro_task_id.is_none() {
+            if let Some(selection) = cfg.cerebro_selection.as_ref() {
+                crate::cerebro::session_binding::save_conversation_selection(
+                    &self.db.conn, conversation_id, selection,
+                ).await.map_err(|error| error.to_string())?;
+            }
+        }
         emit_conversation_upsert(&self.emitter, &self.db.conn, conversation_id).await;
 
         let mut blocks =

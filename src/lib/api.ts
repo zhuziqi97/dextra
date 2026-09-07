@@ -7,6 +7,8 @@ import {
   notifyRemoteDesktopUnauthorized,
 } from "./transport"
 import { getCodegToken } from "./transport/web-auth"
+import type { CerebroLaunchBinding } from "./generated/cerebro/CerebroLaunchBinding"
+import type { CerebroSelection } from "./generated/cerebro/CerebroSelection"
 import { notifyWebUnauthorized } from "./transport/web-connection-store"
 import { getCurrentEffectiveAppLocale } from "./i18n"
 import {
@@ -243,12 +245,26 @@ export async function refreshCerebroAccessToken(): Promise<CerebroRunnerAccess> 
 
 // ACP commands
 
+export async function queryCerebroLaunchBinding(
+  folderId: number,
+  conversationId?: number,
+  workTaskId?: number
+): Promise<CerebroLaunchBinding> {
+  return getTransport().call("cerebro_query_launch_binding", {
+    folderId,
+    conversationId: conversationId ?? null,
+    workTaskId: workTaskId ?? null,
+  })
+}
+
 export async function acpConnect(
   agentType: AgentType,
   workingDir?: string,
   sessionId?: string,
   preferredModeId?: string | null,
-  preferredConfigValues?: Record<string, string> | null
+  preferredConfigValues?: Record<string, string> | null,
+  conversationId?: number,
+  cerebroSelection?: CerebroSelection
 ): Promise<string> {
   return getTransport().call("acp_connect", {
     agentType,
@@ -256,6 +272,8 @@ export async function acpConnect(
     sessionId: sessionId ?? null,
     preferredModeId: preferredModeId ?? null,
     preferredConfigValues: preferredConfigValues ?? null,
+    conversationId: conversationId ?? null,
+    cerebroSelection: cerebroSelection ?? null,
   })
 }
 

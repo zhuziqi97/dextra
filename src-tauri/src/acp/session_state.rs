@@ -258,6 +258,9 @@ pub struct SessionState {
     pub owner_window_label: String,
     pub folder_id: Option<i32>,
 
+    /// 新连接固定的模块选择；首次关联 conversation 时持久化，不随 UI 改变。
+    pub cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
+
     // 状态
     pub status: ConnectionStatus,
     pub live_message: Option<LiveMessage>,
@@ -557,6 +560,7 @@ impl SessionState {
             working_dir,
             owner_window_label,
             folder_id,
+            cerebro_selection: None,
             status: ConnectionStatus::Connecting,
             live_message: None,
             active_tool_calls: BTreeMap::new(),

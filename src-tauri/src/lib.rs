@@ -1214,6 +1214,7 @@ mod tauri_app {
                 project_boot::install_hyperframes_skills,
                 project_boot::create_hyperframes_project,
                 cerebro_commands::cerebro_get_auth_state,
+                cerebro_commands::cerebro_query_launch_binding,
                 cerebro_commands::cerebro_start_pairing,
                 cerebro_commands::cerebro_poll_pairing,
                 cerebro_commands::cerebro_cancel_pairing,

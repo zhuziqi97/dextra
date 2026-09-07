@@ -1376,6 +1376,7 @@ export type WorkTaskStatus =
  *  agent/mode/config fields are per-task overrides; empty = inherit the
  *  folder's task settings at launch. */
 export interface WorkTaskConfig {
+  cerebro_selection?: import("./generated/cerebro/CerebroSelection").CerebroSelection | null
   prompt_blocks: PromptInputBlock[]
   display_text: string
   agent_type?: AgentType | null

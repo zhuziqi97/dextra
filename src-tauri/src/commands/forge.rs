@@ -914,6 +914,7 @@ pub async fn work_task_create_from_forge_core(
             .map_err(|e| AppCommandError::invalid_input(e.to_string()))?,
     ];
     let config = WorkTaskConfig {
+        cerebro_selection: None,
         prompt_blocks: blocks,
         display_text: instruction,
         agent_type: draft
@@ -950,6 +951,13 @@ pub async fn work_task_create_from_forge_core(
             .map_err(|e| AppCommandError::invalid_input(e.to_string()))?,
     };
 
+    // 已存在的任务不需要再次执行首次创建的模块准入；事务内去重仍处理并发首次创建。
+    if !draft.force {
+        if let Some(existing) = work_task_service::other_active_with_same_source(&db.conn, 0, &source_row.key).await? {
+            return Ok(ForgeCreateResult::Duplicate { existing: work_task_service::to_info(existing) });
+        }
+    }
+    let task_draft = crate::cerebro::session_binding::prepare_work_task_draft(&db.conn, task_draft).await?;
     match work_task_service::create_from_forge(&db.conn, task_draft, source_row, draft.force)
         .await?
     {

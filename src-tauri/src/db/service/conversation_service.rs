@@ -120,6 +120,7 @@ async fn create_inner(
         deleted_at: Set(None),
         pinned_at: Set(None),
         origin_cwd: Set(None),
+        cerebro_selection: Set(None),
     };
     Ok(model.insert(conn).await?)
 }
@@ -901,6 +902,7 @@ struct CarriedOverRow {
     created_at: chrono::DateTime<Utc>,
     updated_at: chrono::DateTime<Utc>,
     origin_cwd: Option<String>,
+    cerebro_selection: Option<String>,
 }
 
 impl CarriedOverRow {
@@ -939,6 +941,7 @@ impl CarriedOverRow {
             // `origin_cwd ?? folder.path`, so dropping this would break
             // history lookup for a re-parented conversation.
             origin_cwd: row.origin_cwd.clone(),
+            cerebro_selection: row.cerebro_selection.clone(),
         }
     }
 
@@ -968,6 +971,7 @@ impl CarriedOverRow {
             // not to the history.
             pinned_at: Set(None),
             origin_cwd: Set(self.origin_cwd),
+            cerebro_selection: Set(self.cerebro_selection),
         }
     }
 }
