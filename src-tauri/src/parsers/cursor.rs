@@ -912,16 +912,21 @@ fn decode_user_text_with_policy(conn: &Connection, msg: &[u8], strict: bool) -> 
         return Ok(text);
     }
     if let Some(id) = wire::first_bytes(msg, 18) {
-        if let Some(blob) = read_blob_for_recovery(conn, &id, strict)? {
-            match String::from_utf8(blob) {
+        match read_blob_for_recovery(conn, &id, strict)? {
+            Some(blob) => match String::from_utf8(blob) {
                 Ok(s) => {
-                if !s.is_empty() {
-                    return Ok(Some(s));
-                }
+                    if !s.is_empty() {
+                        return Ok(Some(s));
+                    }
                 }
                 Err(error) if strict => return Err(ParseError::InvalidData(error.to_string())),
                 Err(_) => {}
-            }
+            },
+            // 长正文引用丢失不能当作空 prompt，否则用户 turn 消失会改变恢复边界。
+            None if strict => return Err(ParseError::InvalidData(format!(
+                "Cursor 用户正文 blob {} 不存在", hex_encode(&id)
+            ))),
+            None => {}
         }
     }
     Ok(wire::first_str(msg, 8).filter(|s| !s.is_empty()))
@@ -1972,6 +1977,21 @@ mod tests {
         assert_eq!(super::read_blob_result(&conn, &[1]).unwrap(), None);
         conn.execute("INSERT INTO blobs VALUES (?1, ?2)", rusqlite::params!["01", b"stored message".as_slice()]).unwrap();
         assert_eq!(super::read_blob_result(&conn, &[1]).unwrap().as_deref(), Some(b"stored message".as_slice()));
+    }
+
+    #[test]
+    fn recovery_long_prompt_keeps_missing_blob_diagnostic() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut message = Vec::new();
+        field_bytes(18, &[1], &mut message);
+        assert!(matches!(decode_user_text_with_policy(&conn, &message, true), Err(ParseError::Db(_))));
+        conn.execute_batch("CREATE TABLE blobs (id TEXT, data BLOB);").unwrap();
+        assert!(decode_user_text_with_policy(&conn, &message, true).unwrap_err()
+            .to_string().contains("用户正文 blob 01 不存在"));
+        assert_eq!(decode_user_text(&conn, &message), None);
+        conn.execute("INSERT INTO blobs VALUES (?1, ?2)",
+            rusqlite::params!["01", "本轮长正文".as_bytes()]).unwrap();
+        assert_eq!(decode_user_text_with_policy(&conn, &message, true).unwrap().as_deref(), Some("本轮长正文"));
     }
 
     #[test]
