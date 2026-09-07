@@ -140,8 +140,9 @@ impl PiParser {
         &self,
         path: &Path,
         conversation_id: &str,
+        strict: bool,
     ) -> Result<ConversationDetail, ParseError> {
-        let parsed = parse_session(path);
+        let parsed = parse_session_with_policy(path, strict)?;
 
         let mut turns = group_into_turns(parsed.messages);
         relocate_orphaned_tool_results(&mut turns);
@@ -215,11 +216,24 @@ impl AgentParser for PiParser {
     }
 
     fn get_conversation(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, false)
+    }
+}
+
+impl PiParser {
+    /// 恢复时保留文件和正文解析失败，不能把失败压成空历史。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(id, true)
+    }
+
+    fn read_conversation(&self, conversation_id: &str, strict: bool) -> Result<ConversationDetail, ParseError> {
         if self.base_dir.exists() {
-            for entry in WalkDir::new(&self.base_dir)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
+            for entry in WalkDir::new(&self.base_dir) {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) if strict => return Err(ParseError::InvalidData(error.to_string())),
+                    Err(_) => continue,
+                };
                 let path = entry.path();
                 if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                     continue;
@@ -227,7 +241,7 @@ impl AgentParser for PiParser {
                 // Match by the header `id` (the stable external id); fall back to
                 // the filename uuid when a malformed file has no header.
                 if session_id_of(path).as_deref() == Some(conversation_id) {
-                    return self.parse_detail(path, conversation_id);
+                    return self.parse_detail(path, conversation_id, strict);
                 }
             }
         }
@@ -265,18 +279,31 @@ struct SessionParse {
 /// `UnifiedMessage`s plus session metadata. Unknown / malformed lines are
 /// skipped so a forward-compatible or partially-written log never panics.
 fn parse_session(path: &Path) -> SessionParse {
+    parse_session_with_policy(path, false).expect("宽松读取保留可解析历史")
+}
+
+fn parse_session_with_policy(path: &Path, strict: bool) -> Result<SessionParse, ParseError> {
     let mut sp = SessionParse::default();
-    let Ok(file) = fs::File::open(path) else {
-        return sp;
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if strict => return Err(ParseError::Io(error)),
+        Err(_) => return Ok(sp),
     };
 
     for (idx, line) in BufReader::new(file).lines().enumerate() {
-        let Ok(line) = line else { continue };
+        let line = match line {
+            Ok(line) => line,
+            Err(error) if strict => return Err(ParseError::Io(error)),
+            Err(_) => continue,
+        };
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
-            continue;
+        let value = match serde_json::from_str::<Value>(&line) {
+            Ok(value) => value,
+            Err(error) if strict => return Err(ParseError::InvalidData(format!(
+                "{}:{}: {error}", path.display(), idx + 1))),
+            Err(_) => continue,
         };
 
         let record_type = value.get("type").and_then(Value::as_str).unwrap_or("");
@@ -332,7 +359,7 @@ fn parse_session(path: &Path) -> SessionParse {
         }
     }
 
-    sp
+    Ok(sp)
 }
 
 /// Parse a `message` record (nested `message` object keyed by `role`).
@@ -788,6 +815,17 @@ fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_read_reports_corrupt_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("recovery-session.jsonl");
+        std::fs::write(&path, "{\"type\":\"session\",\"id\":\"recovery-session\"}\n{broken\n").unwrap();
+        let parser = super::PiParser::with_base_dir(dir.path().into());
+        let error = parser.get_conversation_for_recovery("recovery-session").unwrap_err();
+        assert!(error.to_string().contains("recovery-session.jsonl:2:"));
+        assert!(matches!(super::parse_session_with_policy(&dir.path().join("missing"), true),
+            Err(crate::parsers::ParseError::Io(_))));
+    }
     use super::*;
     use serde_json::json;
     use std::io::Write;

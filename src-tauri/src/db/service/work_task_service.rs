@@ -677,6 +677,7 @@ async fn insert_todo_row<C: ConnectionTrait>(
         failure_reason: Set(None),
         last_error: Set(None),
         run_seq: Set(0),
+        execution_start: Set(None),
         sort_order: Set(max_order + 1),
         worktree_folder_id: Set(None),
         conversation_id: Set(None),
@@ -892,8 +893,9 @@ async fn claim_inner(
         )
         .col_expr(work_task::Column::FailureReason, Expr::value(None::<String>))
         .col_expr(work_task::Column::LastError, Expr::value(None::<String>))
-        // A fresh generation invalidates the previous run's self-reported
-        // verdict (result_summary stays visible until the next settle).
+        // 新执行轮次不能将上一轮摘要投影为当前输出。
+        .col_expr(work_task::Column::ResultSummary, Expr::value(None::<String>))
+        .col_expr(work_task::Column::ExecutionStart, Expr::value(None::<String>))
         .col_expr(work_task::Column::Verdict, Expr::value(None::<String>))
         // A user-driven claim supersedes any auto-remerge intent and stale
         // preflight light, resurrects an archived terminal task, and consumes
@@ -1475,6 +1477,27 @@ pub async fn mark_merging_live(
     Ok(res.rows_affected == 1)
 }
 
+/// 在发送 prompt 前保存本轮边界；旧连接不得为新一轮写入起点。
+pub async fn save_execution_start(
+    conn: &DatabaseConnection,
+    id: i32,
+    connection_id: &str,
+    start: &crate::work_task::execution_output::ExecutionStart,
+) -> Result<bool, DbError> {
+    let payload = serde_json::to_string(start)
+        .map_err(|error| DbError::Validation(error.to_string()))?;
+    let result = work_task::Entity::update_many()
+        .col_expr(work_task::Column::ExecutionStart, Expr::value(Some(payload)))
+        .filter(work_task::Column::Id.eq(id))
+        .filter(work_task::Column::RunSeq.eq(start.run_seq))
+        .filter(work_task::Column::ConversationId.eq(start.conversation_id))
+        .filter(work_task::Column::ConnectionId.eq(connection_id))
+        .filter(work_task::Column::Status.is_in([WorkTaskStatus::Running, WorkTaskStatus::AwaitingInput]))
+        .filter(work_task::Column::DeletedAt.is_null())
+        .exec(conn).await?;
+    Ok(result.rows_affected == 1)
+}
+
 /// `from` (any of) → failed with a reason. `run_seq: Some(n)` guards
 /// engine-driven failures against stale generations; `None` is used by the
 /// boot/reconcile sweeps that own the whole DB.
@@ -1485,6 +1508,7 @@ pub async fn fail(
     run_seq: Option<i32>,
     reason: &str,
     error: Option<String>,
+    partial: Option<String>,
 ) -> Result<bool, DbError> {
     let now = Utc::now();
     let txn = conn.begin().await?;
@@ -1498,6 +1522,7 @@ pub async fn fail(
             Expr::value(Some(reason.to_string())),
         )
         .col_expr(work_task::Column::LastError, Expr::value(error.clone()))
+        .col_expr(work_task::Column::ResultSummary, Expr::value(partial))
         .col_expr(work_task::Column::ConnectionId, Expr::value(None::<String>))
         // Any failure abandons a pending auto-remerge — the user restarts the
         // cycle explicitly.
@@ -1537,6 +1562,7 @@ pub async fn cancel_running_generation(
     conn: &DatabaseConnection,
     id: i32,
     run_seq: i32,
+    output: Option<CapturedExecutionOutput>,
 ) -> Result<bool, DbError> {
     Ok(cancel_matching_with_context(
         conn,
@@ -1545,6 +1571,7 @@ pub async fn cancel_running_generation(
         Some(run_seq),
         "engine",
         None,
+        output,
     )
     .await?
     .is_some())
@@ -2379,7 +2406,16 @@ pub async fn cancel(
     id: i32,
     reason: Option<&str>,
 ) -> Result<bool, DbError> {
-    Ok(cancel_with_context(conn, id, reason).await?.is_some())
+    Ok(cancel_with_context(conn, id, reason, None).await?.is_some())
+}
+
+/// 连接退休前捕获的本轮输出，只能写入同一执行代次。
+#[derive(Debug, Clone)]
+pub struct CapturedExecutionOutput {
+    pub run_seq: i32,
+    pub connection_id: String,
+    pub partial: Option<String>,
+    pub error: Option<String>,
 }
 
 /// 一次已提交取消所冻结的执行坐标；后续清理只能使用这些坐标。
@@ -2397,6 +2433,7 @@ pub(crate) async fn cancel_with_context(
     conn: &DatabaseConnection,
     id: i32,
     reason: Option<&str>,
+    output: Option<CapturedExecutionOutput>,
 ) -> Result<Option<CanceledExecutionContext>, DbError> {
     cancel_matching_with_context(
         conn,
@@ -2413,6 +2450,7 @@ pub(crate) async fn cancel_with_context(
         None,
         "user",
         reason,
+        output,
     )
     .await
 }
@@ -2424,9 +2462,10 @@ async fn cancel_matching_with_context(
     run_seq: Option<i32>,
     actor: &str,
     reason: Option<&str>,
+    output: Option<CapturedExecutionOutput>,
 ) -> Result<Option<CanceledExecutionContext>, DbError> {
     let txn = conn.begin().await?;
-    let context = cancel_in_transaction(&txn, id, expected, run_seq, actor, reason).await?;
+    let context = cancel_in_transaction(&txn, id, expected, run_seq, actor, reason, output).await?;
     if context.is_none() {
         txn.rollback().await?;
         return Ok(None);
@@ -2446,6 +2485,7 @@ pub(crate) async fn cancel_in_transaction<C: ConnectionTrait>(
     run_seq: Option<i32>,
     actor: &str,
     reason: Option<&str>,
+    output: Option<CapturedExecutionOutput>,
 ) -> Result<Option<CanceledExecutionContext>, DbError> {
     let now = Utc::now();
     let mut claim = work_task::Entity::update_many()
@@ -2473,7 +2513,21 @@ pub(crate) async fn cancel_in_transaction<C: ConnectionTrait>(
         conversation_id: row.conversation_id,
         connection_id: row.connection_id.clone(),
     };
+    let running = matches!(row.status, WorkTaskStatus::Running | WorkTaskStatus::AwaitingInput);
+    let output = output.filter(|output| {
+        output.run_seq == row.run_seq
+            && row.connection_id.as_deref() == Some(output.connection_id.as_str())
+    });
     let mut active = row.into_active_model();
+    if running {
+        // 已结算的 final 不受取消投影影响；运行中缺少输出则明确保存空值。
+        let (partial, error) = output.map(|output| (output.partial, output.error))
+            .unwrap_or((None, None));
+        active.result_summary = Set(partial);
+        if let Some(error) = error {
+            active.last_error = Set(Some(error));
+        }
+    }
     active.status = Set(WorkTaskStatus::Canceled);
     active.connection_id = Set(None);
     // 取消会放弃尚未执行的自动 remerge，后续 requeue 不能重放旧 intent。
@@ -2610,6 +2664,10 @@ pub async fn boot_reconcile_interrupted(conn: &DatabaseConnection) -> Result<u64
     .await?;
     let mut n = 0;
     for t in active {
+        let (partial, error) = match crate::work_task::execution_output::recover_partial(conn, &t).await {
+            Ok(partial) => (partial, "interrupted by restart".to_string()),
+            Err(error) => (None, format!("interrupted by restart: {error}")),
+        };
         if fail(
             conn,
             t.id,
@@ -2619,9 +2677,10 @@ pub async fn boot_reconcile_interrupted(conn: &DatabaseConnection) -> Result<u64
                 WorkTaskStatus::Running,
                 WorkTaskStatus::AwaitingInput,
             ],
-            None,
+            Some(t.run_seq),
             "interrupted",
-            Some("interrupted by restart".to_string()),
+            Some(error),
+            partial,
         )
         .await?
         {
@@ -3236,6 +3295,7 @@ mod tests {
             &[WorkTaskStatus::Running],
             Some(seq),
             "agent_error",
+            None,
             None
         )
         .await
@@ -3252,6 +3312,30 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(seq2, seq + 1);
+    }
+
+    #[tokio::test]
+    async fn execution_start_is_owned_by_the_current_run_and_cleared_on_retry() {
+        use crate::work_task::execution_output::ExecutionStart;
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, "/tmp/wt-execution-start").await;
+        let task = create(&db.conn, draft(folder_id, "边界保存")).await.unwrap();
+        let seq = claim_for_run(&db.conn, task.id, WorkTaskStatus::Todo, "user")
+            .await.unwrap().unwrap();
+        assert!(start_running(&db.conn, task.id, seq, 1, "conn-start").await.unwrap());
+        let start = ExecutionStart {
+            run_seq: seq, conversation_id: 1, external_session_id: "session".into(),
+            after_turn_id: Some("persisted-message".into()),
+        };
+        assert!(!save_execution_start(&db.conn, task.id, "old-connection", &start).await.unwrap());
+        assert!(save_execution_start(&db.conn, task.id, "conn-start", &start).await.unwrap());
+        let saved = get_model(&db.conn, task.id).await.unwrap().execution_start.unwrap();
+        assert_eq!(serde_json::from_str::<ExecutionStart>(&saved).unwrap(), start);
+        assert!(fail(&db.conn, task.id, &[WorkTaskStatus::Running], Some(seq),
+            "interrupted", Some("进程退出".into()), None).await.unwrap());
+        claim_for_run(&db.conn, task.id, WorkTaskStatus::Failed, "user").await.unwrap().unwrap();
+        assert_eq!(get_model(&db.conn, task.id).await.unwrap().execution_start, None);
+        assert!(!save_execution_start(&db.conn, task.id, "conn-start", &start).await.unwrap());
     }
 
     /// The reason the user gave when stopping a task rides the `canceled`
@@ -4159,6 +4243,12 @@ mod tests {
             .unwrap();
         start_running(&db.conn, running.id, seq, 1, "c").await.unwrap();
 
+        // 无法解析的恢复坐标必须留下诊断，不能冒充无输出。
+        work_task::Entity::update_many()
+            .col_expr(work_task::Column::ExecutionStart, Expr::value(Some("{broken".to_string())))
+            .filter(work_task::Column::Id.eq(running.id))
+            .exec(&db.conn).await.unwrap();
+
         let merging = create(&db.conn, draft(folder_id, "m")).await.unwrap();
         let seq = claim_for_run(&db.conn, merging.id, WorkTaskStatus::Todo, "user")
             .await
@@ -4191,6 +4281,11 @@ mod tests {
         let q = get(&db.conn, queued.id).await.unwrap();
         assert_eq!(q.status, WorkTaskStatus::Failed);
         assert_eq!(q.failure_reason.as_deref(), Some("interrupted"));
+        assert!(q.last_error.as_deref().unwrap().contains("缺少可定位的执行起点"));
+        assert_eq!(q.result_summary, None);
+        let r = get(&db.conn, running.id).await.unwrap();
+        assert!(r.last_error.as_deref().unwrap().contains("执行起点解析失败"));
+        assert_eq!(r.result_summary, None);
         // The interrupted queued task retries idempotently: failed → queued.
         assert!(claim_for_run(&db.conn, queued.id, WorkTaskStatus::Failed, "user")
             .await
@@ -4400,6 +4495,7 @@ mod tests {
             &[WorkTaskStatus::Running],
             Some(seq),
             "agent_error",
+            None,
             None
         )
         .await

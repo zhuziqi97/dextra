@@ -100,15 +100,30 @@ impl AgentParser for AcpNativeParser {
     }
 
     fn get_conversation(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, false)
+    }
+}
+
+impl AcpNativeParser {
+    /// 恢复沿同一续接链读取，但不能跳过损坏的文件或消息。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(id, true)
+    }
+
+    fn read_conversation(&self, conversation_id: &str, strict: bool) -> Result<ConversationDetail, ParseError> {
         let dir = self.agent_dir();
         // Reads the whole continuation chain: when the agent had forgotten the
         // session and codeg started a fresh one, the earlier turns still live
         // under the previous session id.
-        let transcript = acp_transcript::read_chain_in(&self.root, dir, conversation_id);
+        let transcript = if strict {
+            acp_transcript::read_chain_for_recovery_in(&self.root, dir, conversation_id)?
+        } else {
+            acp_transcript::read_chain_in(&self.root, dir, conversation_id)
+        };
         if transcript.header.is_none() && transcript.is_empty() {
             return Err(ParseError::ConversationNotFound(conversation_id.to_string()));
         }
-        let turns = project_turns(&transcript.entries);
+        let turns = project_turns_with_policy(&transcript.entries, strict)?;
         let (used, size) = latest_context_window(&transcript.entries);
         let session_stats = crate::parsers::merge_context_window_stats(
             session_stats(&turns),
@@ -357,6 +372,10 @@ fn latest_context_window(entries: &[TranscriptEntry]) -> (Option<u64>, Option<u6
 
 /// Project recorded transcript entries into turns.
 pub fn project_turns(entries: &[TranscriptEntry]) -> Vec<MessageTurn> {
+    project_turns_with_policy(entries, false).expect("宽松投影跳过无法解析的消息")
+}
+
+fn project_turns_with_policy(entries: &[TranscriptEntry], strict: bool) -> Result<Vec<MessageTurn>, ParseError> {
     let mut turns: Vec<MessageTurn> = Vec::new();
     let mut pending: Option<PendingTurn> = None;
     // True between a recorded outgoing prompt and the first agent output: the
@@ -373,6 +392,11 @@ pub fn project_turns(entries: &[TranscriptEntry]) -> Vec<MessageTurn> {
     for entry in entries {
         match entry.k {
             EntryKind::Prompt => {
+                // 恢复必须识别真实的 prompt 解析失败，不能把损坏内容投影成空消息。
+                if strict {
+                    Vec::<sacp::schema::ContentBlock>::deserialize(&entry.p)
+                        .map_err(ParseError::Json)?;
+                }
                 flush(&mut pending, &mut turns, &mut seq);
                 let blocks = prompt_blocks(&entry.p);
                 turns.push(MessageTurn {
@@ -403,13 +427,17 @@ pub fn project_turns(entries: &[TranscriptEntry]) -> Vec<MessageTurn> {
                 // runs once per recorded chunk, and a long conversation records
                 // tens of thousands, so cloning each payload only to drop it a
                 // line later was a measurable share of the whole read.
-                let Ok(update) = SessionUpdate::deserialize(&entry.p) else {
+                let update = match SessionUpdate::deserialize(&entry.p) {
+                    Ok(update) => update,
+                    Err(error) if strict => return Err(ParseError::Json(error)),
+                    Err(_) => {
                     // A transcript written by a newer schema than this build
                     // understands. The raw line stays on disk (it is the ACP
                     // wire format, not an internal type), so a later build can
                     // still read it; skipping is the honest degradation.
                     tracing::debug!("[acp-native] skipping unparsable session update");
                     continue;
+                    }
                 };
                 apply_update(
                     update,
@@ -424,7 +452,7 @@ pub fn project_turns(entries: &[TranscriptEntry]) -> Vec<MessageTurn> {
         }
     }
     flush(&mut pending, &mut turns, &mut seq);
-    turns
+    Ok(turns)
 }
 
 fn flush(pending: &mut Option<PendingTurn>, turns: &mut Vec<MessageTurn>, seq: &mut usize) {
@@ -842,6 +870,28 @@ mod tests {
             "sessionUpdate": kind,
             "content": { "type": "text", "text": text }
         })
+    }
+
+    #[test]
+    fn recovery_reports_malformed_prompt_instead_of_empty_history() {
+        for payload in [
+            serde_json::json!({"text": "不是 prompt 数组"}),
+            serde_json::json!([{"type": "text", "text": 42}]),
+        ] {
+            let entries = vec![entry(1000, EntryKind::Prompt, payload)];
+            assert!(matches!(
+                project_turns_with_policy(&entries, true),
+                Err(ParseError::Json(_))
+            ));
+            // 普通历史展示仍保留原有宽松读取策略。
+            assert_eq!(project_turns(&entries).len(), 1);
+        }
+        let entries = vec![
+            prompt(1000, "继续"),
+            update(1010, text_chunk("agent_message_chunk", "本轮内容")),
+        ];
+        let turns = project_turns_with_policy(&entries, true).unwrap();
+        assert!(matches!(&turns[1].blocks[0], ContentBlock::Text { text } if text == "本轮内容"));
     }
 
     #[test]

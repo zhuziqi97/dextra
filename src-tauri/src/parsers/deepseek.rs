@@ -214,6 +214,31 @@ impl DeepSeekParser {
     fn build_detail(&self, session_dir: &Path, conversation_id: &str) -> ConversationDetail {
         let parsed =
             parse_session_log(session_dir, Some(&self.attachments_root)).unwrap_or_default();
+        self.detail_from_parsed(parsed, conversation_id)
+    }
+
+    /// 恢复时只在压缩文件确实不存在时读取明文文件，解压失败不能降级。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        let mut found = None;
+        for bucket in fs::read_dir(&self.base_dir)? {
+            let candidate = bucket?.path().join(id);
+            if candidate.is_dir() { found = Some(candidate); break; }
+        }
+        let dir = found.ok_or_else(|| ParseError::ConversationNotFound(id.into()))?;
+        let text = match fs::read(dir.join("session.jsonl.zstd")) {
+            Ok(bytes) => {
+                let decoded = zstd::stream::decode_all(bytes.as_slice())?;
+                String::from_utf8(decoded).map_err(|error| ParseError::InvalidData(error.to_string()))?
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound =>
+                fs::read_to_string(dir.join("session.jsonl"))?,
+            Err(error) => return Err(ParseError::Io(error)),
+        };
+        let parsed = parse_session_events_with_policy(&text, Some(&self.attachments_root), true)?;
+        Ok(self.detail_from_parsed(parsed, id))
+    }
+
+    fn detail_from_parsed(&self, parsed: SessionParse, conversation_id: &str) -> ConversationDetail {
 
         let mut turns = parsed.turns;
         relocate_orphaned_tool_results(&mut turns);
@@ -611,6 +636,10 @@ fn compaction_id(data: &Value) -> Option<String> {
 }
 
 fn parse_session_events(text: &str, attachments: Option<&Path>) -> SessionParse {
+    parse_session_events_with_policy(text, attachments, false).expect("宽松读取跳过损坏记录")
+}
+
+fn parse_session_events_with_policy(text: &str, attachments: Option<&Path>, strict: bool) -> Result<SessionParse, ParseError> {
     let mut sp = SessionParse::default();
 
     // The open assistant turn for the CURRENT log turn: index into `sp.turns`,
@@ -624,13 +653,15 @@ fn parse_session_events(text: &str, attachments: Option<&Path>) -> SessionParse 
     // nothing in the log format promises the brackets never interleave.
     let mut open_compactions: HashMap<String, OpenCompaction> = HashMap::new();
 
-    for line in text.lines() {
+    for (index, line) in text.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
-            continue;
+        let value = match serde_json::from_str::<Value>(line) {
+            Ok(value) => value,
+            Err(error) if strict => return Err(ParseError::InvalidData(format!("日志第 {} 行: {error}", index + 1))),
+            Err(_) => continue,
         };
         let event_type = value.get("type").and_then(Value::as_str).unwrap_or("");
         // Raw stream chunks duplicate `assistant/message` content (and the
@@ -1037,7 +1068,7 @@ fn parse_session_events(text: &str, attachments: Option<&Path>) -> SessionParse 
         None,
         turn_started_at,
     );
-    sp
+    Ok(sp)
 }
 
 /// The open assistant turn for the current log turn, created on first use.
@@ -1119,6 +1150,20 @@ fn read_subdirs(dir: &Path) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_does_not_hide_corrupt_compressed_log_with_plaintext_fallback() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("project").join("session");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("session.jsonl"), "\n").unwrap();
+        let parser = super::DeepSeekParser::with_base_dir(root.path().into());
+        assert!(parser.get_conversation_for_recovery("session").is_ok());
+        std::fs::write(dir.join("session.jsonl.zstd"), b"broken compressed log").unwrap();
+        assert!(matches!(parser.get_conversation_for_recovery("session"), Err(crate::parsers::ParseError::Io(_))));
+        let compressed = zstd::stream::encode_all("{broken\n".as_bytes(), 1).unwrap();
+        std::fs::write(dir.join("session.jsonl.zstd"), compressed).unwrap();
+        assert!(parser.get_conversation_for_recovery("session").unwrap_err().to_string().contains("日志第 1 行"));
+    }
     use super::*;
     use serde_json::json;
 

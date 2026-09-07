@@ -965,8 +965,12 @@ pub fn read_transcript_in(root: &Path, agent_dir: &str, session_id: &str) -> Tra
 /// Parse transcript file content. Split out so tests (and the reader) share one
 /// definition of "what a valid line is".
 pub fn parse_transcript(content: &str) -> Transcript {
+    parse_transcript_with_policy(content, false).expect("宽松读取跳过无法解析的行")
+}
+
+fn parse_transcript_with_policy(content: &str, strict: bool) -> Result<Transcript, std::io::Error> {
     let mut out = Transcript::default();
-    for line in content.lines() {
+    for (index, line) in content.lines().enumerate() {
         let line = line.trim();
         if line.is_empty() {
             continue;
@@ -978,11 +982,15 @@ pub fn parse_transcript(content: &str) -> Transcript {
                 continue;
             }
         }
-        if let Ok(entry) = serde_json::from_str::<TranscriptEntry>(line) {
-            out.entries.push(entry);
+        match serde_json::from_str::<TranscriptEntry>(line) {
+            Ok(entry) => out.entries.push(entry),
+            Err(error) if strict => return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData, format!("第 {} 行: {error}", index + 1)
+            )),
+            Err(_) => {}
         }
     }
-    out
+    Ok(out)
 }
 
 /// A header line, or `None` when this line is something else. The one
@@ -1116,22 +1124,48 @@ pub const MAX_CONTINUATION_DEPTH: usize = 512;
 /// conversation's real start time and working directory, which is what callers
 /// summarize from. Cycles and over-long chains stop the walk instead of hanging.
 pub fn read_chain_in(root: &Path, agent_dir: &str, session_id: &str) -> Transcript {
+    read_chain_with_policy(root, agent_dir, session_id, false)
+        .expect("宽松读取保留已读历史")
+}
+
+/// 恢复必须保留缺失文件、损坏记录与续接链不完整的诊断。
+pub fn read_chain_for_recovery_in(
+    root: &Path, agent_dir: &str, session_id: &str,
+) -> Result<Transcript, std::io::Error> {
+    read_chain_with_policy(root, agent_dir, session_id, true)
+}
+
+fn read_chain_with_policy(
+    root: &Path, agent_dir: &str, session_id: &str, strict: bool,
+) -> Result<Transcript, std::io::Error> {
     let mut chain: Vec<Transcript> = Vec::new();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     let mut cursor = Some(session_id.to_string());
 
     while let Some(id) = cursor.take() {
         if !visited.insert(id.clone()) {
+            if strict { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+                format!("transcript 续接链循环: {id}"))); }
             tracing::debug!("[acp-transcript] continuation cycle at {id}; stopping walk");
             break;
         }
         if chain.len() >= MAX_CONTINUATION_DEPTH {
+            if strict { return Err(std::io::Error::new(std::io::ErrorKind::InvalidData,
+                "transcript 续接链超过读取上限")); }
             tracing::debug!(
                 "[acp-transcript] continuation chain exceeded {MAX_CONTINUATION_DEPTH}; truncating"
             );
             break;
         }
-        let transcript = read_transcript_in(root, agent_dir, &id);
+        let transcript = if strict {
+            let path = transcript_path_in(root, agent_dir, &id).ok_or_else(||
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "transcript 路径不可用"))?;
+            let content = std::fs::read_to_string(&path)?;
+            parse_transcript_with_policy(&content, true).map_err(|error|
+                std::io::Error::new(error.kind(), format!("{}: {error}", path.display())))?
+        } else {
+            read_transcript_in(root, agent_dir, &id)
+        };
         cursor = transcript
             .header
             .as_ref()
@@ -1148,7 +1182,7 @@ pub fn read_chain_in(root: &Path, agent_dir: &str, session_id: &str) -> Transcri
         }
         merged.entries.append(&mut transcript.entries);
     }
-    merged
+    Ok(merged)
 }
 
 /// The session ids `session_id` continues, transitively — newest first.
@@ -1251,6 +1285,28 @@ pub fn remove_agent_transcripts_in(root: &Path, agent_dir: &str) -> std::io::Res
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_chain_keeps_missing_and_corrupt_file_diagnostics() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let agent = "recovery-agent";
+        std::fs::create_dir(root.join(agent)).unwrap();
+        let header = super::TranscriptHeader::new(agent, "new", "/tmp/project", 1)
+            .continuing("old");
+        let path = root.join(agent).join("new.jsonl");
+        std::fs::write(&path, format!("{}\n", serde_json::to_string(&header).unwrap())).unwrap();
+        assert_eq!(super::read_chain_for_recovery_in(root, agent, "new").unwrap_err().kind(),
+            std::io::ErrorKind::NotFound);
+        let old = super::TranscriptHeader::new(agent, "old", "/tmp/project", 0);
+        std::fs::write(root.join(agent).join("old.jsonl"),
+            format!("{}\n", serde_json::to_string(&old).unwrap())).unwrap();
+        assert!(super::read_chain_for_recovery_in(root, agent, "new").is_ok());
+        std::fs::write(&path, format!("{}\n{{broken\n", serde_json::to_string(&header).unwrap())).unwrap();
+        let error = super::read_chain_for_recovery_in(root, agent, "new").unwrap_err();
+        assert!(error.to_string().contains("new.jsonl"));
+        assert!(error.to_string().contains("第 2 行"));
+        assert!(super::read_chain_in(root, agent, "new").header.is_some());
+    }
     use super::*;
     // The write-behind tests assert against the reader, since "does merging
     // change what the user sees" is the only question that matters about it.

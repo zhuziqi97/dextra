@@ -150,6 +150,7 @@ impl CodeBuddyParser {
         &self,
         path: &Path,
         conversation_id: &str,
+        strict: bool,
     ) -> Result<ConversationDetail, ParseError> {
         let reader = BufReader::new(fs::File::open(path)?);
 
@@ -171,12 +172,18 @@ impl CodeBuddyParser {
             std::collections::HashSet::new();
 
         for (idx, line) in reader.lines().enumerate() {
-            let Ok(line) = line else { continue };
+            let line = match line {
+                Ok(line) => line,
+                Err(error) if strict => return Err(ParseError::Io(error)),
+                Err(_) => continue,
+            };
             if line.trim().is_empty() {
                 continue;
             }
-            let Ok(value) = serde_json::from_str::<Value>(&line) else {
-                continue;
+            let value = match serde_json::from_str::<Value>(&line) {
+                Ok(value) => value,
+                Err(error) if strict => return Err(ParseError::InvalidData(format!("{}:{}: {error}", path.display(), idx + 1))),
+                Err(_) => continue,
             };
 
             let record_type = value.get("type").and_then(|t| t.as_str()).unwrap_or("");
@@ -408,11 +415,24 @@ impl AgentParser for CodeBuddyParser {
     }
 
     fn get_conversation(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, false)
+    }
+}
+
+impl CodeBuddyParser {
+    /// 恢复沿用正文解释，但不吞掉已持久化记录的读取失败。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(id, true)
+    }
+
+    fn read_conversation(&self, conversation_id: &str, strict: bool) -> Result<ConversationDetail, ParseError> {
         if self.base_dir.exists() {
-            for entry in WalkDir::new(&self.base_dir)
-                .into_iter()
-                .filter_map(|e| e.ok())
-            {
+            for entry in WalkDir::new(&self.base_dir) {
+                let entry = match entry {
+                    Ok(entry) => entry,
+                    Err(error) if strict => return Err(ParseError::InvalidData(error.to_string())),
+                    Err(_) => continue,
+                };
                 let path = entry.path();
                 if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                     continue;
@@ -424,7 +444,7 @@ impl AgentParser for CodeBuddyParser {
                 }
                 if path.file_stem().map(|s| s.to_string_lossy()).as_deref() == Some(conversation_id)
                 {
-                    return self.parse_detail(path, conversation_id);
+                    return self.parse_detail(path, conversation_id, strict);
                 }
             }
         }
@@ -996,6 +1016,15 @@ fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_preserves_corrupt_record_diagnostics() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("recovery-session.jsonl");
+        std::fs::write(&path, "{broken\n").unwrap();
+        let parser = super::CodeBuddyParser::with_base_dir(root.path().into());
+        let error = parser.get_conversation_for_recovery("recovery-session").unwrap_err();
+        assert!(error.to_string().contains("recovery-session.jsonl:1:"));
+    }
     use super::*;
     use crate::models::TurnRole;
     use serde_json::json;

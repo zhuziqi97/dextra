@@ -107,18 +107,23 @@ impl GeminiParser {
     }
 
     fn parse_jsonl_chat_value(raw: &str) -> Option<Value> {
+        Self::decode_jsonl_chat_value(raw).ok()
+    }
+
+    fn decode_jsonl_chat_value(raw: &str) -> Result<Value, ParseError> {
         let mut root = Map::new();
         let mut messages = Vec::new();
         let mut message_index_by_id: HashMap<String, usize> = HashMap::new();
         let mut saw_json_line = false;
 
-        for line in raw.lines() {
+        for (index, line) in raw.lines().enumerate() {
             let trimmed = line.trim();
             if trimmed.is_empty() {
                 continue;
             }
 
-            let value: Value = serde_json::from_str(trimmed).ok()?;
+            let value: Value = serde_json::from_str(trimmed)
+                .map_err(|error| ParseError::InvalidData(format!("JSONL 第 {} 行: {error}", index + 1)))?;
             let Some(object) = value.as_object() else {
                 continue;
             };
@@ -151,11 +156,47 @@ impl GeminiParser {
         }
 
         if !saw_json_line {
-            return None;
+            return Err(ParseError::InvalidData("会话日志没有 JSON 记录".into()));
         }
 
         root.insert("messages".to_string(), Value::Array(messages));
-        Some(Value::Object(root))
+        Ok(Value::Object(root))
+    }
+
+    /// 恢复读取复用现有消息投影，但不把损坏的持久化日志当作空历史。
+    pub fn get_conversation_for_recovery(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        for dir in [self.tmp_dir(), self.history_dir()] {
+            if !dir.exists() {
+                continue;
+            }
+            for entry in WalkDir::new(dir) {
+                let entry = entry.map_err(|error| ParseError::InvalidData(error.to_string()))?;
+                let path = entry.path();
+                if !entry.file_type().is_file() || !Self::is_chat_file(path) {
+                    continue;
+                }
+                let raw = fs::read_to_string(path)?;
+                if !raw.contains(conversation_id) {
+                    continue;
+                }
+                let value: Value = if path.extension().and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("jsonl")) {
+                    Self::decode_jsonl_chat_value(&raw)
+                        .map_err(|error| ParseError::InvalidData(format!("{}: {error}", path.display())))?
+                } else {
+                    serde_json::from_str(&raw)
+                        .map_err(|error| ParseError::InvalidData(format!("{}: {error}", path.display())))?
+                };
+                if value.get("sessionId").and_then(Value::as_str) != Some(conversation_id) {
+                    continue;
+                }
+                if !value.get("messages").is_some_and(Value::is_array) {
+                    return Err(ParseError::InvalidData(format!("{}: messages 不是数组", path.display())));
+                }
+                return self.parse_conversation_detail(path, &value, conversation_id);
+            }
+        }
+        Err(ParseError::ConversationNotFound(conversation_id.into()))
     }
 
     fn list_chat_files(&self) -> Vec<PathBuf> {
@@ -882,6 +923,28 @@ mod tests {
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn recovery_reads_persisted_output_and_reports_corrupt_log() {
+        let root = tempfile::tempdir().unwrap();
+        let chats = root.path().join("tmp/project/chats");
+        fs::create_dir_all(&chats).unwrap();
+        let path = chats.join("session-recovery.jsonl");
+        let content = concat!(
+            "{\"sessionId\":\"recovery\",\"startTime\":\"2026-09-07T00:00:00Z\"}\n",
+            "{\"type\":\"user\",\"id\":\"u1\",\"content\":\"继续\"}\n",
+            "{\"type\":\"gemini\",\"id\":\"a1\",\"content\":\"本轮输出\"}\n"
+        );
+        fs::write(&path, content).unwrap();
+        let parser = GeminiParser::with_base_dir(root.path().into());
+        let detail = parser.get_conversation_for_recovery("recovery").unwrap();
+        assert!(detail.turns.iter().flat_map(|turn| &turn.blocks).any(|block|
+            matches!(block, ContentBlock::Text { text } if text == "本轮输出")));
+        fs::write(&path, format!("{content}{{broken\n")).unwrap();
+        let error = parser.get_conversation_for_recovery("recovery").unwrap_err().to_string();
+        assert!(error.contains("session-recovery.jsonl"));
+        assert!(error.contains("第 4 行"));
+    }
 
     #[test]
     fn parses_gemini_session_detail_from_chat_json() {

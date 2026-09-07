@@ -67,6 +67,9 @@ pub struct Model {
     /// (start / retry / return). Events match on (connection_id, run_seq);
     /// anything stale is dropped.
     pub run_seq: i32,
+    /// 当前执行轮次发送前的持久化消息边界，JSON ExecutionStart。
+    #[sea_orm(column_type = "Text")]
+    pub execution_start: Option<String>,
     pub sort_order: i32,
     pub worktree_folder_id: Option<i32>,
     pub conversation_id: Option<i32>,

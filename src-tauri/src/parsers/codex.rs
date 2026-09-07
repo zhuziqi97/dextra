@@ -469,6 +469,24 @@ impl AgentParser for CodexParser {
     }
 
     fn get_conversation(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, false)
+    }
+}
+
+impl CodexParser {
+    /// 恢复必须区别文件损坏与没有输出，不能沿用实时 UI 的残缺行跳过策略。
+    pub fn get_conversation_for_recovery(
+        &self,
+        conversation_id: &str,
+    ) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, true)
+    }
+
+    fn read_conversation(
+        &self,
+        conversation_id: &str,
+        strict: bool,
+    ) -> Result<ConversationDetail, ParseError> {
         if !self.base_dir.exists() {
             return Err(ParseError::ConversationNotFound(
                 conversation_id.to_string(),
@@ -476,17 +494,19 @@ impl AgentParser for CodexParser {
         }
 
         // Find the conversation file by walking the directory tree
-        for entry in WalkDir::new(&self.base_dir)
-            .into_iter()
-            .filter_map(|e| e.ok())
-        {
+        for entry in WalkDir::new(&self.base_dir) {
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) if strict => return Err(ParseError::InvalidData(error.to_string())),
+                Err(_) => continue,
+            };
             let path = entry.path().to_path_buf();
             if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
             }
             let fname = path.file_name().unwrap_or_default().to_string_lossy();
             if fname.contains(conversation_id) {
-                let mut detail = self.parse_conversation_detail(&path, conversation_id)?;
+                let mut detail = self.parse_conversation_detail_with_policy(&path, conversation_id, strict)?;
                 if let Some(title) = self.load_thread_name_index().get(conversation_id) {
                     detail.summary.title = Some(title.clone());
                 }
@@ -2195,10 +2215,20 @@ fn parse_codex_subagent_stats(
 }
 
 impl CodexParser {
+    #[cfg(test)]
     fn parse_conversation_detail(
         &self,
         path: &PathBuf,
         conversation_id: &str,
+    ) -> Result<ConversationDetail, ParseError> {
+        self.parse_conversation_detail_with_policy(path, conversation_id, false)
+    }
+
+    fn parse_conversation_detail_with_policy(
+        &self,
+        path: &PathBuf,
+        conversation_id: &str,
+        strict: bool,
     ) -> Result<ConversationDetail, ParseError> {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
@@ -2362,9 +2392,10 @@ impl CodexParser {
         // than an ordinal comparison.
         let mut title_from_thread_name = false;
 
-        for line in reader.lines() {
+        for (line_index, line) in reader.lines().enumerate() {
             let line = match line {
                 Ok(l) => l,
+                Err(error) if strict => return Err(ParseError::Io(error)),
                 Err(_) => continue,
             };
             if line.trim().is_empty() {
@@ -2373,6 +2404,9 @@ impl CodexParser {
 
             let value: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
+                Err(error) if strict => return Err(ParseError::InvalidData(format!(
+                    "{}:{}: {error}", path.display(), line_index + 1
+                ))),
                 Err(_) => continue,
             };
 
@@ -4877,6 +4911,40 @@ fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn recovery_read_preserves_parse_errors_and_locates_repeated_prompt_output() {
+        use crate::work_task::execution_output::ExecutionStart;
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rollout-recovery-session.jsonl");
+        let records = [
+            serde_json::json!({"type":"session_meta", "timestamp":"2026-09-07T01:00:00Z", "payload":{"id":"recovery-session", "cwd":"/tmp/project"}}),
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:00:01Z", "payload":{"type":"user_message", "message":"继续"}}),
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:00:02Z", "payload":{"type":"agent_message", "message":"上一轮输出"}}),
+        ];
+        let mut file = std::fs::File::create(&path).unwrap();
+        for record in records { writeln!(file, "{record}").unwrap(); }
+        file.flush().unwrap();
+        let parser = CodexParser::with_base_dir(dir.path().into());
+        let previous = parser.get_conversation_for_recovery("recovery-session").unwrap();
+        let start = ExecutionStart {
+            run_seq: 2, conversation_id: 1, external_session_id: "recovery-session".into(),
+            after_turn_id: Some(previous.turns.last().unwrap().id.clone()),
+        };
+        for record in [
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:01:01Z", "payload":{"type":"user_message", "message":"继续"}}),
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:01:02Z", "payload":{"type":"agent_message", "message":"本轮持久化输出"}}),
+        ] { writeln!(file, "{record}").unwrap(); }
+        file.flush().unwrap();
+        let current = parser.get_conversation_for_recovery("recovery-session").unwrap();
+        assert_eq!(start.partial_from_turns(&current.turns).unwrap().as_deref(), Some("本轮持久化输出"));
+        writeln!(file, "{{broken-json").unwrap();
+        file.flush().unwrap();
+        let error = parser.get_conversation_for_recovery("recovery-session").unwrap_err();
+        assert!(error.to_string().contains("rollout-recovery-session.jsonl:6:"));
+        assert!(parser.get_conversation("recovery-session").is_ok(), "实时 UI 保留既有残缺行读取行为");
+    }
 
     use std::collections::HashMap;
 

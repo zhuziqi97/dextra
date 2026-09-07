@@ -178,6 +178,18 @@ impl QoderParser {
             .find(|entry| entry.file_name().to_str() == Some(expected.as_str()))
             .map(|entry| entry.into_path())
     }
+
+    /// 恢复保留目录读取和 JSONL 解析错误，复用同一条消息分支投影。
+    pub fn get_conversation_for_recovery(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        let expected = format!("{conversation_id}.jsonl");
+        for entry in WalkDir::new(&self.base_dir).max_depth(2) {
+            let entry = entry.map_err(|error| ParseError::InvalidData(error.to_string()))?;
+            if entry.file_name().to_str() == Some(expected.as_str()) {
+                return parse_detail_with_policy(entry.path(), conversation_id, true);
+            }
+        }
+        Err(ParseError::ConversationNotFound(conversation_id.into()))
+    }
 }
 
 impl Default for QoderParser {
@@ -481,7 +493,10 @@ fn load_records(bytes: &[u8]) -> Vec<Value> {
 }
 
 fn parse_transcript(bytes: &[u8]) -> Transcript {
-    let records = load_records(bytes);
+    parse_records(load_records(bytes))
+}
+
+fn parse_records(records: Vec<Value>) -> Transcript {
 
     let mut session_id = None;
     let mut cwd = None;
@@ -844,6 +859,10 @@ fn parse_summary(path: &Path) -> Option<ConversationSummary> {
 }
 
 fn parse_detail(path: &Path, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+    parse_detail_with_policy(path, conversation_id, false)
+}
+
+fn parse_detail_with_policy(path: &Path, conversation_id: &str, strict: bool) -> Result<ConversationDetail, ParseError> {
     // Read the file fully up front so `transcript_watermark` is EXACTLY the
     // byte length this parse consumed — see the same contract in
     // `parsers::claude`. An over-claiming watermark (e.g. from a stat around the
@@ -851,7 +870,19 @@ fn parse_detail(path: &Path, conversation_id: &str) -> Result<ConversationDetail
     // content this detail does not include.
     let bytes = fs::read(path)?;
     let transcript_watermark = bytes.len() as u64;
-    let transcript = parse_transcript(&bytes);
+    let transcript = if strict {
+        let mut records = Vec::new();
+        for (index, line) in bytes.split(|byte| *byte == b'\n').enumerate() {
+            if line.iter().all(u8::is_ascii_whitespace) {
+                continue;
+            }
+            records.push(serde_json::from_slice::<Value>(line)
+                .map_err(|error| ParseError::InvalidData(format!("{}:{}: {error}", path.display(), index + 1)))?);
+        }
+        parse_records(records)
+    } else {
+        parse_transcript(&bytes)
+    };
 
     let message_count = transcript.message_count();
     let folder_name = transcript.folder_name();
@@ -983,6 +1014,21 @@ mod tests {
             s.ended_at.as_ref().map(|t| t.to_rfc3339()),
             Some("2026-08-16T15:45:34+00:00".to_string())
         );
+    }
+
+    #[test]
+    fn recovery_preserves_persisted_text_and_rejects_corrupt_line() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = write_session(tmp.path(), "recovery", &[RUNTIME_CONFIG, USER_LINE, ANSWER_LINE]);
+        let parser = parser_in(tmp.path());
+        let detail = parser.get_conversation_for_recovery("recovery").unwrap();
+        assert!(detail.turns.iter().any(|turn| matches!(turn.role, crate::models::TurnRole::Assistant)
+            && turn.blocks.iter().any(|block| matches!(block, crate::models::ContentBlock::Text { text } if !text.is_empty()))));
+        use std::io::Write;
+        writeln!(fs::OpenOptions::new().append(true).open(&path).unwrap(), "{{broken").unwrap();
+        let error = parser.get_conversation_for_recovery("recovery").unwrap_err().to_string();
+        assert!(error.contains("recovery.jsonl:4:"));
+        assert!(parser.get_conversation("recovery").is_ok());
     }
 
     #[test]

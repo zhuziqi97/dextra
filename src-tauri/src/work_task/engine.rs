@@ -689,10 +689,12 @@ impl TaskEngine {
         task_id: i32,
         reason: Option<String>,
     ) -> Result<(), String> {
+        let output = self.capture_task_output(task_id).await.map_err(|e| e.to_string())?;
         let context = work_task_service::cancel_with_context(
             &self.db.conn,
             task_id,
             reason.as_deref(),
+            output,
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -929,6 +931,7 @@ impl TaskEngine {
                         Some(seq),
                         "setup_error",
                         Some(e),
+                        None,
                     )
                     .await
                     .unwrap_or(false);
@@ -1210,17 +1213,28 @@ impl TaskEngine {
             }
             id
         };
-        if cerebro_task_id.is_none() {
-            if let Some(selection) = cfg.cerebro_selection.as_ref() {
-                crate::cerebro::session_binding::save_conversation_selection(
-                    &self.db.conn, conversation_id, selection,
-                ).await.map_err(|error| error.to_string())?;
+        let prepared = async {
+            if cerebro_task_id.is_none() {
+                if let Some(selection) = cfg.cerebro_selection.as_ref() {
+                    crate::cerebro::session_binding::save_conversation_selection(
+                        &self.db.conn, conversation_id, selection,
+                    ).await.map_err(|error| error.to_string())?;
+                }
             }
-        }
+            compose_prompt(&cfg, &task, &mode, &settings, resumed, &self.db.conn).await
+        }.await;
+        let mut blocks = match prepared {
+            Ok(blocks) => blocks,
+            Err(error) => {
+                // Agent 已创建，准备失败也必须撤销连接及其 scoped Bridge。
+                let _ = self.manager.disconnect(&conn_id).await;
+                if !resumed {
+                    self.cancel_conversation(conversation_id).await;
+                }
+                return Err(error);
+            }
+        };
         emit_conversation_upsert(&self.emitter, &self.db.conn, conversation_id).await;
-
-        let mut blocks =
-            compose_prompt(&cfg, &task, &mode, &settings, resumed, &self.db.conn).await?;
         // Re-encode attached images for the agent that actually answered the
         // handshake. A task's blocks are STORED — the composer picked their
         // encoding from a transient probe that may not have landed, possibly
@@ -1245,6 +1259,42 @@ impl TaskEngine {
             }
         }
 
+        // 新会话尚未发过 prompt；恢复会话必须读取真实持久化边界，读取错误不能冒充空历史。
+        let execution_start = if matches!(mode, LaunchMode::Merge { .. }) {
+            None
+        } else {
+            let boundary = async {
+                let external_session_id = self.manager.wait_for_external_session_id(&conn_id)
+                    .await.map_err(|error| error.to_string())?;
+                // 自定义 ACP 的 load 失败会生成新 ID，但 transcript 续接旧历史。
+                // 因此不能仅凭 ID 变化把其执行起点判为空。
+                let after_turn_id = if resumed && (matches!(agent_type, crate::models::AgentType::Custom(_))
+                    || resume_session_id.as_deref() == Some(external_session_id.as_str())) {
+                    let session_id = external_session_id.clone();
+                    tokio::task::spawn_blocking(move || {
+                        super::execution_output::read_recovery_transcript(agent_type, &session_id)
+                            .map(|detail| detail.turns.last().map(|turn| turn.id.clone()))
+                            .map_err(|error| error.to_string())
+                    }).await.map_err(|error| error.to_string())??
+                } else {
+                    None
+                };
+                Ok::<_, String>(super::execution_output::ExecutionStart {
+                    run_seq, conversation_id, external_session_id, after_turn_id,
+                })
+            }.await;
+            match boundary {
+                Ok(start) => Some(start),
+                Err(error) => {
+                    let _ = self.manager.disconnect(&conn_id).await;
+                    if !resumed {
+                        self.cancel_conversation(conversation_id).await;
+                    }
+                    return Err(error);
+                }
+            }
+        };
+
         // Register for completion correlation BEFORE prompting so a fast
         // TurnComplete can't race ahead of the index entry.
         self.index
@@ -1264,7 +1314,7 @@ impl TaskEngine {
                 &conn_id,
             )
             .await
-            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())
         } else {
             work_task_service::mark_running(
                 &self.db.conn,
@@ -1274,17 +1324,40 @@ impl TaskEngine {
                 &conn_id,
             )
             .await
-            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())
         };
-        if !marked {
+        if !matches!(marked, Ok(true)) {
             self.index.lock().await.remove(&conn_id);
             let _ = self.manager.disconnect(&conn_id).await;
             if !resumed {
                 self.cancel_conversation(conversation_id).await;
             }
-            return Ok(());
+            return marked.map(|_| ());
         }
         self.emit_upsert(task_id);
+
+        if let Some(start) = execution_start {
+            match work_task_service::save_execution_start(&self.db.conn, task_id, &conn_id, &start).await {
+                Ok(true) => {},
+                outcome => {
+                    self.index.lock().await.remove(&conn_id);
+                    let _ = self.manager.disconnect(&conn_id).await;
+                    if !resumed {
+                        self.cancel_conversation(conversation_id).await;
+                    }
+                    if let Err(error) = outcome {
+                        let message = error.to_string();
+                        work_task_service::fail(
+                            &self.db.conn, task_id, &[WorkTaskStatus::Running], Some(run_seq),
+                            "setup_error", Some(message.clone()), None,
+                        ).await.map_err(|error| error.to_string())?;
+                        self.emit_upsert(task_id);
+                        return Err(message);
+                    }
+                    return Ok(());
+                }
+            }
+        }
 
         let prompt_head = prompt_head(&blocks);
         match self
@@ -1319,10 +1392,28 @@ impl TaskEngine {
                 Ok(())
             }
             Err(e) => {
+                // prompt 未成功入队时没有本轮输出，不能继承恢复会话的上一轮正文。
+                // 合并轮次仍按既有 Git 事实恢复；普通执行必须立即保存发送错误。
+                let settlement = if !matches!(mode, LaunchMode::Merge { .. }) {
+                    work_task_service::fail(
+                        &self.db.conn,
+                        task_id,
+                        &[WorkTaskStatus::Running, WorkTaskStatus::AwaitingInput],
+                        Some(run_seq),
+                        "setup_error",
+                        Some(e.to_string()),
+                        None,
+                    ).await.map_err(|error| error.to_string())
+                } else {
+                    Ok(false)
+                };
                 self.index.lock().await.remove(&conn_id);
                 let _ = self.manager.disconnect(&conn_id).await;
                 if !resumed {
                     self.cancel_conversation(conversation_id).await;
+                }
+                if settlement? {
+                    self.emit_upsert(task_id);
                 }
                 Err(e.to_string())
             }
@@ -2201,7 +2292,7 @@ impl TaskEngine {
             return; // not a task run
         };
 
-        let (summary, captured_error) = self.capture_turn_output(conn_id).await;
+        let (summary, partial, captured_error) = self.capture_turn_output(conn_id).await;
         self.retire_connection(conn_id, task_id).await;
         let _ = self.manager.disconnect(conn_id).await;
 
@@ -2248,6 +2339,7 @@ impl TaskEngine {
                         Some(run_seq),
                         "verdict_blocked",
                         Some(error),
+                        partial,
                     )
                     .await
                     .unwrap_or(false)
@@ -2277,7 +2369,17 @@ impl TaskEngine {
                 // A cancelled task generation is a cancellation, not an agent
                 // failure. Keep it generation-scoped: a delayed event must not
                 // cancel a task that already reached review or was requeued.
-                work_task_service::cancel_running_generation(&self.db.conn, task_id, run_seq)
+                work_task_service::cancel_running_generation(
+                    &self.db.conn,
+                    task_id,
+                    run_seq,
+                    Some(work_task_service::CapturedExecutionOutput {
+                        run_seq,
+                        connection_id: conn_id.to_string(),
+                        partial,
+                        error: captured_error.map(|(_, message)| message),
+                    }),
+                )
                     .await
                     .unwrap_or(false)
             }
@@ -2293,6 +2395,7 @@ impl TaskEngine {
                     Some(run_seq),
                     &failure_reason,
                     Some(last_error),
+                    partial,
                 )
                 .await
                 .unwrap_or(false)
@@ -2582,13 +2685,29 @@ impl TaskEngine {
         }
     }
 
-    /// 在连接退休前取得本轮的最终摘要与最新真实错误。
+    /// 普通取消与平台取消在事务前捕获输出，事务内按执行坐标决定是否写入。
+    pub(crate) async fn capture_task_output(
+        &self,
+        task_id: i32,
+    ) -> Result<Option<work_task_service::CapturedExecutionOutput>, crate::db::error::DbError> {
+        let task = work_task_service::get_model(&self.db.conn, task_id).await?;
+        let Some(connection_id) = task.connection_id else { return Ok(None); };
+        let (_, partial, error) = self.capture_turn_output(&connection_id).await;
+        Ok(Some(work_task_service::CapturedExecutionOutput {
+            run_seq: task.run_seq,
+            connection_id,
+            partial,
+            error: error.map(|(_, message)| message),
+        }))
+    }
+
+    /// 在连接退休前分别取得最终回答、本轮 partial 与最新真实错误。
     async fn capture_turn_output(
         &self,
         conn_id: &str,
-    ) -> (Option<String>, Option<(String, String)>) {
+    ) -> (Option<String>, Option<String>, Option<(String, String)>) {
         let Some((state, _)) = self.manager.get_state_and_emitter(conn_id).await else {
-            return (None, None);
+            return (None, None, None);
         };
         let state = state.read().await;
         let summary = state
@@ -2604,7 +2723,7 @@ impl TaskEngine {
                 .to_string();
             (code, error.message.clone())
         });
-        (summary, error)
+        (summary, state.current_turn_partial(), error)
     }
 
     // ── accept without merging ─────────────────────────────────────────────
@@ -4854,24 +4973,47 @@ impl TaskEngine {
                     settled
                 }
                 Some(ConversationStatus::Cancelled) => {
+                    // 取消事件已持久化但 worker 消失时，也恢复同一轮输出并保留读取诊断。
+                    let (partial, error) = match super::execution_output::recover_partial(
+                        &self.db.conn, &task,
+                    ).await {
+                        Ok(partial) => (partial, None),
+                        Err(error) => (None, Some(format!("取消后恢复本轮输出失败: {error}"))),
+                    };
                     work_task_service::cancel_running_generation(
                         &self.db.conn,
                         task.id,
                         task.run_seq,
+                        Some(work_task_service::CapturedExecutionOutput {
+                            run_seq: task.run_seq,
+                            connection_id: conn_id.clone(),
+                            partial,
+                            error,
+                        }),
                     )
                     .await
                     .unwrap_or(false)
                 }
-                _ => work_task_service::fail(
-                    &self.db.conn,
-                    task.id,
-                    &[WorkTaskStatus::Running, WorkTaskStatus::AwaitingInput],
-                    Some(task.run_seq),
-                    "interrupted",
-                    Some("task lost its worker".to_string()),
-                )
-                .await
-                .unwrap_or(false),
+                _ => {
+                    // worker 已消失，只读取持久化的本轮内容，不重新启动会话。
+                    let (partial, error) = match super::execution_output::recover_partial(
+                        &self.db.conn, &task,
+                    ).await {
+                        Ok(partial) => (partial, "task lost its worker".to_string()),
+                        Err(error) => (None, format!("task lost its worker: {error}")),
+                    };
+                    work_task_service::fail(
+                        &self.db.conn,
+                        task.id,
+                        &[WorkTaskStatus::Running, WorkTaskStatus::AwaitingInput],
+                        Some(task.run_seq),
+                        "interrupted",
+                        Some(error),
+                        partial,
+                    )
+                    .await
+                    .unwrap_or(false)
+                },
             };
             if changed {
                 self.emit_upsert(task.id);
@@ -6571,6 +6713,7 @@ mod tests {
             failure_reason: None,
             last_error: None,
             run_seq: 1,
+            execution_start: None,
             sort_order: 0,
             worktree_folder_id: None,
             conversation_id: None,
@@ -8036,6 +8179,165 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn cancelled_turn_saves_event_output_before_connection_teardown() {
+        let (engine, task_id) = running_task().await;
+        engine.manager
+            .insert_test_connection(PARENT_CONN, AgentType::Codex, None, EventEmitter::Noop)
+            .await;
+        let state = engine.manager.get_state(PARENT_CONN).await.unwrap();
+        {
+            let mut state = state.write().await;
+            state.apply_event(&AcpEvent::UserMessage {
+                message_id: "cancel-run-prompt".into(),
+                blocks: vec![],
+            });
+            state.apply_event(&AcpEvent::ContentDelta {
+                text: "取消前已输出的内容".into(),
+                parent_tool_use_id: None,
+            });
+            state.apply_event(&AcpEvent::TurnComplete {
+                session_id: "cancel-session".into(),
+                stop_reason: "cancelled".into(),
+                agent_type: "codex".into(),
+            });
+            assert!(state.live_message.is_none());
+        }
+        engine.on_turn_complete(PARENT_CONN, "cancelled").await;
+        let task = work_task_service::get_model(&engine.db.conn, task_id).await.unwrap();
+        assert_eq!(task.status, WorkTaskStatus::Canceled);
+        assert_eq!(task.result_summary.as_deref(), Some("取消前已输出的内容"));
+        assert!(engine.manager.get_state(PARENT_CONN).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn lost_cancelled_worker_recovers_persisted_current_output() {
+        const CHILD: &str = "DEXTRA_CANCEL_RECOVERY_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let root = tempfile::tempdir().unwrap();
+            let result = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "work_task::engine::tests::lost_cancelled_worker_recovers_persisted_current_output", "--nocapture"])
+                .env(CHILD, "1").env("CODEG_HOME", root.path()).output().unwrap();
+            assert!(result.status.success(), "{}\n{}", String::from_utf8_lossy(&result.stdout), String::from_utf8_lossy(&result.stderr));
+            return;
+        }
+        use crate::acp_transcript::{record_entry, record_header, EntryKind, TranscriptHeader};
+        use super::super::execution_output::{ExecutionStart, read_recovery_transcript};
+        let (engine, task_id) = running_task().await;
+        let task = work_task_service::get_model(&engine.db.conn, task_id).await.unwrap();
+        let conversation_id = task.conversation_id.unwrap();
+        let mut conversation = conversation::Entity::find_by_id(conversation_id)
+            .one(&engine.db.conn).await.unwrap().unwrap().into_active_model();
+        let agent = AgentType::custom("cancel-recovery-test").unwrap();
+        conversation.agent_type = Set(agent.as_wire().into_owned());
+        conversation.update(&engine.db.conn).await.unwrap();
+        let directory = "cancel-recovery-test";
+        let session = "cancelled-persisted-session";
+        record_header(directory, &TranscriptHeader::new(&agent.as_wire(), session, "/repo", 1)).await.unwrap();
+        let prompt = serde_json::json!([{"type":"text","text":"继续"}]);
+        record_entry(directory, session, EntryKind::Prompt, prompt.clone()).await.unwrap();
+        record_entry(directory, session, EntryKind::Update, serde_json::json!({
+            "sessionUpdate":"agent_message_chunk", "content":{"type":"text","text":"旧轮次输出"}
+        })).await.unwrap();
+        record_entry(directory, session, EntryKind::TurnEnd, serde_json::json!({"stopReason":"end_turn"})).await.unwrap();
+        let previous = read_recovery_transcript(agent, session).unwrap();
+        let start = ExecutionStart {
+            run_seq: task.run_seq, conversation_id, external_session_id: session.into(),
+            after_turn_id: Some(previous.turns.last().unwrap().id.clone()),
+        };
+        work_task_service::save_execution_start(&engine.db.conn, task_id, PARENT_CONN, &start).await.unwrap();
+        record_entry(directory, session, EntryKind::Prompt, prompt).await.unwrap();
+        record_entry(directory, session, EntryKind::Update, serde_json::json!({
+            "sessionUpdate":"agent_message_chunk", "content":{"type":"text","text":"取消前本轮输出"}
+        })).await.unwrap();
+        engine.cancel_conversation(conversation_id).await;
+        engine.reconcile_once().await;
+        let task = work_task_service::get_model(&engine.db.conn, task_id).await.unwrap();
+        assert_eq!(task.status, WorkTaskStatus::Canceled);
+        assert_eq!(task.result_summary.as_deref(), Some("取消前本轮输出"));
+        assert_eq!(task.last_error, None);
+    }
+
+    #[tokio::test]
+    async fn lost_cancelled_worker_preserves_recovery_diagnostic() {
+        use crate::db::entities::work_task;
+        use sea_orm::{ColumnTrait, QueryFilter};
+
+        for boundary in [None, Some("{broken".to_string())] {
+            let (engine, task_id) = running_task().await;
+            let task = work_task_service::get_model(&engine.db.conn, task_id).await.unwrap();
+            engine.cancel_conversation(task.conversation_id.unwrap()).await;
+            work_task::Entity::update_many()
+                .col_expr(work_task::Column::ExecutionStart, sea_orm::sea_query::Expr::value(boundary.clone()))
+                .filter(work_task::Column::Id.eq(task_id))
+                .exec(&engine.db.conn).await.unwrap();
+
+            engine.reconcile_once().await;
+
+            let task = work_task_service::get_model(&engine.db.conn, task_id).await.unwrap();
+            assert_eq!(task.status, WorkTaskStatus::Canceled);
+            assert_eq!(task.result_summary, None);
+            let expected = if boundary.is_some() { "执行起点解析失败" } else { "缺少可定位的执行起点" };
+            assert!(task.last_error.as_deref().unwrap().contains(expected));
+        }
+    }
+
+    #[tokio::test]
+    async fn lost_worker_preserves_execution_boundary_read_error() {
+        use crate::db::entities::work_task;
+        use sea_orm::{ColumnTrait, QueryFilter};
+
+        let (engine, task_id) = running_task().await;
+        work_task::Entity::update_many()
+            .col_expr(work_task::Column::ExecutionStart, sea_orm::sea_query::Expr::value(Some("{broken".to_string())))
+            .filter(work_task::Column::Id.eq(task_id))
+            .exec(&engine.db.conn).await.unwrap();
+
+        engine.reconcile_once().await;
+
+        let task = work_task_service::get_model(&engine.db.conn, task_id).await.unwrap();
+        assert_eq!(task.status, WorkTaskStatus::Failed);
+        assert_eq!(task.result_summary, None);
+        assert!(task.last_error.as_deref().unwrap().contains("执行起点解析失败"));
+    }
+
+    #[tokio::test]
+    async fn explicit_cancellation_captures_live_output_for_local_and_platform_tasks() {
+        for platform in [false, true] {
+            let (engine, task_id) = running_task().await;
+            engine.manager
+                .insert_test_connection(PARENT_CONN, AgentType::Codex, None, EventEmitter::Noop)
+                .await;
+            let state = engine.manager.get_state(PARENT_CONN).await.unwrap();
+            state.write().await.apply_event(&AcpEvent::ContentDelta {
+                text: "用户取消前的实时输出".into(),
+                parent_tool_use_id: None,
+            });
+            if platform {
+                crate::db::entities::cerebro_task_link::ActiveModel {
+                    platform_task_id: Set("platform-live-partial".into()),
+                    local_work_task_id: Set(task_id),
+                    cancel_command_id: Set(None),
+                    created_at: Set(chrono::Utc::now()),
+                }.insert(&engine.db.conn).await.unwrap();
+                crate::cerebro::cancel_linked_work_task(
+                    &engine, &EventEmitter::Noop, &engine.db.conn,
+                    "platform-live-partial", "cancel-live-partial", Some("用户取消"),
+                ).await.unwrap();
+                let projection = crate::cerebro::reconcile_linked_work_task(
+                    &engine.db.conn, "platform-live-partial",
+                ).await.unwrap();
+                assert_eq!(projection.state, crate::cerebro::LinkedWorkTaskState::Cancelled);
+                assert_eq!(projection.result_summary.as_deref(), Some("用户取消前的实时输出"));
+            } else {
+                engine.cancel(task_id, Some("用户取消".into())).await.unwrap();
+            }
+            let task = work_task_service::get_model(&engine.db.conn, task_id).await.unwrap();
+            assert_eq!(task.status, WorkTaskStatus::Canceled);
+            assert_eq!(task.result_summary.as_deref(), Some("用户取消前的实时输出"));
+        }
+    }
+
+    #[tokio::test]
     async fn failed_turn_preserves_latest_agent_error() {
         let (engine, task_id) = running_task().await;
         engine
@@ -8043,6 +8345,14 @@ mod tests {
             .insert_test_connection(PARENT_CONN, AgentType::Codex, None, EventEmitter::Noop)
             .await;
         let state = engine.manager.get_state(PARENT_CONN).await.unwrap();
+        state.write().await.apply_event(&AcpEvent::UserMessage {
+            message_id: "failed-run-prompt".into(),
+            blocks: vec![crate::acp::UserMessageBlock::Text { text: "执行任务".into() }],
+        });
+        state.write().await.apply_event(&AcpEvent::ContentDelta {
+            text: "已完成目录分析，正在修改文件".into(),
+            parent_tool_use_id: None,
+        });
         for (code, message) in [
             ("initialize_timeout", "首次连接超时"),
             ("process_exited", "Agent 进程退出，最后一次错误"),
@@ -8062,8 +8372,28 @@ mod tests {
         assert_eq!(task.status, WorkTaskStatus::Failed);
         assert_eq!(task.failure_reason.as_deref(), Some("process_exited"));
         assert_eq!(
+            task.result_summary.as_deref(),
+            Some("已完成目录分析，正在修改文件")
+        );
+        assert_eq!(
             task.last_error.as_deref(),
             Some("Agent 进程退出，最后一次错误")
+        );
+        let next_seq = work_task_service::claim_for_run(
+            &engine.db.conn,
+            task_id,
+            WorkTaskStatus::Failed,
+            "user",
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(next_seq, task.run_seq + 1);
+        assert_eq!(
+            work_task_service::get_model(&engine.db.conn, task_id)
+                .await.unwrap().result_summary,
+            None,
+            "新一轮不能继承失败轮次的 partial"
         );
     }
 
@@ -8323,6 +8653,7 @@ mod tests {
             &engine.db.conn,
             "platform-cleanup-race",
             "cancel-cleanup-race",
+            None,
             None,
         )
         .await

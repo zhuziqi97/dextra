@@ -179,6 +179,23 @@ impl KimiCodeParser {
             &main_wire_path(session_dir),
             Some(&session_dir.join("agents")),
         );
+        self.detail_from_parsed(session_dir, conversation_id, cwd, parsed)
+    }
+
+    /// 恢复只读取主会话正文，文件或记录损坏必须保留诊断。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        let mut found = None;
+        for bucket in fs::read_dir(&self.base_dir)? {
+            let candidate = bucket?.path().join(id);
+            if candidate.is_dir() { found = Some(candidate); break; }
+        }
+        let dir = found.ok_or_else(|| ParseError::ConversationNotFound(id.into()))?;
+        let parsed = parse_wire_with_policy(&main_wire_path(&dir), Some(&dir.join("agents")), true)?;
+        let cwd = self.load_work_dir_index().get(id).cloned();
+        Ok(self.detail_from_parsed(&dir, id, cwd, parsed))
+    }
+
+    fn detail_from_parsed(&self, session_dir: &Path, conversation_id: &str, cwd: Option<String>, parsed: WireParse) -> ConversationDetail {
 
         let mut turns = group_into_turns(parsed.messages);
         relocate_orphaned_tool_results(&mut turns);
@@ -324,9 +341,15 @@ fn main_wire_path(session_dir: &Path) -> PathBuf {
 /// so the sub-agent renders as an expandable Agent pill. `None` (the list path)
 /// skips that per-session I/O entirely.
 fn parse_wire(path: &Path, agents_dir: Option<&Path>) -> WireParse {
+    parse_wire_with_policy(path, agents_dir, false).expect("宽松读取跳过损坏记录")
+}
+
+fn parse_wire_with_policy(path: &Path, agents_dir: Option<&Path>, strict: bool) -> Result<WireParse, ParseError> {
     let mut wp = WireParse::default();
-    let Ok(file) = fs::File::open(path) else {
-        return wp;
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if strict => return Err(ParseError::Io(error)),
+        Err(_) => return Ok(wp),
     };
 
     // Per-step `usage.record`s accumulate into the turn's total, then flush onto
@@ -339,12 +362,18 @@ fn parse_wire(path: &Path, agents_dir: Option<&Path>) -> WireParse {
     let mut agent_call_ids: HashSet<String> = HashSet::new();
 
     for (idx, line) in BufReader::new(file).lines().enumerate() {
-        let Ok(line) = line else { continue };
+        let line = match line {
+            Ok(line) => line,
+            Err(error) if strict => return Err(ParseError::Io(error)),
+            Err(_) => continue,
+        };
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(value) = serde_json::from_str::<Value>(&line) else {
-            continue;
+        let value = match serde_json::from_str::<Value>(&line) {
+            Ok(value) => value,
+            Err(error) if strict => return Err(ParseError::InvalidData(format!("{}:{}: {error}", path.display(), idx + 1))),
+            Err(_) => continue,
         };
         let record_type = value.get("type").and_then(Value::as_str).unwrap_or("");
         let ts_raw = event_millis(&value);
@@ -517,7 +546,7 @@ fn parse_wire(path: &Path, agents_dir: Option<&Path>) -> WireParse {
     }
 
     flush_usage(&mut wp.messages, &mut pending_usage, &mut last_assistant_idx);
-    wp
+    Ok(wp)
 }
 
 /// Record a content event's timestamp into the session span and return a concrete
@@ -987,6 +1016,17 @@ fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_reports_missing_and_corrupt_main_wire() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("project").join("session");
+        std::fs::create_dir_all(dir.join("agents/main")).unwrap();
+        let parser = super::KimiCodeParser::with_base_dir(root.path().into());
+        assert!(matches!(parser.get_conversation_for_recovery("session"),
+            Err(crate::parsers::ParseError::Io(_))));
+        std::fs::write(super::main_wire_path(&dir), "{broken\n").unwrap();
+        assert!(parser.get_conversation_for_recovery("session").unwrap_err().to_string().contains("wire.jsonl:1:"));
+    }
     use super::*;
     use serde_json::json;
     use std::io::Write;

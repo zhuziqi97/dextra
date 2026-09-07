@@ -1054,6 +1054,24 @@ impl AgentParser for ClaudeParser {
     }
 
     fn get_conversation(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, false)
+    }
+}
+
+impl ClaudeParser {
+    /// 恢复读取保留真实错误；不将残缺记录当作没有输出。
+    pub fn get_conversation_for_recovery(
+        &self,
+        conversation_id: &str,
+    ) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, true)
+    }
+
+    fn read_conversation(
+        &self,
+        conversation_id: &str,
+        strict: bool,
+    ) -> Result<ConversationDetail, ParseError> {
         // Find the conversation file by searching all directories
         if !self.base_dir.exists() {
             return Err(ParseError::ConversationNotFound(
@@ -1064,6 +1082,7 @@ impl AgentParser for ClaudeParser {
         for entry in fs::read_dir(&self.base_dir)? {
             let entry = match entry {
                 Ok(e) => e,
+                Err(error) if strict => return Err(ParseError::Io(error)),
                 Err(_) => continue,
             };
             let project_dir = entry.path();
@@ -1073,7 +1092,7 @@ impl AgentParser for ClaudeParser {
 
             let file_path = project_dir.join(format!("{}.jsonl", conversation_id));
             if file_path.exists() {
-                return self.parse_conversation_detail(&file_path, conversation_id);
+                return self.parse_conversation_detail_with_policy(&file_path, conversation_id, strict);
             }
         }
 
@@ -1921,10 +1940,20 @@ impl ClaudeRecordAccumulator {
 }
 
 impl ClaudeParser {
+    #[cfg(test)]
     fn parse_conversation_detail(
         &self,
         path: &PathBuf,
         conversation_id: &str,
+    ) -> Result<ConversationDetail, ParseError> {
+        self.parse_conversation_detail_with_policy(path, conversation_id, false)
+    }
+
+    fn parse_conversation_detail_with_policy(
+        &self,
+        path: &PathBuf,
+        conversation_id: &str,
+        strict: bool,
     ) -> Result<ConversationDetail, ParseError> {
         // Read the file fully up front: `transcript_watermark` must be EXACTLY
         // the byte length this parse consumed. Stat-ing around a streaming read
@@ -1936,7 +1965,15 @@ impl ClaudeParser {
         let transcript_watermark = bytes.len() as u64;
 
         let mut acc = ClaudeRecordAccumulator::new(path.clone());
-        for chunk in bytes.split(|b| *b == b'\n') {
+        for (index, chunk) in bytes.split(|b| *b == b'\n').enumerate() {
+            if strict {
+                if chunk.iter().all(u8::is_ascii_whitespace) { continue; }
+                let value = serde_json::from_slice(chunk).map_err(|error| {
+                    ParseError::InvalidData(format!("{}:{}: {error}", path.display(), index + 1))
+                })?;
+                acc.feed_value(value);
+                continue;
+            }
             // Mirror `BufReader::lines()`: a line that isn't valid UTF-8 is
             // skipped (the old loop's per-line `Err(_) => continue`).
             let Ok(line) = std::str::from_utf8(chunk) else {
@@ -2685,6 +2722,30 @@ pub(crate) fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_read_reports_damaged_transcript_instead_of_empty_history() {
+        use crate::parsers::AgentParser;
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        std::fs::create_dir(&project).unwrap();
+        let path = project.join("recovery-session.jsonl");
+        let record = serde_json::json!({
+            "type":"assistant", "uuid":"assistant-1", "timestamp":"2026-09-07T01:00:00Z",
+            "message":{"role":"assistant", "content":[{"type":"text", "text":"已持久化输出"}]}
+        });
+        std::fs::write(&path, format!("{record}\n")).unwrap();
+        let parser = super::ClaudeParser::with_base_dir(dir.path().into());
+        let detail = parser.get_conversation_for_recovery("recovery-session").unwrap();
+        assert!(detail.turns.iter().flat_map(|turn| &turn.blocks).any(|block| {
+            matches!(block, crate::models::ContentBlock::Text { text } if text == "已持久化输出")
+        }));
+        std::fs::write(&path, format!("{record}\n{{broken\n")).unwrap();
+        let error = parser.get_conversation_for_recovery("recovery-session").unwrap_err();
+        assert!(error.to_string().contains("recovery-session.jsonl:2:"));
+        assert!(parser.get_conversation("recovery-session").is_ok());
+        assert!(matches!(parser.get_conversation_for_recovery("missing"),
+            Err(crate::parsers::ParseError::ConversationNotFound(_))));
+    }
 
     use std::io::Write;
 

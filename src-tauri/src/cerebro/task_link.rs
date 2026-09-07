@@ -148,6 +148,7 @@ pub(crate) async fn commit_linked_cancel(
     platform_task_id: &str,
     command_id: &str,
     reason: Option<&str>,
+    output: Option<work_task_service::CapturedExecutionOutput>,
 ) -> Result<CommittedLinkedCancel, DbError> {
     if platform_task_id.trim().is_empty() {
         return Err(DbError::Validation("platform task id is required".into()));
@@ -210,6 +211,7 @@ pub(crate) async fn commit_linked_cancel(
             None,
             "user",
             reason,
+            output,
         )
         .await?
     };
@@ -242,7 +244,12 @@ pub async fn cancel_linked_work_task(
     command_id: &str,
     reason: Option<&str>,
 ) -> Result<LinkedWorkTaskCancelOutcome, DbError> {
-    let committed = commit_linked_cancel(conn, platform_task_id, command_id, reason).await?;
+    let link = cerebro_task_link::Entity::find_by_id(platform_task_id)
+        .one(conn)
+        .await?
+        .ok_or_else(|| DbError::NotFound(format!("platform task {platform_task_id}")))?;
+    let output = engine.capture_task_output(link.local_work_task_id).await?;
+    let committed = commit_linked_cancel(conn, platform_task_id, command_id, reason, output).await?;
     if let Some(context) = committed.context.as_ref() {
         emit_event(
             emitter,
@@ -791,7 +798,7 @@ mod tests {
             .await
             .unwrap();
 
-        let error = commit_linked_cancel(&db.conn, "platform-completed", "cancel-completed", None)
+        let error = commit_linked_cancel(&db.conn, "platform-completed", "cancel-completed", None, None)
             .await
             .expect_err("done WorkTask 不能取消");
         assert!(error.to_string().contains("current state"));

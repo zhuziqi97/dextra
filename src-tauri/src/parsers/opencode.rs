@@ -265,10 +265,8 @@ impl OpenCodeParser {
             let row_time_created: i64 = row.try_get("", "time_created")?;
             let data_raw: String = row.try_get("", "data")?;
 
-            let value: serde_json::Value = match serde_json::from_str(&data_raw) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
+            // 数据库事务已经提交的正文损坏必须返回错误，不能丢弃整条消息。
+            let value: serde_json::Value = serde_json::from_str(&data_raw)?;
 
             let role = match value.get("role").and_then(|r| r.as_str()) {
                 Some("user") => MessageRole::User,
@@ -399,10 +397,8 @@ impl OpenCodeParser {
 
         for row in rows {
             let data_raw: String = row.try_get("", "data")?;
-            let value: serde_json::Value = match serde_json::from_str(&data_raw) {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
+            // 已提交消息块的解析失败不是空输出。
+            let value: serde_json::Value = serde_json::from_str(&data_raw)?;
 
             let part_type = value.get("type").and_then(|t| t.as_str()).unwrap_or("");
 
@@ -1309,6 +1305,26 @@ async fn batch_load_subagent_tool_calls(
 
 #[cfg(test)]
 mod tests {
+    #[tokio::test]
+    async fn committed_corrupt_message_and_part_are_reported() {
+        use sea_orm::{ConnectionTrait, Database, DbBackend, Statement};
+        let conn = Database::connect("sqlite::memory:").await.unwrap();
+        for sql in [
+            "CREATE TABLE message (id TEXT, session_id TEXT, time_created INTEGER, data TEXT)",
+            "CREATE TABLE part (id TEXT, message_id TEXT, time_created INTEGER, data TEXT)",
+            "INSERT INTO message VALUES ('m', 's', 1, '{broken')",
+        ] {
+            conn.execute(Statement::from_string(DbBackend::Sqlite, sql)).await.unwrap();
+        }
+        let parser = super::OpenCodeParser::with_base_dir(PathBuf::new());
+        let error = parser.load_sqlite_messages(&conn, "s").await.unwrap_err();
+        assert!(matches!(error, crate::parsers::ParseError::Json(_)));
+        conn.execute(Statement::from_string(DbBackend::Sqlite,
+            "INSERT INTO part VALUES ('p', 'm', 1, '{broken')")).await.unwrap();
+        let error = parser.load_sqlite_parts(&conn, "m", &std::collections::HashMap::new())
+            .await.unwrap_err();
+        assert!(matches!(error, crate::parsers::ParseError::Json(_)));
+    }
     use super::{extract_opencode_file_image, resolve_xdg_data_home};
     use crate::models::ContentBlock;
     use std::path::PathBuf;

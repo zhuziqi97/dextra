@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, TimeZone, Utc};
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, OptionalExtension};
 use serde_json::Value;
 
 use crate::models::{
@@ -159,16 +159,26 @@ impl CursorParser {
     }
 
     fn build_detail(&self, chat_dir: &Path, chat_id: &str) -> Option<ConversationDetail> {
-        let conn = open_store(&chat_dir.join("store.db"))?;
-        let meta = read_chat_meta(&conn)?;
-        let state = meta
-            .latest_root_blob_id
-            .as_deref()
-            .and_then(|id| read_blob(&conn, id))
-            .map(|bytes| decode_state(&bytes))
-            .unwrap_or_default();
+        self.build_detail_with_policy(chat_dir, chat_id, false).ok()
+    }
 
-        let (mut turns, store_clocked) = build_turns(&conn, &state, &meta);
+    fn build_detail_with_policy(&self, chat_dir: &Path, chat_id: &str, strict: bool) -> Result<ConversationDetail, ParseError> {
+        let conn = open_store_result(&chat_dir.join("store.db"))
+            .map_err(|error| ParseError::Db(sea_orm::DbErr::Custom(error.to_string())))?;
+        let meta = read_chat_meta_result(&conn)?;
+        let state = match meta.latest_root_blob_id.as_deref() {
+            Some(id) => match read_blob_for_recovery(&conn, id, strict)? {
+                Some(bytes) => {
+                    require_complete_wire(&bytes, strict, "根状态")?;
+                    decode_state(&bytes)
+                }
+                None if strict => return Err(ParseError::InvalidData("Cursor 根状态引用的 blob 不存在".into())),
+                None => DecodedState::default(),
+            },
+            None => DecodedState::default(),
+        };
+
+        let (mut turns, store_clocked) = build_turns(&conn, &state, &meta, strict)?;
         // Overlay codeg's own turn-span journal — recorded live by the ACP
         // connection layer. It fills turns the store left clockless (tool-free
         // turns) and replaces tool-span fallback clocks, which only cover the
@@ -214,7 +224,7 @@ impl CursorParser {
         let title = meta.name.clone().or_else(|| sidecar.title.clone()).or(title);
         let summary = summary_from(chat_id, &meta, &state, &sidecar, title);
 
-        Some(ConversationDetail {
+        Ok(ConversationDetail {
             summary,
             turns,
             session_stats,
@@ -237,6 +247,23 @@ impl CursorParser {
             }
         }
         None
+    }
+
+    /// 恢复入口使用严格正文读取，数据库失败不降级为会话不存在。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        let candidate = self.acp_sessions_dir.join(id);
+        if candidate.is_dir() { return self.build_detail_with_policy(&candidate, id, true); }
+        let groups = match std::fs::read_dir(&self.chats_dir) {
+            Ok(groups) => groups,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound =>
+                return Err(ParseError::ConversationNotFound(id.into())),
+            Err(error) => return Err(ParseError::Io(error)),
+        };
+        for group in groups {
+            let candidate = group?.path().join(id);
+            if candidate.is_dir() { return self.build_detail_with_policy(&candidate, id, true); }
+        }
+        Err(ParseError::ConversationNotFound(id.into()))
     }
 
     /// Append `chat_dir`'s summary to `out` when it holds a listable store.
@@ -357,11 +384,15 @@ struct ChatMeta {
 }
 
 fn open_store(path: &Path) -> Option<Connection> {
+    open_store_result(path).ok()
+}
+
+fn open_store_result(path: &Path) -> Result<Connection, rusqlite::Error> {
     // Prefer a read-only handle — codeg never mutates cursor's stores.
-    if let Some(conn) =
+    if let Ok(conn) =
         try_open_store(path, OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX)
     {
-        return Some(conn);
+        return Ok(conn);
     }
     // The CLI keeps live stores in WAL mode with most data in `-wal`; after a
     // CLI crash the wal-index can need recovery, which a read-only connection
@@ -374,16 +405,15 @@ fn open_store(path: &Path) -> Option<Connection> {
     )
 }
 
-fn try_open_store(path: &Path, flags: OpenFlags) -> Option<Connection> {
-    let conn = Connection::open_with_flags(path, flags).ok()?;
+fn try_open_store(path: &Path, flags: OpenFlags) -> Result<Connection, rusqlite::Error> {
+    let conn = Connection::open_with_flags(path, flags)?;
     // The CLI may hold the store open while codeg lists sessions; give reads a
     // short grace period instead of failing on a transient lock.
-    let _ = conn.busy_timeout(std::time::Duration::from_millis(200));
+    conn.busy_timeout(std::time::Duration::from_millis(200))?;
     // Opening is lazy — probe so a handle that cannot actually read (stale WAL
     // index, foreign schema) reports failure here instead of yielding no rows.
-    conn.query_row("SELECT count(*) FROM meta", [], |row| row.get::<_, i64>(0))
-        .ok()?;
-    Some(conn)
+    conn.query_row("SELECT count(*) FROM meta", [], |row| row.get::<_, i64>(0))?;
+    Ok(conn)
 }
 
 /// Sidecar `meta.json` beside an ACP session's `store.db`
@@ -416,25 +446,31 @@ fn read_sidecar_meta(chat_dir: &Path) -> SidecarMeta {
 }
 
 fn read_chat_meta(conn: &Connection) -> Option<ChatMeta> {
+    read_chat_meta_result(conn).ok()
+}
+
+/// 恢复读取区分数据库错误和正文元数据解析失败。
+fn read_chat_meta_result(conn: &Connection) -> Result<ChatMeta, ParseError> {
     let raw: String = conn
         .query_row("SELECT value FROM meta WHERE key = '0'", [], |row| {
             row.get(0)
         })
-        .ok()?;
+        .map_err(|error| ParseError::Db(sea_orm::DbErr::Custom(error.to_string())))?;
     // The value is hex-encoded UTF-8 JSON; tolerate a plain-JSON variant
     // defensively (older stores).
     let json_text = if raw.trim_start().starts_with('{') {
         raw
     } else {
-        String::from_utf8(hex_decode(raw.trim())?).ok()?
+        let bytes = hex_decode(raw.trim()).ok_or_else(|| ParseError::InvalidData("Cursor 元数据不是可解析的十六进制 JSON".into()))?;
+        String::from_utf8(bytes).map_err(|error| ParseError::InvalidData(error.to_string()))?
     };
-    let v: Value = serde_json::from_str(&json_text).ok()?;
+    let v: Value = serde_json::from_str(&json_text)?;
 
     let non_empty = |s: &str| {
         let t = s.trim();
         (!t.is_empty()).then(|| t.to_string())
     };
-    Some(ChatMeta {
+    Ok(ChatMeta {
         name: v.get("name").and_then(Value::as_str).and_then(non_empty),
         created_at_ms: json_ms(v.get("createdAt")),
         last_used_model: v
@@ -464,12 +500,34 @@ fn json_ms(v: Option<&Value>) -> Option<u64> {
 }
 
 fn read_blob(conn: &Connection, id: &[u8]) -> Option<Vec<u8>> {
+    read_blob_result(conn, id).ok().flatten()
+}
+
+/// 缺失引用与数据库读取失败不同；恢复不能因读取失败改走内联消息分支。
+fn read_blob_result(conn: &Connection, id: &[u8]) -> Result<Option<Vec<u8>>, rusqlite::Error> {
     conn.query_row(
         "SELECT data FROM blobs WHERE id = ?1",
         [hex_encode(id)],
         |row| row.get::<_, Vec<u8>>(0),
     )
-    .ok()
+    .optional()
+}
+
+/// 共享查询只在实时展示中允许忽略数据库失败；恢复保留真实数据库诊断。
+fn read_blob_for_recovery(conn: &Connection, id: &[u8], strict: bool) -> Result<Option<Vec<u8>>, ParseError> {
+    match read_blob_result(conn, id) {
+        Ok(blob) => Ok(blob),
+        Err(error) if strict => Err(ParseError::Db(sea_orm::DbErr::Custom(error.to_string()))),
+        Err(_) => Ok(None),
+    }
+}
+
+/// 复用现有 protobuf 读取器辨别截断记录，不以空字段代替解码失败。
+fn require_complete_wire(bytes: &[u8], strict: bool, record: &str) -> Result<(), ParseError> {
+    if strict && !wire::is_complete_message(bytes) {
+        return Err(ParseError::InvalidData(format!("Cursor {record} protobuf 记录损坏或截断")));
+    }
+    Ok(())
 }
 
 fn hex_encode(bytes: &[u8]) -> String {
@@ -845,20 +903,28 @@ fn read_user_message(conn: &Connection, user_ref: &[u8]) -> Vec<u8> {
 /// User prompt text from a decoded `UserMessage`: `text` (1), else the
 /// large-text blob (`text_blob_id`, 18), else `rich_text` (8).
 fn decode_user_text(conn: &Connection, msg: &[u8]) -> Option<String> {
+    decode_user_text_with_policy(conn, msg, false).ok().flatten()
+}
+
+fn decode_user_text_with_policy(conn: &Connection, msg: &[u8], strict: bool) -> Result<Option<String>, ParseError> {
     let text = wire::first_str(msg, 1).filter(|s| !s.is_empty());
     if text.is_some() {
-        return text;
+        return Ok(text);
     }
     if let Some(id) = wire::first_bytes(msg, 18) {
-        if let Some(blob) = read_blob(conn, &id) {
-            if let Ok(s) = String::from_utf8(blob) {
+        if let Some(blob) = read_blob_for_recovery(conn, &id, strict)? {
+            match String::from_utf8(blob) {
+                Ok(s) => {
                 if !s.is_empty() {
-                    return Some(s);
+                    return Ok(Some(s));
                 }
+                }
+                Err(error) if strict => return Err(ParseError::InvalidData(error.to_string())),
+                Err(_) => {}
             }
         }
     }
-    wire::first_str(msg, 8).filter(|s| !s.is_empty())
+    Ok(wire::first_str(msg, 8).filter(|s| !s.is_empty()))
 }
 
 /// User-attached images from a decoded `UserMessage`.
@@ -915,14 +981,17 @@ fn build_turns(
     conn: &Connection,
     state: &DecodedState,
     meta: &ChatMeta,
-) -> (Vec<MessageTurn>, HashSet<usize>) {
+    strict: bool,
+) -> Result<(Vec<MessageTurn>, HashSet<usize>), ParseError> {
     let mut turns: Vec<MessageTurn> = Vec::new();
     let mut store_clocked: HashSet<usize> = HashSet::new();
 
     for (i, turn_id) in state.turn_blob_ids.iter().enumerate() {
-        let Some(turn_bytes) = read_blob(conn, turn_id) else {
+        let Some(turn_bytes) = read_blob_for_recovery(conn, turn_id, strict)? else {
+            if strict { return Err(ParseError::InvalidData(format!("Cursor 执行轮次 blob {} 不存在", hex_encode(turn_id)))); }
             continue;
         };
+        require_complete_wire(&turn_bytes, strict, "执行轮次")?;
         let timing = state.timings.get(i);
         let root_ts_ms = timing.and_then(|t| t.timestamp_ms);
         let root_duration_ms = timing.and_then(|t| t.duration_ms).filter(|d| *d > 0);
@@ -937,6 +1006,7 @@ fn build_turns(
         let duration_ms = root_duration_ms;
 
         if let Some(agent_turn) = wire::first_message(&turn_bytes, 1) {
+            require_complete_wire(&agent_turn, strict, "Agent 轮次")?;
             // One pass over the steps: decode blocks and (only when the root
             // carries no timing for this turn) fold the tool-call clock span,
             // without retaining every raw step payload.
@@ -948,11 +1018,11 @@ fn build_turns(
                     continue;
                 }
                 let Some(step_ref) = val.bytes() else { continue };
-                let step = read_blob(conn, step_ref).unwrap_or_else(|| step_ref.to_vec());
+                let step = read_blob_for_recovery(conn, step_ref, strict)?.unwrap_or_else(|| step_ref.to_vec());
                 if want_span {
                     fold_tool_span(&step, &mut span);
                 }
-                decode_step(conn, &step, state, &mut blocks);
+                decode_step(conn, &step, state, &mut blocks, strict)?;
             }
             // ACP-written stores carry no root `turn_timings`; the span of
             // the turn's own tool calls is the fallback clock. Thinking and
@@ -966,9 +1036,10 @@ fn build_turns(
 
             // --- user prompt (text + attached images) ---
             if let Some(user_ref) = wire::first_bytes(&agent_turn, 1) {
-                let msg = read_user_message(conn, &user_ref);
+                let msg = read_blob_for_recovery(conn, &user_ref, strict)?.unwrap_or(user_ref);
+                require_complete_wire(&msg, strict, "用户消息")?;
                 let mut user_blocks: Vec<ContentBlock> = Vec::new();
-                if let Some(text) = decode_user_text(conn, &msg) {
+                if let Some(text) = decode_user_text_with_policy(conn, &msg, strict)? {
                     if !text.trim().is_empty() {
                         user_blocks.push(ContentBlock::Text { text });
                     }
@@ -1075,7 +1146,7 @@ fn build_turns(
     for (i, turn) in turns.iter_mut().enumerate() {
         turn.id = format!("cursor-turn-{i}");
     }
-    (turns, store_clocked)
+    Ok((turns, store_clocked))
 }
 
 /// Merge codeg's own turn-span journal (`crate::turn_timings`) onto the
@@ -1278,12 +1349,15 @@ fn decode_step(
     step: &[u8],
     state: &DecodedState,
     blocks: &mut Vec<ContentBlock>,
-) {
+    strict: bool,
+) -> Result<(), ParseError> {
+    require_complete_wire(step, strict, "执行步骤")?;
     for (no, val) in wire::Fields::new(step) {
         let Some(body) = val.bytes() else { continue };
         match no {
             // assistant_message { 1: text }
             1 => {
+                require_complete_wire(body, strict, "assistant 正文")?;
                 if let Some(text) = wire::first_str(body, 1).filter(|t| !t.is_empty()) {
                     if let Some(ContentBlock::Text { text: last }) = blocks.last_mut() {
                         last.push_str(&text);
@@ -1308,6 +1382,7 @@ fn decode_step(
             _ => {}
         }
     }
+    Ok(())
 }
 
 /// `agent.v1.ToolCall` oneof field number → tool name, for every variant the
@@ -1867,6 +1942,54 @@ fn read_subdirs(dir: &Path) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_entry_reads_persisted_assistant_text() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (chats, id) = build_fixture(tmp.path());
+        let parser = super::CursorParser::with_base_dir(chats);
+        let detail = parser.get_conversation_for_recovery(&id).unwrap();
+        let start = crate::work_task::execution_output::ExecutionStart {
+            run_seq: 1, conversation_id: 1, external_session_id: id,
+            after_turn_id: None,
+        };
+        assert_eq!(start.partial_from_turns(&detail.turns).unwrap().as_deref(), Some("好的，我来构建。"));
+    }
+    #[test]
+    fn recovery_store_reads_keep_database_and_metadata_errors() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(super::open_store_result(&root.path().join("missing.db")).is_err());
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        assert!(matches!(super::read_chat_meta_result(&conn), Err(crate::parsers::ParseError::Db(_))));
+        conn.execute_batch("CREATE TABLE meta (key TEXT, value TEXT); INSERT INTO meta VALUES ('0', '{broken');").unwrap();
+        assert!(matches!(super::read_chat_meta_result(&conn), Err(crate::parsers::ParseError::Json(_))));
+    }
+
+    #[test]
+    fn recovery_blob_read_distinguishes_absence_from_database_failure() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        assert!(super::read_blob_result(&conn, &[1]).is_err());
+        conn.execute_batch("CREATE TABLE blobs (id TEXT, data BLOB);").unwrap();
+        assert_eq!(super::read_blob_result(&conn, &[1]).unwrap(), None);
+        conn.execute("INSERT INTO blobs VALUES (?1, ?2)", rusqlite::params!["01", b"stored message".as_slice()]).unwrap();
+        assert_eq!(super::read_blob_result(&conn, &[1]).unwrap().as_deref(), Some(b"stored message".as_slice()));
+    }
+
+    #[test]
+    fn recovery_turn_build_does_not_skip_unreadable_or_missing_turns() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        let state = super::DecodedState { turn_blob_ids: vec![vec![1]], ..Default::default() };
+        let meta = super::ChatMeta::default();
+        assert!(matches!(super::build_turns(&conn, &state, &meta, true), Err(crate::parsers::ParseError::Db(_))));
+        conn.execute_batch("CREATE TABLE blobs (id TEXT, data BLOB);").unwrap();
+        let error = super::build_turns(&conn, &state, &meta, true).unwrap_err();
+        assert!(error.to_string().contains("执行轮次 blob 01 不存在"));
+        assert!(super::build_turns(&conn, &state, &meta, false).unwrap().0.is_empty());
+        conn.execute("INSERT INTO blobs VALUES (?1, ?2)", rusqlite::params!["01", b"\x0a\x80".as_slice()]).unwrap();
+        assert!(super::build_turns(&conn, &state, &meta, true).unwrap_err().to_string().contains("执行轮次 protobuf"));
+        let mut blocks = Vec::new();
+        assert!(super::decode_step(&conn, b"\x0a\x02\x0a\x80", &state, &mut blocks, true)
+            .unwrap_err().to_string().contains("assistant 正文 protobuf"));
+    }
     use super::*;
 
     // -- protobuf test encoder (writer mirror of the wire reader) -----------

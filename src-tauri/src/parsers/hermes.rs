@@ -186,6 +186,7 @@ impl HermesParser {
     async fn get_conversation_from_sqlite(
         &self,
         conversation_id: &str,
+        strict: bool,
     ) -> Result<ConversationDetail, ParseError> {
         let conn = self.open_sqlite_connection().await?;
         let summary = self
@@ -194,7 +195,7 @@ impl HermesParser {
             .ok_or_else(|| ParseError::ConversationNotFound(conversation_id.to_string()))?;
 
         let messages = self
-            .load_sqlite_messages(&conn, conversation_id, summary.model.as_deref())
+            .load_sqlite_messages(&conn, conversation_id, summary.model.as_deref(), strict)
             .await?;
         let mut turns = group_into_turns(messages);
         super::relocate_orphaned_tool_results(&mut turns);
@@ -225,6 +226,7 @@ impl HermesParser {
         conn: &DatabaseConnection,
         conversation_id: &str,
         session_model: Option<&str>,
+        strict: bool,
     ) -> Result<Vec<UnifiedMessage>, ParseError> {
         let rows = conn
             .query_all(Statement::from_sql_and_values(
@@ -267,7 +269,7 @@ impl HermesParser {
 
             match role {
                 MessageRole::User => {
-                    blocks.extend(decode_hermes_content(content.as_deref()));
+                    blocks.extend(decode_hermes_content_with_policy(content.as_deref(), strict)?);
                 }
                 MessageRole::Assistant => {
                     msg_model = session_model.map(str::to_string);
@@ -288,7 +290,7 @@ impl HermesParser {
                     }
 
                     // 2) assistant text / inline images.
-                    blocks.extend(decode_hermes_content(content.as_deref()));
+                    blocks.extend(decode_hermes_content_with_policy(content.as_deref(), strict)?);
 
                     // 3) tool calls → ToolUse (results arrive as separate rows).
                     let tool_calls: Option<String> = row.try_get("", "tool_calls")?;
@@ -411,12 +413,23 @@ impl AgentParser for HermesParser {
     }
 
     fn get_conversation(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(conversation_id, false)
+    }
+}
+
+impl HermesParser {
+    /// 数据库正文解析失败必须保留诊断，不能返回损坏的编码负载作为 partial。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        self.read_conversation(id, true)
+    }
+
+    fn read_conversation(&self, conversation_id: &str, strict: bool) -> Result<ConversationDetail, ParseError> {
         if !self.sqlite_db_path().exists() {
             return Err(ParseError::ConversationNotFound(
                 conversation_id.to_string(),
             ));
         }
-        self.block_on(self.get_conversation_from_sqlite(conversation_id))
+        self.block_on(self.get_conversation_from_sqlite(conversation_id, strict))
     }
 }
 
@@ -563,23 +576,30 @@ const CONTENT_JSON_PREFIX: &str = "\u{0000}json:";
 /// followed by an OpenAI-style parts array
 /// (`[{"type":"text",…},{"type":"image_url",…}]`).
 fn decode_hermes_content(raw: Option<&str>) -> Vec<ContentBlock> {
+    decode_hermes_content_with_policy(raw, false).expect("宽松正文解析保留原文")
+}
+
+fn decode_hermes_content_with_policy(raw: Option<&str>, strict: bool) -> Result<Vec<ContentBlock>, ParseError> {
     let Some(s) = raw else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
 
     if let Some(rest) = s.strip_prefix(CONTENT_JSON_PREFIX) {
-        if let Ok(serde_json::Value::Array(parts)) =
-            serde_json::from_str::<serde_json::Value>(rest)
-        {
-            return parts.iter().filter_map(content_part_to_block).collect();
+        match serde_json::from_str::<serde_json::Value>(rest) {
+            Ok(serde_json::Value::Array(parts)) => {
+                return Ok(parts.iter().filter_map(content_part_to_block).collect());
+            }
+            Err(error) if strict => return Err(ParseError::Json(error)),
+            Ok(_) if strict => return Err(ParseError::InvalidData("Hermes 多模态正文必须是数组".into())),
+            _ => {}
         }
         // Malformed after the sentinel: show the payload as text, minus the
         // unrenderable NUL sentinel.
         let trimmed = rest.trim();
-        return text_block(trimmed);
+        return Ok(text_block(trimmed));
     }
 
-    text_block(s.trim())
+    Ok(text_block(s.trim()))
 }
 
 fn text_block(text: &str) -> Vec<ContentBlock> {
@@ -899,6 +919,11 @@ mod tests {
         let blocks = decode_hermes_content(Some(&raw));
         assert_eq!(blocks.len(), 1);
         assert!(matches!(&blocks[0], ContentBlock::Text { text } if text == "not json at all"));
+        assert!(matches!(decode_hermes_content_with_policy(Some(&raw), true), Err(ParseError::Json(_))));
+        let non_array = format!("{CONTENT_JSON_PREFIX}{{}}");
+        assert!(matches!(decode_hermes_content_with_policy(Some(&non_array), true), Err(ParseError::InvalidData(_))));
+        assert!(matches!(&decode_hermes_content_with_policy(Some("not json at all"), true).unwrap()[0],
+            ContentBlock::Text { text } if text == "not json at all"));
     }
 
     #[test]

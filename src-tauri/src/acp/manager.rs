@@ -2493,6 +2493,35 @@ impl ConnectionManager {
         connections.get(conn_id).map(|conn| conn.state.clone())
     }
 
+    /// 等待真实 SessionStarted 身份；调用方不能把请求恢复的旧 ID 当作启动结果。
+    pub async fn wait_for_external_session_id(&self, conn_id: &str) -> Result<String, AcpError> {
+        let state = self.get_state(conn_id).await
+            .ok_or_else(|| AcpError::ConnectionNotFound(conn_id.into()))?;
+        let mut events = state.read().await.event_stream.subscribe();
+        let wait = async {
+            loop {
+                {
+                    let state = state.read().await;
+                    if matches!(state.status, ConnectionStatus::Disconnected | ConnectionStatus::Error) {
+                        return Err(match &state.last_error {
+                            Some(error) => AcpError::protocol(error.message.clone()),
+                            None => AcpError::ProcessExited,
+                        });
+                    }
+                    if let Some(id) = &state.external_id {
+                        return Ok(id.clone());
+                    }
+                }
+                match events.recv().await {
+                    Ok(_) | Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {},
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => return Err(AcpError::ProcessExited),
+                }
+            }
+        };
+        tokio::time::timeout(self.spawn_handshake_timeout, wait).await
+            .map_err(|_| AcpError::protocol("等待 Agent 会话身份超时"))?
+    }
+
     /// Like `get_state`, but also clones the connection's `EventEmitter`.
     /// Used by the lifecycle subscriber when it needs to both update the
     /// per-session state and re-broadcast a derived event (e.g. emitting
@@ -6113,6 +6142,24 @@ mod tests {
     }
 
     // ---------- Phase: spawn handshake wait helper ----------
+
+    #[tokio::test]
+    async fn external_session_identity_uses_started_state_and_preserves_failure() {
+        let mgr = ConnectionManager::new();
+        mgr.insert_test_connection("identity", AgentType::Codex, None, EventEmitter::Noop).await;
+        let state = mgr.get_state("identity").await.unwrap();
+        state.write().await.apply_event(&AcpEvent::SessionStarted { session_id: "actual-session".into() });
+        assert_eq!(mgr.wait_for_external_session_id("identity").await.unwrap(), "actual-session");
+        {
+            let mut state = state.write().await;
+            state.status = ConnectionStatus::Error;
+            state.last_error = Some(crate::acp::session_state::SessionLastError {
+                message: "provider session failed".into(), code: None, details: None,
+            });
+        }
+        assert!(mgr.wait_for_external_session_id("identity").await.unwrap_err()
+            .to_string().contains("provider session failed"));
+    }
 
     #[tokio::test]
     async fn wait_for_session_started_returns_ready_when_sender_fires() {

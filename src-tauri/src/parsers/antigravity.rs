@@ -579,8 +579,20 @@ impl AgentParser for AntigravityParser {
                 conversation_id.to_string(),
             ));
         }
-        let parsed = self.build(conversation_id);
+        self.detail_from_parsed(conversation_id, self.build(conversation_id))
+    }
+}
 
+impl AntigravityParser {
+    /// 恢复使用同一消息投影，但读取失败不能冒充空历史。
+    pub fn get_conversation_for_recovery(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        let steps = read_steps_with_policy(&self.db_path(conversation_id), true)?;
+        let mut parsed = project_steps(&steps);
+        parsed.cwd = read_sidecar_cwd(&self.meta_path(conversation_id));
+        self.detail_from_parsed(conversation_id, parsed)
+    }
+
+    fn detail_from_parsed(&self, conversation_id: &str, parsed: SessionParse) -> Result<ConversationDetail, ParseError> {
         let mut turns = parsed.turns.clone();
         relocate_orphaned_tool_results(&mut turns);
         structurize_read_tool_output(&mut turns);
@@ -616,20 +628,29 @@ impl AgentParser for AntigravityParser {
 /// brand-new session starts as (no `steps` table yet), a file the ACP server
 /// currently holds, or a payload that fails to decode.
 fn read_steps(db_path: &Path) -> Vec<Step> {
-    let Some(conn) = open_trajectory(db_path) else {
-        return Vec::new();
-    };
-    let Ok(mut stmt) = conn.prepare("SELECT step_payload FROM steps ORDER BY idx") else {
-        return Vec::new();
-    };
-    let Ok(rows) = stmt.query_map([], |row| row.get::<_, Vec<u8>>(0)) else {
-        return Vec::new();
-    };
+    read_steps_with_policy(db_path, false).unwrap_or_default()
+}
+
+fn read_steps_with_policy(db_path: &Path, strict: bool) -> Result<Vec<Step>, ParseError> {
+    // harness 会先创建空文件，再写入 schema；空文件确实还没有输出。
+    if std::fs::metadata(db_path)?.len() == 0 {
+        return Ok(Vec::new());
+    }
+    let database_error = |error: rusqlite::Error| ParseError::Db(sea_orm::DbErr::Custom(error.to_string()));
+    let conn = open_trajectory(db_path).map_err(database_error)?;
+    let mut stmt = conn.prepare("SELECT step_payload FROM steps ORDER BY idx").map_err(database_error)?;
+    let rows = stmt.query_map([], |row| row.get::<_, Vec<u8>>(0)).map_err(database_error)?;
 
     let mut steps = Vec::new();
-    for payload in rows.flatten() {
+    for payload in rows {
+        let payload = match payload {
+            Ok(payload) => payload,
+            Err(error) if strict => return Err(database_error(error)),
+            Err(_) => continue,
+        };
         match Step::decode(payload.as_slice()) {
             Ok(step) => steps.push(step),
+            Err(error) if strict => return Err(ParseError::InvalidData(format!("{}: {error}", db_path.display()))),
             // One unreadable step must not sink the conversation; the rest of
             // the trajectory still renders.
             Err(err) => {
@@ -640,16 +661,13 @@ fn read_steps(db_path: &Path) -> Vec<Step> {
             }
         }
     }
-    steps
+    Ok(steps)
 }
 
-fn open_trajectory(db_path: &Path) -> Option<Connection> {
+fn open_trajectory(db_path: &Path) -> Result<Connection, rusqlite::Error> {
     // A brand-new session's DB is pre-created at 0 bytes before the harness
     // writes the schema. Opening it read-only succeeds and then fails on the
     // query; skipping it here keeps the debug log honest.
-    if std::fs::metadata(db_path).ok()?.len() == 0 {
-        return None;
-    }
     // codeg never mutates the server's stores, so ask for a read-only handle;
     // fall back to read-write (no CREATE) exactly as the Cursor parser does,
     // because a live WAL whose index needs recovery cannot be recovered from a
@@ -658,7 +676,7 @@ fn open_trajectory(db_path: &Path) -> Option<Connection> {
         db_path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
     )
-    .or_else(|| {
+    .or_else(|_| {
         try_open_trajectory(
             db_path,
             OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -666,16 +684,15 @@ fn open_trajectory(db_path: &Path) -> Option<Connection> {
     })
 }
 
-fn try_open_trajectory(db_path: &Path, flags: OpenFlags) -> Option<Connection> {
-    let conn = Connection::open_with_flags(db_path, flags).ok()?;
+fn try_open_trajectory(db_path: &Path, flags: OpenFlags) -> Result<Connection, rusqlite::Error> {
+    let conn = Connection::open_with_flags(db_path, flags)?;
     // The server may hold the trajectory open while codeg lists sessions; give
     // reads a short grace period rather than failing on a transient lock.
-    let _ = conn.busy_timeout(std::time::Duration::from_millis(200));
+    conn.busy_timeout(std::time::Duration::from_millis(200))?;
     // Opening is lazy — probe so a handle that cannot actually read reports
     // failure here instead of silently yielding no rows.
-    conn.query_row("SELECT count(*) FROM steps", [], |row| row.get::<_, i64>(0))
-        .ok()?;
-    Some(conn)
+    conn.query_row("SELECT count(*) FROM steps", [], |row| row.get::<_, i64>(0))?;
+    Ok(conn)
 }
 
 /// The `cwd` the session ran in, from its `.meta` sidecar. Deliberately no
@@ -1382,6 +1399,21 @@ mod tests {
             resolve_gemini_home_from(Some("~/relocated".into()), Some(home)),
             PathBuf::from("/home/demo/relocated")
         );
+    }
+
+    #[test]
+    fn recovery_reports_database_and_protobuf_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        write_steps(dir.path(), "broken-step", &[]);
+        let conn = Connection::open(dir.path().join("broken-step.db")).unwrap();
+        conn.execute("INSERT INTO steps VALUES (0, ?1)", rusqlite::params![vec![0xff_u8]]).unwrap();
+        drop(conn);
+        let parser = AntigravityParser::with_base_dir(dir.path().into());
+        assert!(parser.get_conversation_for_recovery("broken-step").unwrap_err().to_string().contains("broken-step.db"));
+        assert!(parser.get_conversation("broken-step").unwrap().turns.is_empty());
+        std::fs::write(dir.path().join("broken-db.db"), b"not a database").unwrap();
+        assert!(matches!(parser.get_conversation_for_recovery("broken-db"), Err(ParseError::Db(_))));
+        assert!(matches!(parser.get_conversation_for_recovery("missing"), Err(ParseError::Io(_))));
     }
 
     #[test]

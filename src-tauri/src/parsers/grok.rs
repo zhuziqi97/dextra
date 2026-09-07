@@ -269,7 +269,23 @@ impl GrokParser {
     }
 
     fn build_detail(&self, session_dir: &Path, session_id: &str) -> ConversationDetail {
-        let mut parsed = parse_updates(&session_dir.join("updates.jsonl"));
+        let parsed = parse_updates(&session_dir.join("updates.jsonl"));
+        self.detail_from_parsed(session_dir, session_id, parsed)
+    }
+
+    /// 恢复只接受成功读取的主会话记录，不将损坏正文当作空输出。
+    pub fn get_conversation_for_recovery(&self, id: &str) -> Result<ConversationDetail, ParseError> {
+        let mut found = None;
+        for group in fs::read_dir(&self.base_dir)? {
+            let candidate = group?.path().join(id);
+            if candidate.is_dir() { found = Some(candidate); break; }
+        }
+        let dir = found.ok_or_else(|| ParseError::ConversationNotFound(id.into()))?;
+        let parsed = parse_updates_with_policy(&dir.join("updates.jsonl"), true)?;
+        Ok(self.detail_from_parsed(&dir, id, parsed))
+    }
+
+    fn detail_from_parsed(&self, session_dir: &Path, session_id: &str, mut parsed: ParsedUpdates) -> ConversationDetail {
         let meta = read_summary_json(session_dir);
 
         // Defensive normalization shared with the other parsers: hoist any tool
@@ -639,8 +655,14 @@ struct GrokSubagentLifecycle {
 }
 
 fn parse_updates(path: &Path) -> ParsedUpdates {
-    let Ok(file) = fs::File::open(path) else {
-        return ParsedUpdates::default();
+    parse_updates_with_policy(path, false).expect("宽松读取保留可解析记录")
+}
+
+fn parse_updates_with_policy(path: &Path, strict: bool) -> Result<ParsedUpdates, ParseError> {
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if strict => return Err(ParseError::Io(error)),
+        Err(_) => return Ok(ParsedUpdates::default()),
     };
 
     let mut out = ParsedUpdates::default();
@@ -658,13 +680,19 @@ fn parse_updates(path: &Path) -> ParsedUpdates {
     // instead of each opening a new (often empty) one.
     let mut open_user_prompt_index: Option<i64> = None;
 
-    for line in BufReader::new(file).lines() {
-        let Ok(line) = line else { continue };
+    for (index, line) in BufReader::new(file).lines().enumerate() {
+        let line = match line {
+            Ok(line) => line,
+            Err(error) if strict => return Err(ParseError::Io(error)),
+            Err(_) => continue,
+        };
         if line.trim().is_empty() {
             continue;
         }
-        let Ok(v) = serde_json::from_str::<Value>(&line) else {
-            continue;
+        let v = match serde_json::from_str::<Value>(&line) {
+            Ok(value) => value,
+            Err(error) if strict => return Err(ParseError::InvalidData(format!("{}:{}: {error}", path.display(), index + 1))),
+            Err(_) => continue,
         };
 
         let ts = v
@@ -1008,7 +1036,7 @@ fn parse_updates(path: &Path) -> ParsedUpdates {
     for (i, turn) in out.turns.iter_mut().enumerate() {
         turn.id = format!("grok-turn-{i}");
     }
-    out
+    Ok(out)
 }
 
 fn update_text(update: &Value) -> String {
@@ -1899,6 +1927,16 @@ fn read_subdirs(dir: &Path) -> Vec<PathBuf> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recovery_reports_missing_and_corrupt_updates() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("group/session");
+        std::fs::create_dir_all(&dir).unwrap();
+        let parser = super::GrokParser::with_base_dir(root.path().into());
+        assert!(matches!(parser.get_conversation_for_recovery("session"), Err(crate::parsers::ParseError::Io(_))));
+        std::fs::write(dir.join("updates.jsonl"), "{broken\n").unwrap();
+        assert!(parser.get_conversation_for_recovery("session").unwrap_err().to_string().contains("updates.jsonl:1:"));
+    }
     use super::*;
     use std::io::Write;
 

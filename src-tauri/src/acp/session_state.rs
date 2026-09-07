@@ -478,6 +478,8 @@ pub struct SessionState {
     /// cleared) so the lifecycle subscriber can surface it as the
     /// `delegation_call_id`-bound child outcome. Cleared on the next prompt.
     pub last_assistant_text: Option<String>,
+    /// 本轮全部主 assistant 输出；取消/异常结算使用，不替代成功的最终回答。
+    pub last_turn_partial: Option<String>,
 
     /// The in-flight user prompt for the current turn, captured from
     /// `AcpEvent::UserMessage` and cleared on `TurnComplete` (alongside
@@ -544,6 +546,28 @@ pub struct SessionState {
 }
 
 impl SessionState {
+    pub fn current_turn_partial(&self) -> Option<String> {
+        if let Some(live) = self.live_message.as_ref() {
+            let text = live
+                .content
+                .iter()
+                .filter_map(|block| match block {
+                    LiveContentBlock::Text {
+                        text,
+                        parent_tool_use_id: None,
+                    } => Some(text.as_str()),
+                    _ => None,
+                })
+                .collect::<String>();
+            return (!text.trim().is_empty()).then_some(text);
+        }
+        if self.turn_in_flight {
+            None
+        } else {
+            self.last_turn_partial.clone()
+        }
+    }
+
     pub fn new(
         connection_id: String,
         agent_type: AgentType,
@@ -595,6 +619,7 @@ impl SessionState {
             goal_active: false,
             session_failures: BTreeMap::new(),
             last_assistant_text: None,
+            last_turn_partial: None,
             pending_user_message: None,
             pending_user_message_started_at: None,
             turn_in_flight: false,
@@ -963,6 +988,7 @@ impl SessionState {
                 // second one). A repeat must not wipe the text the first one
                 // captured.
                 if self.turn_in_flight || self.live_message.is_some() {
+                    self.last_turn_partial = self.current_turn_partial();
                     self.last_assistant_text = None;
                 }
                 if let Some(live) = self.live_message.as_ref() {
@@ -1024,6 +1050,8 @@ impl SessionState {
                 self.status = ConnectionStatus::Connected;
             }
             AcpEvent::UserMessage { message_id, blocks } => {
+                self.last_turn_partial = None;
+                self.last_assistant_text = None;
                 // Capture the in-flight user prompt so a client attaching
                 // mid-turn renders the user turn from the snapshot (the
                 // one-shot event won't replay for it). Cleared on TurnComplete.
@@ -2252,6 +2280,42 @@ mod tests {
                 text: text.to_string(),
             }],
         }
+    }
+
+    #[test]
+    fn current_turn_partial_survives_cancel_and_resets_on_next_prompt() {
+        let mut s = fresh_state();
+        s.apply_event(&text_user_message("first", "执行任务"));
+        s.apply_event(&AcpEvent::ContentDelta {
+            text: "已读取目录".into(),
+            parent_tool_use_id: None,
+        });
+        s.apply_event(&AcpEvent::ContentDelta {
+            text: "子任务内容".into(),
+            parent_tool_use_id: Some("child-tool".into()),
+        });
+        s.apply_event(&AcpEvent::ContentDelta {
+            text: "，正在修改".into(),
+            parent_tool_use_id: None,
+        });
+        assert_eq!(s.current_turn_partial().as_deref(), Some("已读取目录，正在修改"));
+        let complete = AcpEvent::TurnComplete {
+            session_id: "ext".into(),
+            stop_reason: "cancelled".into(),
+            agent_type: "codex".into(),
+        };
+        s.apply_event(&complete);
+        assert!(s.live_message.is_none());
+        assert_eq!(s.current_turn_partial().as_deref(), Some("已读取目录，正在修改"));
+        s.apply_event(&complete);
+        assert_eq!(s.current_turn_partial().as_deref(), Some("已读取目录，正在修改"));
+
+        // 相同 prompt 也必须开始新的输出范围，不能继承上一轮内容。
+        s.apply_event(&text_user_message("second", "执行任务"));
+        assert_eq!(s.current_turn_partial(), None);
+        assert_eq!(s.last_assistant_text, None);
+        s.apply_event(&complete);
+        assert_eq!(s.current_turn_partial(), None);
     }
 
     #[test]

@@ -52,7 +52,10 @@ async fn stdio_bridge_forwards_requests_and_exits_with_parent_connection() {
             });
         }
     });
-    let mut child = tokio::process::Command::new(env!("CARGO_BIN_EXE_cerebro-mcp-bridge"))
+    // 安装产物验收可以指定解包后的 binary；平时仍测试 Cargo 本次构建的产物。
+    let binary = std::env::var_os("DEXTRA_BRIDGE_ACCEPTANCE_BINARY")
+        .unwrap_or_else(|| env!("CARGO_BIN_EXE_cerebro-mcp-bridge").into());
+    let mut child = tokio::process::Command::new(binary)
         .args([
             "--socket-path",
             path.to_str().unwrap(),

@@ -119,6 +119,10 @@ struct JTree {
 
 impl JTree {
     fn parse(path: &Path) -> Result<Self, ParseError> {
+        Self::parse_with_policy(path, false)
+    }
+
+    fn parse_with_policy(path: &Path, strict: bool) -> Result<Self, ParseError> {
         let file = fs::File::open(path)?;
         let reader = BufReader::new(file);
 
@@ -129,9 +133,10 @@ impl JTree {
         // Maintain insertion order for roots
         let mut insert_order: Vec<String> = Vec::new();
 
-        for line in reader.lines() {
+        for (index, line) in reader.lines().enumerate() {
             let line = match line {
                 Ok(l) => l,
+                Err(error) if strict => return Err(error.into()),
                 Err(_) => continue,
             };
             if line.trim().is_empty() {
@@ -139,6 +144,7 @@ impl JTree {
             }
             let value: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
+                Err(error) if strict => return Err(ParseError::InvalidData(format!("{}:{}: {error}", path.display(), index + 1))),
                 Err(_) => continue,
             };
 
@@ -512,7 +518,23 @@ impl OpenClawParser {
         leaf_id: Option<&str>,
         session_meta: Option<&SessionMeta>,
     ) -> Result<ConversationDetail, ParseError> {
-        let tree = JTree::parse(jsonl_path)?;
+        Self::parse_detail_with_policy(jsonl_path, conversation_id, leaf_id, session_meta, false)
+    }
+
+    /// 恢复和展示共享分支与消息解释，只有读取失败策略不同。
+    pub fn get_conversation_for_recovery(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
+        let (path, leaf, meta) = self.resolve_session(conversation_id)?;
+        Self::parse_detail_with_policy(&path, conversation_id, leaf.as_deref(), meta.as_ref(), true)
+    }
+
+    fn parse_detail_with_policy(
+        jsonl_path: &Path,
+        conversation_id: &str,
+        leaf_id: Option<&str>,
+        session_meta: Option<&SessionMeta>,
+        strict: bool,
+    ) -> Result<ConversationDetail, ParseError> {
+        let tree = JTree::parse_with_policy(jsonl_path, strict)?;
 
         // Determine which branch to display
         let branch_ids = if let Some(lid) = leaf_id {
@@ -1277,6 +1299,30 @@ mod tests {
                 && output_preview.as_deref() == Some("file contents here")
                 && !is_error
         ));
+    }
+
+    #[test]
+    fn recovery_returns_persisted_branch_and_reports_corruption() {
+        let root = tempfile::tempdir().unwrap();
+        let sessions = root.path().join("test/sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let path = sessions.join("recovery.jsonl");
+        let mut file = fs::File::create(&path).unwrap();
+        for record in [
+            json!({"type":"session","id":"recovery","timestamp":"2026-09-07T00:00:00Z","cwd":"/repo"}),
+            json!({"type":"message","id":"u1","parentId":null,"timestamp":"2026-09-07T00:00:01Z","message":{"role":"user","content":[{"type":"text","text":"继续"}]}}),
+            json!({"type":"message","id":"a1","parentId":"u1","timestamp":"2026-09-07T00:00:02Z","message":{"role":"assistant","content":[{"type":"text","text":"本轮输出"}]}}),
+        ] {
+            writeln!(file, "{record}").unwrap();
+        }
+        let parser = OpenClawParser::with_base_dir(root.path().into());
+        let detail = parser.get_conversation_for_recovery("test/recovery").unwrap();
+        assert!(detail.turns.iter().flat_map(|turn| &turn.blocks).any(|block|
+            matches!(block, ContentBlock::Text { text } if text == "本轮输出")));
+        writeln!(file, "{{broken").unwrap();
+        let error = parser.get_conversation_for_recovery("test/recovery").unwrap_err().to_string();
+        assert!(error.contains("recovery.jsonl:4:"));
+        assert!(parser.get_conversation("test/recovery").is_ok());
     }
 
     #[test]

@@ -3,6 +3,7 @@
 //! lock; built at boot in both desktop and server mode.
 
 pub mod engine;
+pub mod execution_output;
 pub mod git;
 
 pub use engine::{build_task_engine, engine, run_task_engine, EngineWorkTaskTools, TaskEngine};

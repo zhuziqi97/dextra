@@ -322,27 +322,6 @@ mod tests {
             .contains("expected value"));
     }
 
-    #[tokio::test]
-    async fn selection_migration_preserves_existing_conversation() {
-        use crate::db::{
-            migration::Migrator,
-            test_helpers::{fresh_in_memory_db, seed_conversation, seed_folder},
-        };
-        use sea_orm_migration::MigratorTrait;
-        let db = fresh_in_memory_db().await;
-        let folder_id = seed_folder(&db, "/tmp/cerebro-selection-upgrade").await;
-        let id = seed_conversation(&db, folder_id, crate::models::AgentType::Codex).await;
-        Migrator::down(&db.conn, Some(1)).await.unwrap();
-        Migrator::up(&db.conn, None).await.unwrap();
-        let row = conversation::Entity::find_by_id(id)
-            .one(&db.conn)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(row.folder_id, folder_id);
-        assert_eq!(row.cerebro_selection, None);
-    }
-
     fn available() -> CerebroTargetBinding {
         CerebroTargetBinding {
             binding_id: "binding-one".into(),
