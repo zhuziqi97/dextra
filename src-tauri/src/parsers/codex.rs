@@ -4913,6 +4913,41 @@ fn group_into_turns(messages: Vec<UnifiedMessage>) -> Vec<MessageTurn> {
 mod tests {
 
     #[test]
+    fn recovery_boundary_survives_imported_history_and_compaction() {
+        use crate::work_task::execution_output::ExecutionStart;
+        use std::io::Write;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("rollout-imported-recovery.jsonl");
+        let mut file = std::fs::File::create(&path).unwrap();
+        // 导入会话只有 response_item；续接后原生事件与压缩记录追加到同一文件。
+        for record in [
+            serde_json::json!({"type":"session_meta", "timestamp":"2026-09-07T01:00:00Z", "payload":{"id":"imported-recovery", "cwd":"/tmp/project"}}),
+            serde_json::json!({"type":"response_item", "timestamp":"2026-09-07T01:00:01Z", "payload":{"type":"message", "role":"user", "content":[{"type":"input_text", "text":"继续"}]}}),
+            serde_json::json!({"type":"response_item", "timestamp":"2026-09-07T01:00:02Z", "payload":{"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":"导入的上一轮输出"}]}}),
+        ] { writeln!(file, "{record}").unwrap(); }
+        file.flush().unwrap();
+        let parser = CodexParser::with_base_dir(dir.path().into());
+        let previous = parser.get_conversation_for_recovery("imported-recovery").unwrap();
+        let start = ExecutionStart {
+            run_seq: 2, conversation_id: 1, external_session_id: "imported-recovery".into(),
+            after_turn_id: Some(previous.turns.last().unwrap().id.clone()),
+        };
+        assert_eq!(start.partial_from_turns(&previous.turns).unwrap(), None);
+        for record in [
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:01:00Z", "payload":{"type":"task_started", "turn_id":"current-run"}}),
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:01:01Z", "payload":{"type":"user_message", "message":"继续"}}),
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:01:02Z", "payload":{"type":"agent_message", "message":"本轮压缩前正文"}}),
+            serde_json::json!({"type":"response_item", "timestamp":"2026-09-07T01:01:03Z", "payload":{"type":"message", "role":"assistant", "content":[{"type":"output_text", "text":"不是 assistant 正文的压缩摘要"}]}}),
+            serde_json::json!({"type":"compacted", "timestamp":"2026-09-07T01:01:04Z", "payload":{}}),
+            serde_json::json!({"type":"event_msg", "timestamp":"2026-09-07T01:01:05Z", "payload":{"type":"agent_message", "message":"本轮压缩后正文"}}),
+        ] { writeln!(file, "{record}").unwrap(); }
+        file.flush().unwrap();
+        let current = parser.get_conversation_for_recovery("imported-recovery").unwrap();
+        assert_eq!(start.partial_from_turns(&current.turns).unwrap().as_deref(),
+            Some("本轮压缩前正文\n\n本轮压缩后正文"));
+    }
+
+    #[test]
     fn recovery_read_preserves_parse_errors_and_locates_repeated_prompt_output() {
         use crate::work_task::execution_output::ExecutionStart;
         use std::io::Write;
