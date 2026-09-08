@@ -868,32 +868,13 @@ impl RemoteRelay {
             }
             "acp_connect" => {
                 let p: AcpConnectArgs = decode(args)?;
-                let runtime_env = acp::build_session_runtime_env(
-                    &db,
-                    p.agent_type,
-                    p.session_id.as_deref(),
-                    &self.runtime.data_dir,
-                )
-                .await
-                .map_err(|error| RemoteCallError::core(error.to_string()))?;
-                acp::verify_agent_installed(p.agent_type)
-                    .await
-                    .map_err(|error| RemoteCallError::core(error.to_string()))?;
-                let connection_id = self
-                    .runtime
-                    .connection_manager
-                    .spawn_agent(
-                        p.agent_type,
-                        Some(root),
-                        p.session_id,
-                        runtime_env,
-                        format!("cerebro:remote:{}", route.folder_id),
-                        self.runtime.emitter.clone(),
-                        p.preferred_mode_id,
-                        p.preferred_config_values,
-                    )
-                    .await
-                    .map_err(|error| RemoteCallError::core(error.to_string()))?;
+                // 远程创建也复用本地启动适配层，让会话接入同一目录的 Cerebro MCP。
+                let connection_id = acp::acp_connect_core(
+                    &db, &self.runtime.connection_manager, &self.runtime.data_dir,
+                    self.runtime.emitter.clone(), format!("cerebro:remote:{}", route.folder_id),
+                    p.agent_type, Some(root), p.session_id, p.preferred_mode_id,
+                    p.preferred_config_values, None, None,
+                ).await.map_err(|error| RemoteCallError::core(error.to_string()))?;
                 route
                     .connection_ids
                     .lock()
@@ -982,6 +963,19 @@ impl RemoteRelay {
                     .filter(|connection| owned.contains(&connection.id))
                     .collect::<Vec<_>>();
                 encode(Ok::<_, String>(connections))
+            }
+            "cerebro_conversation_read" => {
+                let p: ConnectionIdArgs = decode(args)?;
+                require_connection(route, &p.connection_id).await?;
+                let state = self.runtime.connection_manager.get_state(&p.connection_id).await
+                    .ok_or_else(|| RemoteCallError {
+                        code: "CONNECTION_CLOSED", message: "会话连接已结束".into(), retryable: false,
+                    })?;
+                let state = state.read().await;
+                encode(Ok::<_, String>(json!({
+                    "snapshot": state.to_snapshot(),
+                    "last_assistant_text": state.last_assistant_text,
+                })))
             }
             "acp_get_session_snapshot" => {
                 let p: ConnectionIdArgs = decode(args)?;
@@ -1367,6 +1361,35 @@ mod tests {
                 "ARGUMENTS": arguments
             }
         })
+    }
+
+    #[tokio::test]
+    async fn conversation_read_returns_output_from_existing_acp_events() {
+        use crate::acp::types::AcpEvent;
+        let (relay, outbound, mut receiver, _temp, target_id) = fixture().await;
+        relay.handle_server_message("runner-1", attach_frame(&target_id), outbound.clone()).await;
+        receiver.recv().await.unwrap();
+        relay.runtime.connection_manager.insert_test_connection(
+            "conversation-1", AgentType::Codex, None, relay.runtime.emitter.clone(),
+        ).await;
+        let state = relay.runtime.connection_manager.get_state("conversation-1").await.unwrap();
+        {
+            let mut state = state.write().await;
+            state.apply_event(&AcpEvent::ContentDelta { text: "会话本轮结果".into(), parent_tool_use_id: None });
+            state.apply_event(&AcpEvent::TurnComplete { session_id: "provider-session".into(), stop_reason: "end_turn".into(), agent_type: "codex".into() });
+        }
+        relay.routes.lock().await.get("session-1").unwrap().connection_ids.lock().await.insert("conversation-1".into());
+        relay.handle_server_message("runner-1", request_frame(
+            "read-conversation", "cerebro_conversation_read", json!({"connectionId": "conversation-1"}),
+        ), outbound.clone()).await;
+        let result = receiver.recv().await.unwrap();
+        assert_eq!(result["PAYLOAD"]["RESULT"]["last_assistant_text"], "会话本轮结果");
+        relay.runtime.connection_manager.disconnect("conversation-1").await.unwrap();
+        relay.handle_server_message("runner-1", request_frame(
+            "read-closed", "cerebro_conversation_read", json!({"connectionId": "conversation-1"}),
+        ), outbound).await;
+        let closed = receiver.recv().await.unwrap();
+        assert_eq!(closed["PAYLOAD"]["ERROR"]["CODE"], "CONNECTION_CLOSED");
     }
 
     #[tokio::test]

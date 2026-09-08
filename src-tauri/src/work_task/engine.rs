@@ -1103,15 +1103,16 @@ impl TaskEngine {
             .await
             .map_err(|e| e.to_string())?;
 
+        // 未选择 Cerebro 的普通任务保留原有本地执行默认值。
+        let local_selection = cfg.cerebro_selection.clone()
+            .unwrap_or(crate::cerebro::session_binding::CerebroSelection::Local);
         let additional_mcp_servers = match cerebro_task_id.as_deref() {
             Some(platform_task_id) => crate::cerebro::mcp::server_for_task(&self.manager, platform_task_id)
                 .await
                 .map_err(|error| error.to_string())?,
             None => {
-                let selected = cfg.cerebro_selection.as_ref()
-                    .ok_or_else(|| "任务尚未保存模块选择，请编辑任务选择 Cerebro 模块或纯本地".to_string())?;
                 let selection = crate::cerebro::session_binding::resolve_folder_selection(
-                    &self.db.conn, task.folder_id, Some(selected),
+                    &self.db.conn, task.folder_id, Some(&local_selection),
                 ).await.map_err(|error| error.to_string())?;
                 crate::cerebro::mcp::server_for_selection(
                     &self.manager, &selection, &format!("work-task:{}:{}", task.id, run_seq),
@@ -1211,11 +1212,9 @@ impl TaskEngine {
             id
         };
         if cerebro_task_id.is_none() {
-            if let Some(selection) = cfg.cerebro_selection.as_ref() {
-                crate::cerebro::session_binding::save_conversation_selection(
-                    &self.db.conn, conversation_id, selection,
-                ).await.map_err(|error| error.to_string())?;
-            }
+            crate::cerebro::session_binding::save_conversation_selection(
+                &self.db.conn, conversation_id, &local_selection,
+            ).await.map_err(|error| error.to_string())?;
         }
         emit_conversation_upsert(&self.emitter, &self.db.conn, conversation_id).await;
 

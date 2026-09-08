@@ -509,6 +509,17 @@
       "idempotency": "NONE",
       "timeoutMs": 0,
       "audit": "DENIED"
+    },
+    {
+      "command": "cerebro_conversation_read",
+      "group": "SESSION_READ",
+      "route": "RELAY",
+      "requiredScope": "SESSION_READ",
+      "effects": [],
+      "sharedUser": true,
+      "idempotency": "READ_ONLY",
+      "timeoutMs": 30000,
+      "audit": "READ_METADATA"
     }
   ],
   "channels": [
