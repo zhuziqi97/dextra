@@ -94,7 +94,7 @@ interface AppI18nProviderProps {
 
 export function AppI18nProvider({
   children,
-  initialLocale = "en",
+  initialLocale = "zh-CN",
   initialMessages,
 }: AppI18nProviderProps) {
   const initialAppLocale = fromIntlLocale(initialLocale)

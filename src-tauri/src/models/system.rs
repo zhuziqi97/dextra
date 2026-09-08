@@ -30,11 +30,17 @@ pub enum LanguageMode {
     Manual,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SystemLanguageSettings {
     pub mode: LanguageMode,
     pub language: AppLocale,
+}
+
+impl Default for SystemLanguageSettings {
+    fn default() -> Self {
+        Self { mode: LanguageMode::Manual, language: AppLocale::ZhCn }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -153,4 +159,20 @@ pub struct GitHubTokenValidation {
     pub scopes: Vec<String>,
     pub avatar_url: Option<String>,
     pub message: Option<String>,
+}
+
+#[cfg(test)]
+mod language_default_tests {
+    use super::*;
+
+    #[test]
+    fn new_client_uses_chinese_and_saved_language_is_preserved() {
+        let fresh = SystemLanguageSettings::default();
+        assert_eq!(fresh.mode, LanguageMode::Manual);
+        assert_eq!(fresh.language, AppLocale::ZhCn);
+        let saved: SystemLanguageSettings = serde_json::from_str(r#"{"mode":"manual","language":"en"}"#).unwrap();
+        assert_eq!(saved.language, AppLocale::En);
+        let following: SystemLanguageSettings = serde_json::from_str(r#"{"mode":"system","language":"en"}"#).unwrap();
+        assert_eq!(following.mode, LanguageMode::System);
+    }
 }

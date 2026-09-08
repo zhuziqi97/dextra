@@ -34,7 +34,6 @@ import {
   getCerebroAuthState,
   getCerebroStorageSettings,
   selectCerebroStorage,
-  importCerebroCredential,
   pollCerebroPairing,
   refreshCerebroAccessToken,
   startCerebroPairing,
@@ -50,13 +49,6 @@ import type {
 import { copyTextToClipboard } from "@/lib/utils"
 import { useCopiedFlag } from "@/hooks/use-copied-flag"
 
-const EMPTY_STATE: CerebroAuthState = {
-  paired: false,
-  cerebroBaseUrl: null,
-  runnerId: null,
-  pairing: null,
-}
-
 function cerebroErrorMessage(cause: unknown): string {
   return extractAppCommandError(cause)?.message ?? toErrorMessage(cause)
 }
@@ -65,7 +57,7 @@ export function CerebroSettings() {
   const t = useTranslations("CerebroSettings")
   const [storage, setStorage] = useState<CerebroStorageSettings | null>(null)
   const [storageBusy, setStorageBusy] = useState(false)
-  const [authState, setAuthState] = useState<CerebroAuthState>(EMPTY_STATE)
+  const [authState, setAuthState] = useState<CerebroAuthState | null>(null)
   const [cerebroBaseUrl, setCerebroBaseUrl] = useState("")
   const [loading, setLoading] = useState(true)
   const [starting, setStarting] = useState(false)
@@ -107,7 +99,7 @@ export function CerebroSettings() {
   }, [loadAuthState])
 
   useEffect(() => {
-    const pairing = authState.pairing
+    const pairing = authState?.pairing
     if (!pairing) return
 
     let active = true
@@ -132,7 +124,9 @@ export function CerebroSettings() {
               const state = await loadAuthState()
               if (state.paired) setError(null)
             } catch {
-              setAuthState((current) => ({ ...current, pairing: null }))
+              setAuthState((current) =>
+                current ? { ...current, pairing: null } : current
+              )
             }
           }
         },
@@ -145,7 +139,7 @@ export function CerebroSettings() {
       active = false
       if (timer) clearTimeout(timer)
     }
-  }, [authState.pairing, loadAuthState])
+  }, [authState?.pairing, loadAuthState])
 
   async function handleStartPairing() {
     setStarting(true)
@@ -217,21 +211,8 @@ export function CerebroSettings() {
     setError(null)
     try {
       setStorage(await selectCerebroStorage(mode))
-      setAuthState(EMPTY_STATE)
+      setAuthState(null)
       setStorageBusy(false)
-      await loadAuthState()
-    } catch (cause) {
-      setError(cerebroErrorMessage(cause))
-    } finally {
-      setStorageBusy(false)
-    }
-  }
-
-  async function handleImportCredential() {
-    setStorageBusy(true)
-    setError(null)
-    try {
-      await importCerebroCredential()
       await loadAuthState()
     } catch (cause) {
       setError(cerebroErrorMessage(cause))
@@ -252,16 +233,12 @@ export function CerebroSettings() {
     )
   }
 
-  const pairing = authState.pairing
+  const pairing = authState?.pairing
 
   return (
     <ScrollArea className="h-full">
       <div className="mx-auto max-w-3xl space-y-4 p-4 pb-10">
-        <SettingsSection
-          icon={Link2}
-          title={t("title")}
-          description={t("description")}
-        >
+        <SettingsSection icon={Link2} title={t("title")}>
           {error ? <SettingsError>{error}</SettingsError> : null}
 
           {storage ? (
@@ -288,37 +265,31 @@ export function CerebroSettings() {
                   </SelectContent>
                 </Select>
               </SettingRow>
-              {!authState.paired ? (
-                <SettingRow title={t("importCredential")}>
-                  <Button
-                    variant="outline"
-                    onClick={() => void handleImportCredential()}
-                    disabled={storageBusy}
-                  >
-                    {t("importCredential")}
-                  </Button>
-                </SettingRow>
-              ) : null}
             </SettingCard>
           ) : null}
 
-          {authState.paired ? (
+          {authState === null ? (
+            error ? null : (
+              <Loader2
+                aria-label={t("loadingState")}
+                className="size-5 animate-spin"
+              />
+            )
+          ) : authState.paired ? (
             <SettingCard>
               <SettingRow title={t("cerebroUrl")}>
                 <code className="text-xs break-all select-all">
                   {authState.cerebroBaseUrl}
                 </code>
               </SettingRow>
-              <SettingRow title={t("runnerId")}>
+              <SettingRow title={t("clientId")}>
                 <code className="text-xs break-all select-all">
                   {authState.runnerId}
                 </code>
               </SettingRow>
               <SettingRow
                 title={t("connection")}
-                description={
-                  verificationMessage ?? t("credentialStoredLocally")
-                }
+                description={verificationMessage ?? t("signedIn")}
                 control={
                   <Button
                     type="button"
@@ -338,7 +309,6 @@ export function CerebroSettings() {
               />
               <SettingRow
                 title={t("disconnectLocal")}
-                description={t("disconnectHint")}
                 control={
                   <Button
                     type="button"
@@ -399,7 +369,6 @@ export function CerebroSettings() {
               />
               <SettingRow
                 title={t("waitingForApproval")}
-                description={t("pollingHint")}
                 control={<Loader2 className="size-4 animate-spin" />}
               />
               <SettingRow
@@ -424,11 +393,7 @@ export function CerebroSettings() {
             </SettingCard>
           ) : (
             <SettingCard>
-              <SettingRow
-                title={t("cerebroUrl")}
-                description={t("cerebroUrlHint")}
-                htmlFor="cerebro-base-url"
-              >
+              <SettingRow title={t("cerebroUrl")} htmlFor="cerebro-base-url">
                 <Input
                   id="cerebro-base-url"
                   value={cerebroBaseUrl}
@@ -438,7 +403,6 @@ export function CerebroSettings() {
               </SettingRow>
               <SettingRow
                 title={t("connect")}
-                description={t("connectHint")}
                 control={
                   <Button
                     type="button"

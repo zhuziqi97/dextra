@@ -29,8 +29,8 @@ export type IntlLocale =
   | "ar"
 
 export const DEFAULT_LANGUAGE_SETTINGS: SystemLanguageSettings = {
-  mode: "system",
-  language: FALLBACK_APP_LOCALE,
+  mode: "manual",
+  language: "zh_cn",
 }
 
 export const APP_LOCALE_TO_INTL_LOCALE: Record<AppLocale, IntlLocale> = {
@@ -89,6 +89,7 @@ export function fromIntlLocale(locale: IntlLocale): AppLocale {
 export function normalizeLanguageSettings(
   settings: Partial<SystemLanguageSettings> | null | undefined
 ): SystemLanguageSettings {
+  if (settings == null) return { ...DEFAULT_LANGUAGE_SETTINGS }
   const mode = settings?.mode === "manual" ? "manual" : "system"
   const language = isAppLocale(settings?.language)
     ? settings.language
@@ -200,10 +201,8 @@ export function getCurrentEffectiveAppLocale(): AppLocale {
     }
   }
 
-  if (typeof navigator !== "undefined") {
-    const resolved = resolveSystemLocale(getSystemLocaleCandidates())
-    if (resolved) return resolved
-  }
-
-  return FALLBACK_APP_LOCALE
+  return resolveAppLocale(
+    DEFAULT_LANGUAGE_SETTINGS,
+    getSystemLocaleCandidates()
+  )
 }

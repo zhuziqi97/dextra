@@ -8,7 +8,6 @@ vi.mock("@/lib/api", () => ({
   getCerebroAuthState: vi.fn(),
   getCerebroStorageSettings: vi.fn(),
   selectCerebroStorage: vi.fn(),
-  importCerebroCredential: vi.fn(),
   pollCerebroPairing: vi.fn(),
   refreshCerebroAccessToken: vi.fn(),
   startCerebroPairing: vi.fn(),
@@ -76,6 +75,34 @@ describe("CerebroSettings", () => {
     vi.useRealTimers()
   })
 
+  it("waits for stored credentials and never offers a second login when paired", async () => {
+    let resolveState!: (state: CerebroAuthState) => void
+    vi.mocked(getCerebroAuthState).mockReturnValue(
+      new Promise((resolve) => {
+        resolveState = resolve
+      })
+    )
+    renderSettings()
+    await act(async () => undefined)
+    expect(
+      screen.queryByRole("button", { name: enMessages.CerebroSettings.connect })
+    ).not.toBeInTheDocument()
+    await act(async () => {
+      resolveState(pairedState)
+    })
+    expect(screen.getByText(pairing.cerebroBaseUrl)).toBeInTheDocument()
+    expect(screen.getByText(pairedState.runnerId!)).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", {
+        name: enMessages.CerebroSettings.disconnect,
+      })
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: enMessages.CerebroSettings.connect })
+    ).not.toBeInTheDocument()
+  })
+
   it("allows local pairing after the system keychain is unavailable", async () => {
     vi.mocked(getCerebroStorageSettings).mockResolvedValue({
       mode: "KEYRING",
@@ -93,14 +120,23 @@ describe("CerebroSettings", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Keychain unavailable")
     fireEvent.click(screen.getByRole("combobox"))
     await act(async () => undefined)
-    fireEvent.click(screen.getByRole("option", { name: "On this device" }))
+    fireEvent.click(
+      screen.getByRole("option", {
+        name: enMessages.CerebroSettings.storageFile,
+      })
+    )
     await act(async () => undefined)
     expect(selectCerebroStorage).toHaveBeenCalledWith("FILE")
     vi.mocked(startCerebroPairing).mockResolvedValue(pairing)
-    fireEvent.change(screen.getByLabelText("Cerebro URL"), {
-      target: { value: pairing.cerebroBaseUrl },
-    })
-    fireEvent.click(screen.getByRole("button", { name: "Connect to Cerebro" }))
+    fireEvent.change(
+      screen.getByLabelText(enMessages.CerebroSettings.cerebroUrl),
+      {
+        target: { value: pairing.cerebroBaseUrl },
+      }
+    )
+    fireEvent.click(
+      screen.getByRole("button", { name: enMessages.CerebroSettings.connect })
+    )
     await act(async () => undefined)
     expect(startCerebroPairing).toHaveBeenCalledWith(pairing.cerebroBaseUrl)
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
@@ -125,11 +161,15 @@ describe("CerebroSettings", () => {
 
     renderSettings()
     await act(async () => undefined)
-    const urlInput = screen.getByLabelText("Cerebro URL")
+    const urlInput = screen.getByLabelText(
+      enMessages.CerebroSettings.cerebroUrl
+    )
     fireEvent.change(urlInput, {
       target: { value: "http://cerebro.internal/nested/?tenant=alpha" },
     })
-    fireEvent.click(screen.getByRole("button", { name: "Connect to Cerebro" }))
+    fireEvent.click(
+      screen.getByRole("button", { name: enMessages.CerebroSettings.connect })
+    )
 
     await act(async () => undefined)
     expect(startCerebroPairing).toHaveBeenCalledWith(
@@ -152,7 +192,9 @@ describe("CerebroSettings", () => {
       await vi.advanceTimersByTimeAsync(2_000)
     })
     expect(pollCerebroPairing).toHaveBeenCalledTimes(2)
-    expect(screen.getByText("runner-42")).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: enMessages.CerebroSettings.verify })
+    ).toBeInTheDocument()
     expect(screen.queryByText("refresh-secret")).not.toBeInTheDocument()
     expect(screen.queryByText("short-lived-access")).not.toBeInTheDocument()
   })
@@ -176,7 +218,9 @@ describe("CerebroSettings", () => {
     })
 
     expect(pollCerebroPairing).toHaveBeenCalledWith("pair-1")
-    expect(screen.getByText("runner-42")).toBeInTheDocument()
+    expect(
+      screen.getByRole("button", { name: enMessages.CerebroSettings.verify })
+    ).toBeInTheDocument()
   })
 
   it("returns to the unpaired form after Cerebro rejects the stored credential", async () => {
@@ -191,11 +235,15 @@ describe("CerebroSettings", () => {
 
     renderSettings()
     await act(async () => undefined)
-    screen.getByText("runner-42")
-    fireEvent.click(screen.getByRole("button", { name: "Verify connection" }))
+    screen.getByRole("button", { name: enMessages.CerebroSettings.verify })
+    fireEvent.click(
+      screen.getByRole("button", { name: enMessages.CerebroSettings.verify })
+    )
 
     await act(async () => undefined)
-    expect(screen.getByLabelText("Cerebro URL")).toBeInTheDocument()
+    expect(
+      screen.getByLabelText(enMessages.CerebroSettings.cerebroUrl)
+    ).toBeInTheDocument()
     expect(screen.getByRole("alert")).toHaveTextContent("Runner was revoked")
   })
 })
