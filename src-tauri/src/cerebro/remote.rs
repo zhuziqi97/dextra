@@ -502,7 +502,7 @@ impl RemoteRelay {
                 .target_id
                 .as_deref()
                 .ok_or_else(|| RemoteCallError::invalid("TARGET_ID is required"))?;
-            let folder_id = super::target_projection::resolve_background_task_folder(
+            let folder_id = super::target_projection::resolve_conversation_folder(
                 &self.runtime.db.conn,
                 runner_id,
                 target_id,
@@ -1361,6 +1361,26 @@ mod tests {
                 "ARGUMENTS": arguments
             }
         })
+    }
+
+    #[tokio::test]
+    async fn conversations_attach_to_plain_and_nested_directories_without_changing_root() {
+        let (relay, outbound, mut receiver, temp, _) = fixture().await;
+        for (path, text) in [
+            (temp.path().join("plain"), "普通文件夹"),
+            (temp.path().join("workspace/nested"), "Git 子目录"),
+        ] {
+            std::fs::create_dir_all(&path).unwrap();
+            std::fs::write(path.join("owned.txt"), text).unwrap();
+            let folder = folders::open_folder_core(&relay.runtime.db.as_database(), path.to_string_lossy().into_owned()).await.unwrap();
+            let target_id = super::super::target_projection::target_id("runner-1", folder.id);
+            assert!(super::super::target_projection::resolve_background_task_folder(&relay.runtime.db.conn, "runner-1", &target_id).await.is_err());
+            relay.handle_server_message("runner-1", attach_frame(&target_id), outbound.clone()).await;
+            assert_eq!(receiver.recv().await.unwrap()["TYPE"], "REMOTE_ATTACHED");
+            relay.handle_server_message("runner-1", request_frame("read-directory", "read_file_for_edit", json!({"path": "owned.txt"})), outbound.clone()).await;
+            let response = receiver.recv().await.unwrap();
+            assert_eq!(response["PAYLOAD"]["RESULT"]["content"], text);
+        }
     }
 
     #[tokio::test]
