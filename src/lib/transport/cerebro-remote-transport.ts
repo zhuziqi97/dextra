@@ -199,8 +199,9 @@ class CerebroEventStream implements EventStream {
 /**
  * Codeg Web 子应用到 Cerebro command router 的唯一 Transport。
  *
- * 写操作进入平台领域 operation；只有 registry 明确登记的读取和事件流
- * 才能 Relay。未知、敏感或本机 OS 命令在离开浏览器前就失败。
+ * owner 工作台里的真实 Codeg 用户操作按 registry Relay。只有平台异步
+ * Task 生命周期才属于平台 operation；设置、凭据、安装、升级、本机 OS
+ * 集成和未知命令在离开浏览器前就失败。
  */
 export class CerebroRemoteTransport implements Transport {
   private handshakePromise: Promise<void> | null = null

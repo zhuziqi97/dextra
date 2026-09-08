@@ -3,6 +3,13 @@ import createNextIntlPlugin from "next-intl/plugin"
 
 const isProd = process.env.NODE_ENV === "production"
 const internalHost = process.env.TAURI_DEV_HOST || "localhost"
+const configuredBasePath = process.env.CODEG_BASE_PATH?.trim() ?? ""
+if (
+  configuredBasePath &&
+  (!configuredBasePath.startsWith("/") || configuredBasePath.endsWith("/"))
+) {
+  throw new Error("CODEG_BASE_PATH 必须以 / 开头且不能以 / 结尾")
+}
 const withNextIntl = createNextIntlPlugin({
   requestConfig: "./src/i18n/request.ts",
   experimental: {
@@ -28,6 +35,7 @@ const withNextIntl = createNextIntlPlugin({
 
 const nextConfig: NextConfig = {
   output: "export",
+  basePath: configuredBasePath || undefined,
   images: {
     unoptimized: true,
   },

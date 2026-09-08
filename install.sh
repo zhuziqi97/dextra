@@ -27,7 +27,7 @@ fi
 # layer spawns per session for delegation. Both must live in the same
 # directory — `locate_codeg_mcp_binary()` in src-tauri/src/acp/connection.rs
 # resolves the companion as a sibling of the running server executable.
-MANAGED_BINS=(codeg-server codeg-mcp)
+MANAGED_BINS=(codeg-server codeg-mcp cerebro-mcp-bridge)
 
 # ── Parse arguments ──
 
@@ -453,6 +453,7 @@ fi
 echo ""
 echo "codeg-server installed to ${INSTALL_DIR}/codeg-server"
 echo "codeg-mcp    installed to ${INSTALL_DIR}/codeg-mcp"
+echo "cerebro-mcp-bridge installed to ${INSTALL_DIR}/cerebro-mcp-bridge"
 INSTALLED_VER=$("${INSTALL_DIR}/codeg-server" --version 2>/dev/null || echo "${TARGET_VER}")
 echo "Version: ${INSTALLED_VER}"
 
@@ -464,6 +465,11 @@ if [ ! -x "${INSTALL_DIR}/codeg-mcp" ]; then
   echo ""
   echo "Error: ${INSTALL_DIR}/codeg-mcp missing or not executable after install."
   echo "       Delegation (sub-agent tooling) will not work. Re-run the installer."
+  EXIT_STATUS=1
+fi
+
+if ! "${INSTALL_DIR}/cerebro-mcp-bridge" --help >/dev/null; then
+  echo "Error: Cerebro MCP Bridge is missing or unusable after install."
   EXIT_STATUS=1
 fi
 

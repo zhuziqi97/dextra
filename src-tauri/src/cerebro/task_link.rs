@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::work_task::nudge_pump;
 use crate::db::entities::work_task::WorkTaskStatus;
-use crate::db::entities::{cerebro_task_link, work_task};
+use crate::db::entities::{cerebro_task_link, folder, work_task};
 use crate::db::error::DbError;
 use crate::db::service::work_task_service;
 use crate::models::{WorkTaskDraft, WorkTaskInfo};
@@ -45,6 +45,7 @@ pub enum LinkedWorkTaskState {
     Completed,
     Failed,
     Cancelled,
+    Interrupted,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +59,23 @@ pub struct LinkedWorkTaskSnapshot {
     pub result_summary: Option<String>,
     pub remote_workbench_available: bool,
     pub deleted: bool,
+}
+
+pub(super) fn project_result_summary(summary: &str, local_roots: &[String]) -> String {
+    let mut projected = summary.to_string();
+    let mut roots = local_roots
+        .iter()
+        .map(|root| root.trim_end_matches(['/', '\\']))
+        .filter(|root| !root.is_empty())
+        .collect::<Vec<_>>();
+    roots.sort_unstable_by_key(|root| std::cmp::Reverse(root.len()));
+    roots.dedup();
+    for root in roots {
+        projected = projected.replace(&format!("{root}/"), "");
+        projected = projected.replace(&format!("{root}\\"), "");
+        projected = projected.replace(root, ".");
+    }
+    projected
 }
 
 /// 把 Cerebro 平台 Task 原子关联到一个原生 WorkTask。
@@ -253,6 +271,19 @@ pub async fn reconcile_linked_work_task(
         .ok_or_else(|| DbError::NotFound(format!("work task {}", link.local_work_task_id)))?;
     let receipt_exists = link.cancel_command_id.is_some();
     let deleted = task.deleted_at.is_some();
+    let mut local_roots = Vec::new();
+    for folder_id in [Some(task.folder_id), task.worktree_folder_id]
+        .into_iter()
+        .flatten()
+    {
+        if let Some(local_folder) = folder::Entity::find_by_id(folder_id).one(conn).await? {
+            local_roots.push(local_folder.path);
+        }
+    }
+    let result_summary = task
+        .result_summary
+        .as_deref()
+        .map(|summary| project_result_summary(summary, &local_roots));
     let state = if receipt_exists {
         LinkedWorkTaskState::Cancelled
     } else if deleted {
@@ -270,6 +301,9 @@ pub async fn reconcile_linked_work_task(
             WorkTaskStatus::AwaitingInput => LinkedWorkTaskState::WaitingForUser,
             WorkTaskStatus::Review => LinkedWorkTaskState::ResultReady,
             WorkTaskStatus::Done => LinkedWorkTaskState::Completed,
+            WorkTaskStatus::Failed if task.failure_reason.as_deref() == Some("interrupted") => {
+                LinkedWorkTaskState::Interrupted
+            }
             WorkTaskStatus::Failed => LinkedWorkTaskState::Failed,
             WorkTaskStatus::Canceled => LinkedWorkTaskState::Cancelled,
         }
@@ -281,12 +315,24 @@ pub async fn reconcile_linked_work_task(
         state,
         failure_reason: task.failure_reason,
         last_error: task.last_error,
-        result_summary: task.result_summary,
+        result_summary,
         remote_workbench_available: !receipt_exists
             && !deleted
             && task.status == WorkTaskStatus::Review,
         deleted,
     })
+}
+
+/// 返回所有永久平台 link 的当前状态，供生产 Runner 周期收敛丢失的状态帧。
+pub async fn reconcile_all_linked_work_tasks(
+    conn: &DatabaseConnection,
+) -> Result<Vec<LinkedWorkTaskSnapshot>, DbError> {
+    let links = cerebro_task_link::Entity::find().all(conn).await?;
+    let mut snapshots = Vec::with_capacity(links.len());
+    for link in links {
+        snapshots.push(reconcile_linked_work_task(conn, &link.platform_task_id).await?);
+    }
+    Ok(snapshots)
 }
 
 #[cfg(test)]
@@ -305,6 +351,53 @@ mod tests {
     };
     use crate::models::agent::AgentType;
     use crate::web::event_bridge::{WebEventBroadcaster, WORK_TASK_CHANGED_EVENT};
+
+    #[test]
+    fn result_summary_projects_known_local_roots_to_repository_relative_text() {
+        let summary = "[README](/tmp/task-task-1/README.md:4), C:\\work\\task-1\\src\\lib.rs; cwd /tmp/task-task-1";
+        let projected = project_result_summary(
+            summary,
+            &[
+                "/tmp/task".into(),
+                "/tmp/task-task-1".into(),
+                "C:\\work\\task-1".into(),
+            ],
+        );
+
+        assert_eq!(projected, "[README](README.md:4), src\\lib.rs; cwd .");
+    }
+
+    #[tokio::test]
+    async fn restart_interruption_uses_existing_task_recovery() {
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, "/tmp/cerebro-interrupted").await;
+        let created = create_linked_work_task(
+            &EventEmitter::Noop,
+            &db.conn,
+            "platform-interrupted",
+            draft(folder_id, "interrupted"),
+        )
+        .await
+        .unwrap();
+        let task = match created {
+            LinkedWorkTaskCreateOutcome::Created(task) => task,
+            LinkedWorkTaskCreateOutcome::Duplicate(_) => unreachable!(),
+        };
+        work_task_service::claim_for_run(&db.conn, task.id, WorkTaskStatus::Todo, "test")
+            .await.unwrap().unwrap();
+        work_task_service::boot_reconcile_interrupted(&db.conn).await.unwrap();
+
+        let snapshot = reconcile_linked_work_task(&db.conn, "platform-interrupted")
+            .await
+            .unwrap();
+        assert_eq!(snapshot.state, LinkedWorkTaskState::Interrupted);
+        assert_eq!(snapshot.result_summary, None);
+        assert_eq!(snapshot.failure_reason.as_deref(), Some("interrupted"));
+        assert_eq!(
+            snapshot.last_error.as_deref(),
+            Some("interrupted by restart")
+        );
+    }
 
     fn draft(folder_id: i32, title: &str) -> WorkTaskDraft {
         WorkTaskDraft {

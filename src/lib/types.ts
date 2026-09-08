@@ -1376,6 +1376,7 @@ export type WorkTaskStatus =
  *  agent/mode/config fields are per-task overrides; empty = inherit the
  *  folder's task settings at launch. */
 export interface WorkTaskConfig {
+  cerebro_selection?: import("./generated/cerebro/CerebroSelection").CerebroSelection | null
   prompt_blocks: PromptInputBlock[]
   display_text: string
   agent_type?: AgentType | null
@@ -3319,6 +3320,45 @@ export interface SkillSyncReport {
 export interface SystemProxySettings {
   enabled: boolean
   proxy_url: string | null
+}
+
+export type CerebroPairingPollStatus = "PENDING" | "PAIRED"
+
+export interface CerebroPairingStart {
+  handle: string
+  cerebroBaseUrl: string
+  userCode: string
+  verificationUri: string
+  expiresIn: number
+  interval: number
+}
+
+export interface CerebroPairingPoll {
+  status: CerebroPairingPollStatus
+  runnerId: string | null
+  retryAfter: number | null
+}
+
+export type CerebroStorageMode = "FILE" | "KEYRING"
+
+export interface CerebroStorageSettings {
+  mode: CerebroStorageMode
+  keyringAvailable: boolean
+}
+
+export interface CerebroAuthState {
+  paired: boolean
+  cerebroBaseUrl: string | null
+  runnerId: string | null
+  pairing: CerebroPairingStart | null
+}
+
+export interface CerebroRunnerAccess {
+  cerebroBaseUrl: string
+  runnerId: string
+  accessToken: string
+  tokenType: string
+  expiresIn: number
 }
 
 export type AppLocale =

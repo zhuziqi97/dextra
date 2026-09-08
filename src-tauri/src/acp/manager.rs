@@ -51,6 +51,35 @@ const USER_PROMPT_PREVIEW_MAX_CHARS: usize = 500;
 /// `kill_tree`.
 const DISCONNECT_ALL_GRACE: Duration = Duration::from_millis(500);
 
+/// 在连接去重之后准备临时 MCP 配置，作用域与父连接生命周期绑定。
+#[async_trait::async_trait]
+pub trait ScopedMcpServers: Send + Sync {
+    async fn prepare(&self, parent_connection_id: &str) -> Result<Vec<sacp::schema::McpServer>, AcpError>;
+}
+
+#[derive(Clone)]
+enum McpServerSource {
+    Static(Vec<sacp::schema::McpServer>),
+    Scoped(Arc<dyn ScopedMcpServers>),
+}
+
+#[derive(Clone)]
+pub struct AdditionalMcpServers {
+    source: McpServerSource,
+}
+
+impl AdditionalMcpServers {
+    pub fn scoped(provider: Arc<dyn ScopedMcpServers>) -> Self {
+        Self { source: McpServerSource::Scoped(provider) }
+    }
+}
+
+impl From<Vec<sacp::schema::McpServer>> for AdditionalMcpServers {
+    fn from(servers: Vec<sacp::schema::McpServer>) -> Self {
+        Self { source: McpServerSource::Static(servers) }
+    }
+}
+
 /// True for ids in the parsers' turn-id namespace (`turn-<digits>`), which every
 /// parser assigns via `format!("turn-{}", n)`. A broadcast `message_id` must
 /// never land here: it would collide with a persisted transcript turn id and let
@@ -322,6 +351,11 @@ impl ConnectionManager {
         self.delegation_injection.get().cloned()
     }
 
+    /// 启动 adapter 复用现有伴生进程 IPC，不另开凭据服务。
+    pub fn companion_transport(&self) -> Option<(Arc<crate::acp::delegation::listener::TokenRegistry>, PathBuf)> {
+        self.delegation_snapshot().map(|injection| (injection.tokens, injection.socket_path))
+    }
+
     /// Returns the shared terminal-shell setting consumed by ACP terminal
     /// runtimes. Keeping the handle shared makes saves apply immediately to
     /// connections that are already running.
@@ -446,6 +480,34 @@ impl ConnectionManager {
         preferred_mode_id: Option<String>,
         preferred_config_values: BTreeMap<String, String>,
     ) -> Result<String, AcpError> {
+        self.spawn_agent_with_additional_mcp_servers(
+            agent_type,
+            working_dir,
+            session_id,
+            runtime_env,
+            owner_window_label,
+            emitter,
+            preferred_mode_id,
+            preferred_config_values,
+            Vec::new(),
+        )
+        .await
+    }
+
+    /// 启动 Agent，并仅为这条新连接追加本次 MCP server 集合。
+    #[allow(clippy::too_many_arguments)]
+    pub async fn spawn_agent_with_additional_mcp_servers(
+        &self,
+        agent_type: AgentType,
+        working_dir: Option<String>,
+        session_id: Option<String>,
+        runtime_env: BTreeMap<String, String>,
+        owner_window_label: String,
+        emitter: EventEmitter,
+        preferred_mode_id: Option<String>,
+        preferred_config_values: BTreeMap<String, String>,
+        additional_mcp_servers: impl Into<AdditionalMcpServers>,
+    ) -> Result<String, AcpError> {
         // Connection dedup: when resuming an agent session (session_id is
         // Some), look for a live AgentConnection that already represents
         // the same external session in the same working_dir for the same
@@ -495,6 +557,11 @@ impl ConnectionManager {
         }
 
         let connection_id = uuid::Uuid::new_v4().to_string();
+        let config = additional_mcp_servers.into();
+        let additional_mcp_servers = match config.source {
+            McpServerSource::Static(servers) => servers,
+            McpServerSource::Scoped(provider) => provider.prepare(&connection_id).await?,
+        };
         tracing::info!(
             "[ACP] spawning connection id={} owner_window={} agent={:?}",
             connection_id, owner_window_label, agent_type
@@ -517,8 +584,18 @@ impl ConnectionManager {
             preferred_config_values,
             self.delegation_snapshot(),
             self.terminal_shell_config.clone(),
+            additional_mcp_servers,
         )
-        .await?;
+        .await;
+        let session_started_rx = match session_started_rx {
+            Ok(receiver) => receiver,
+            Err(error) => {
+                if let Some((tokens, _)) = self.companion_transport() {
+                    tokens.revoke_by_parent(&connection_id).await;
+                }
+                return Err(error);
+            }
+        };
 
         // When dedup is active, hold the lock until the agent's
         // SessionStarted has applied (so external_id is populated for the
@@ -1910,6 +1987,7 @@ impl ConnectionManager {
                     // Inheriting (not forcing) keeps an auto-titled sibling
                     // eligible for later backfills.
                     let title_locked = current.title_locked;
+                    let cerebro_selection = current.cerebro_selection.clone();
                     // The sibling keeps the original's sidebar routing (a forked
                     // chat conversation must stay in the Chat group). `Delegate`
                     // is unreachable here — children are never forked from the
@@ -1995,6 +2073,7 @@ impl ConnectionManager {
                         deleted_at: Set(None),
                         pinned_at: Set(None),
                         origin_cwd: Set(None),
+                        cerebro_selection: Set(cerebro_selection),
                     };
                     let inserted = sibling.insert(txn).await?;
                     Ok(inserted.id)

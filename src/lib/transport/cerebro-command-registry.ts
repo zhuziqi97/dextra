@@ -35,7 +35,7 @@ export interface CerebroCommandPolicy {
   sharedUser: boolean
   idempotency: "COMMAND_ID" | "READ_ONLY" | "NONE"
   timeoutMs: number
-  audit: "DOMAIN_OPERATION" | "READ_METADATA" | "DENIED"
+  audit: "DOMAIN_OPERATION" | "REMOTE_RELAY" | "READ_METADATA" | "DENIED"
 }
 
 export interface CerebroChannelPolicy {
@@ -154,5 +154,11 @@ export function getCerebroCommandPolicy(
 export function getCerebroChannelPolicy(
   channel: string
 ): CerebroChannelPolicy | undefined {
-  return channelPolicies.get(channel)
+  const exact = channelPolicies.get(channel)
+  if (exact) return exact
+  return CEREBRO_COMMAND_REGISTRY.channels.find(
+    (policy) =>
+      policy.channel.endsWith("*") &&
+      channel.startsWith(policy.channel.slice(0, -1))
+  )
 }

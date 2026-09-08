@@ -616,6 +616,35 @@ pub fn build_router(
             "/probe_terminal_shell_path",
             post(handlers::system_settings::probe_terminal_shell_path),
         )
+        // ─── Cerebro Runner identity ───
+        .route("/cerebro_get_storage_settings", post(handlers::cerebro::get_storage_settings))
+        .route("/cerebro_select_storage", post(handlers::cerebro::select_storage))
+        .route("/cerebro_import_credential", post(handlers::cerebro::import_credential))
+        .route(
+            "/cerebro_get_auth_state",
+            post(handlers::cerebro::get_auth_state),
+        )
+        .route("/cerebro_query_launch_binding", post(handlers::cerebro::query_launch_binding))
+        .route(
+            "/cerebro_start_pairing",
+            post(handlers::cerebro::start_pairing),
+        )
+        .route(
+            "/cerebro_poll_pairing",
+            post(handlers::cerebro::poll_pairing),
+        )
+        .route(
+            "/cerebro_cancel_pairing",
+            post(handlers::cerebro::cancel_pairing),
+        )
+        .route(
+            "/cerebro_forget_runner",
+            post(handlers::cerebro::forget_runner),
+        )
+        .route(
+            "/cerebro_refresh_access_token",
+            post(handlers::cerebro::refresh_access_token),
+        )
         .route(
             "/update_system_proxy_settings",
             post(handlers::system_settings::update_system_proxy_settings),

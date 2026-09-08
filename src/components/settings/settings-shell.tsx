@@ -15,6 +15,7 @@ import {
   GitBranch,
   Globe,
   Keyboard,
+  Link2,
   Menu,
   MessageSquareText,
   SendHorizontal,
@@ -53,6 +54,7 @@ interface SettingsNavItem {
     | "system"
     | "web_service"
     | "logs"
+    | "cerebro"
   icon: ComponentType<{ className?: string }>
 }
 
@@ -116,6 +118,11 @@ const SETTINGS_NAV_ITEMS: SettingsNavItem[] = [
     href: "/settings/web-service",
     labelKey: "web_service",
     icon: Globe,
+  },
+  {
+    href: "/settings/cerebro",
+    labelKey: "cerebro",
+    icon: Link2,
   },
   {
     href: "/settings/logs",

@@ -1,5 +1,8 @@
 import { detectEnvironment } from "./detect"
-import type { CerebroPlatformPeer } from "./cerebro-remote-transport"
+import {
+  CerebroRemoteTransport,
+  type CerebroPlatformPeer,
+} from "./cerebro-remote-transport"
 import type { RemoteTransportConfig, Transport } from "./types"
 
 export type { RemoteTransportConfig, Transport, UnsubscribeFn } from "./types"
@@ -64,10 +67,6 @@ export function configureCerebroRemoteTransport(
   peer: CerebroPlatformPeer
 ): void {
   _cerebroTransport?.destroy?.()
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { CerebroRemoteTransport } = require("./cerebro-remote-transport") as {
-    CerebroRemoteTransport: new (peer: CerebroPlatformPeer) => Transport
-  }
   _cerebroTransport = new CerebroRemoteTransport(peer)
 }
 

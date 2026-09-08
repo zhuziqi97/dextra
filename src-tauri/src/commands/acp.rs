@@ -9958,6 +9958,71 @@ pub(crate) async fn acp_update_agent_preferences_and_refresh(
     Ok(refresh_config_staleness(manager, db, data_dir, &[agent_type], ConfigStaleKind::AgentConfig).await)
 }
 
+/// 桌面与 Web 普通会话的唯一启动适配层。
+#[allow(clippy::too_many_arguments)]
+pub async fn acp_connect_core(
+    db: &AppDatabase,
+    manager: &ConnectionManager,
+    data_dir: &Path,
+    emitter: EventEmitter,
+    owner_window: String,
+    agent_type: AgentType,
+    working_dir: Option<String>,
+    session_id: Option<String>,
+    preferred_mode_id: Option<String>,
+    preferred_config_values: BTreeMap<String, String>,
+    conversation_id: Option<i32>,
+    cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
+) -> Result<String, crate::app_error::AppCommandError> {
+    use crate::app_error::AppCommandError;
+    use crate::cerebro::session_binding;
+    let working_dir_path = working_dir.as_ref().map(PathBuf::from);
+    if let Some(existing) = manager.find_connection_for_reuse(
+        agent_type, working_dir_path.as_ref(), session_id.as_deref(),
+    ).await {
+        return Ok(existing);
+    }
+    let acp_error = |error: AcpError| {
+        let mut result = AppCommandError::task_execution_failed(error.to_string());
+        result.detail = error.code().map(str::to_string);
+        result
+    };
+    let runtime_env = build_session_runtime_env(db, agent_type, session_id.as_deref(), data_dir)
+        .await.map_err(acp_error)?;
+    verify_agent_installed(agent_type).await.map_err(acp_error)?;
+    let conversation_id = session_binding::resolve_conversation_id(
+        &db.conn, agent_type, session_id.as_deref(), conversation_id,
+    ).await?;
+    let platform_task = match conversation_id {
+        Some(id) => session_binding::platform_task_for_conversation(&db.conn, id).await?,
+        None => None,
+    };
+    let (selection, additional) = if let Some(task_id) = platform_task {
+        if cerebro_selection.is_some() {
+            return Err(AppCommandError::new(crate::app_error::AppErrorCode::InvalidInput,
+                "平台 WorkTask 的模块作用域由平台 Task 固定，不能覆盖"));
+        }
+        (None, crate::cerebro::mcp::server_for_task(manager, &task_id).await?)
+    } else {
+        let selection = session_binding::selection_for_start(
+            &db.conn, working_dir.as_deref(), conversation_id, cerebro_selection.as_ref(),
+        ).await?;
+        let principal_session = session_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+        let additional = crate::cerebro::mcp::server_for_selection(manager, &selection, &principal_session).await?;
+        (Some(selection), additional)
+    };
+    let connection_id = manager.spawn_agent_with_additional_mcp_servers(
+        agent_type, working_dir, session_id, runtime_env, owner_window,
+        emitter, preferred_mode_id, preferred_config_values, additional,
+    ).await.map_err(acp_error)?;
+    if let Some(selection) = selection {
+        session_binding::persist_launch_selection(
+            &db.conn, manager, &connection_id, conversation_id, selection,
+        ).await?;
+    }
+    Ok(connection_id)
+}
+
 #[cfg(feature = "tauri-runtime")]
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
 #[allow(clippy::too_many_arguments)]
@@ -9967,11 +10032,13 @@ pub async fn acp_connect(
     session_id: Option<String>,
     preferred_mode_id: Option<String>,
     preferred_config_values: Option<BTreeMap<String, String>>,
+    conversation_id: Option<i32>,
+    cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
     manager: State<'_, ConnectionManager>,
     db: State<'_, AppDatabase>,
     app_handle: tauri::AppHandle,
     window: tauri::WebviewWindow,
-) -> Result<String, AcpError> {
+) -> Result<String, crate::app_error::AppCommandError> {
     // Resolve through the effective data dir so a custom `CODEG_DATA_DIR`
     // reaches the credential helper script the agent's git subprocess
     // will execute. `acp_connect` may be called before the app data dir
@@ -9982,27 +10049,10 @@ pub async fn acp_connect(
         .app_data_dir()
         .map(|p| crate::paths::resolve_effective_data_dir(&p))
         .unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let runtime_env =
-        build_session_runtime_env(&db, agent_type, session_id.as_deref(), &app_data_dir).await?;
-
-    // Guard: the session page must never trigger a download or install.
-    // If the agent isn't ready, return SdkNotInstalled here so the frontend
-    // can prompt the user to install it from Agent Settings.
-    verify_agent_installed(agent_type).await?;
-
     let emitter = EventEmitter::Tauri(app_handle);
-    manager
-        .spawn_agent(
-            agent_type,
-            working_dir,
-            session_id,
-            runtime_env,
-            window.label().to_string(),
-            emitter,
-            preferred_mode_id,
-            preferred_config_values.unwrap_or_default(),
-        )
-        .await
+    acp_connect_core(&db, &manager, &app_data_dir, emitter, window.label().to_string(),
+        agent_type, working_dir, session_id, preferred_mode_id,
+        preferred_config_values.unwrap_or_default(), conversation_id, cerebro_selection).await
 }
 
 #[cfg(feature = "tauri-runtime")]

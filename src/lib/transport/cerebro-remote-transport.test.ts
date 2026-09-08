@@ -86,6 +86,28 @@ class FakeCerebroPlatform implements CerebroPlatformPeer {
     options?: CallOptions
   ): Promise<T> {
     this.relays.push({ command: codegCommand, args, options })
+    if (codegCommand === "acp_connect") {
+      return this.connectionId as T
+    }
+    if (codegCommand === "acp_prompt") {
+      this.emit({
+        type: "permission_request",
+        request_id: "permission-1",
+        tool_call: { title: "写入文件" },
+        options: [
+          { option_id: "allow-once", name: "允许一次", kind: "allow_once" },
+        ],
+      })
+      return undefined as T
+    }
+    if (codegCommand === "acp_respond_permission") {
+      this.emit({ type: "permission_resolved", request_id: "permission-1" })
+      return undefined as T
+    }
+    if (codegCommand === "acp_cancel") {
+      this.emit({ type: "status_changed", status: "connected" })
+      return undefined as T
+    }
     return this.snapshot() as T
   }
 
@@ -155,19 +177,16 @@ describe("CerebroRemoteTransport", () => {
     const peer = new FakeCerebroPlatform()
     const transport = new CerebroRemoteTransport(peer)
 
-    const connected = await transport.call<{ connectionId: string }>(
-      "acp_connect",
-      {
-        agent: "codex",
-      }
-    )
-    expect(connected.connectionId).toBe("codeg-connection-1")
+    const connectionId = await transport.call<string>("acp_connect", {
+      agentType: "codex",
+    })
+    expect(connectionId).toBe("codeg-connection-1")
 
     const snapshots: number[] = []
     const events: EventEnvelope[] = []
     const replays: EventEnvelope[][] = []
     transport.eventStream().attach(
-      connected.connectionId,
+      connectionId,
       {},
       {
         onSnapshot: (_snapshot, eventSeq) => snapshots.push(eventSeq),
@@ -179,17 +198,17 @@ describe("CerebroRemoteTransport", () => {
     await vi.waitFor(() => expect(snapshots).toEqual([0]))
 
     await transport.call("acp_prompt", {
-      connectionId: connected.connectionId,
+      connectionId,
       prompt: "继续",
     })
     expect(events[events.length - 1]?.type).toBe("permission_request")
     await transport.call("acp_respond_permission", {
-      connectionId: connected.connectionId,
+      connectionId,
       requestId: "permission-1",
       optionId: "allow-once",
     })
     expect(events[events.length - 1]?.type).toBe("permission_resolved")
-    await transport.call("acp_cancel", { connectionId: connected.connectionId })
+    await transport.call("acp_cancel", { connectionId })
     expect(events[events.length - 1]).toMatchObject({
       type: "status_changed",
       status: "connected",
@@ -208,30 +227,36 @@ describe("CerebroRemoteTransport", () => {
     ])
     expect(peer.attaches[peer.attaches.length - 1]?.sinceSeq).toBe(3)
 
-    expect(peer.operations.map((call) => call.operation)).toEqual([
-      "SESSION_CREATE",
-      "TASK_START",
-      "APPROVAL_DECIDE",
-      "TASK_CANCEL",
+    expect(peer.relays.map((call) => call.command)).toEqual([
+      "acp_connect",
+      "acp_prompt",
+      "acp_respond_permission",
+      "acp_cancel",
     ])
-    expect(peer.operations[1].options?.timeoutMs).toBe(60_000)
+    expect(peer.relays[1].options?.timeoutMs).toBe(60_000)
   })
 
-  it("只 Relay 登记读取，并在浏览器边界拒绝高风险、凭据与未知命令", async () => {
+  it("Relay 登记的工作台操作，并在浏览器边界拒绝设置、凭据、安装与未知命令", async () => {
     const peer = new FakeCerebroPlatform()
     const transport = new CerebroRemoteTransport(peer)
 
     await transport.call("acp_get_session_snapshot", {
       connectionId: "codeg-connection-1",
     })
+    await transport.call("read_file_for_edit", { path: "src/main.rs" })
+    await transport.call("terminal_spawn", {})
+    await transport.call("git_commit", { message: "review" })
+    await transport.call("work_task_merge", { id: 1 })
     expect(peer.relays.map((call) => call.command)).toEqual([
       "acp_get_session_snapshot",
+      "read_file_for_edit",
+      "terminal_spawn",
+      "git_commit",
+      "work_task_merge",
     ])
 
     for (const command of [
-      "forge_merge_change",
       "open_in_code",
-      "terminal_spawn",
       "acp_update_agent_env",
       "acp_download_agent_binary",
       "perform_app_update",
@@ -242,7 +267,7 @@ describe("CerebroRemoteTransport", () => {
       ).rejects.toBeInstanceOf(CerebroTransportError)
     }
     expect(peer.operations).toEqual([])
-    expect(peer.relays).toHaveLength(1)
+    expect(peer.relays).toHaveLength(5)
   })
 
   it("以稳定错误拒绝不兼容的 Codeg API revision", async () => {

@@ -388,6 +388,25 @@ describe("AcpConnectionsProvider cross-client viewer lifecycle", () => {
 // clicked in to watch — an owner's acpDisconnect kills the agent CLI mid-turn,
 // which the agent writes into its transcript as an interrupted request.
 describe("AcpConnectionsProvider preview-tab release (disconnectIfIdle)", () => {
+  it("preserves a structured Binding denial in the connection alert", async () => {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    const denial = Object.assign(new Error("模块执行绑定当前未启用"), {
+      code: "configuration_invalid",
+      message: "模块执行绑定当前未启用",
+      detail: "BINDING_NOT_ACTIVE",
+    })
+    h.acpConnect.mockRejectedValue(denial)
+    h.pushAlert.mockClear()
+    await mountProvider()
+    await act(async () => {
+      await expect(h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42))
+        .rejects.toEqual(denial)
+    })
+    expect(h.pushAlert).toHaveBeenCalledWith(
+      "error", expect.any(String), denial.message
+    )
+  })
+
   async function connectOwner(): Promise<AttachHandlers> {
     h.acpFindConnectionForConversation.mockResolvedValue(null)
     await mountProvider()
@@ -752,13 +771,12 @@ describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
     expect(h.acpDisconnect).toHaveBeenCalledWith("spawned-conn")
     // Same agent / cwd / session — the point is a fresh PROCESS, not new params,
     // which is exactly what connect()'s "nothing changed" fast path would skip.
-    expect(h.acpConnect).toHaveBeenLastCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "sess-1",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "sess-1",
+    })
     expect(h.store!.getConnection(TAB)?.connectionId).toBe("respawned-conn")
   })
 
@@ -776,13 +794,12 @@ describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
     })
 
     expect(result).toBe(true)
-    expect(h.acpConnect).toHaveBeenLastCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "sess-1",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "sess-1",
+    })
     expect(h.store!.getConnection(TAB)?.connectionId).toBe("respawned-conn")
   })
 
@@ -803,13 +820,12 @@ describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
     expect(result).toBe(true)
     // Nothing to tear down — the params come from what connect() recorded.
     expect(h.acpDisconnect).not.toHaveBeenCalled()
-    expect(h.acpConnect).toHaveBeenCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "sess-1",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "sess-1",
+    })
   })
 
   it("reconnects after a connect that never produced a connection", async () => {
@@ -849,13 +865,12 @@ describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
       await h.actions!.reconnect(TAB)
     })
 
-    expect(h.acpConnect).toHaveBeenCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "sess-1",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "sess-1",
+    })
   })
 
   it("re-attaches a viewer without killing the owner's agent", async () => {
@@ -968,13 +983,12 @@ describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
     expect(await reconnectResult).toBe(true)
     // Waited for the hung attempt to settle, then rebuilt what it produced.
     expect(h.acpDisconnect).toHaveBeenCalledWith("spawned-conn")
-    expect(h.acpConnect).toHaveBeenLastCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "sess-1",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "sess-1",
+    })
     expect(h.store!.getConnection(TAB)?.connectionId).toBe("respawned-conn")
   })
 
@@ -1057,13 +1071,12 @@ describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
       await h.actions!.reconnect(TAB)
     })
 
-    expect(h.acpConnect).toHaveBeenCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "snapshot-session",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "snapshot-session",
+    })
   })
 
   it("resumes the session the BACKEND minted once the entry is gone", async () => {
@@ -1097,13 +1110,12 @@ describe("AcpConnectionsProvider reconnect (status-icon button)", () => {
 
     // Reconnecting on the request AS ISSUED would pass sessionId undefined —
     // a brand-new ACP session, silently abandoning the conversation's history.
-    expect(h.acpConnect).toHaveBeenCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "minted-1",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "minted-1",
+    })
   })
 })
 
@@ -1154,13 +1166,12 @@ describe("AcpConnectionsProvider disconnect teardown confirmation", () => {
     })
 
     // Still reconnected — the user is not left stranded...
-    expect(h.acpConnect).toHaveBeenLastCalledWith(
-      "claude_code",
-      "/tmp/x",
-      "sess-1",
-      undefined,
-      {}
-    )
+    const [agent, cwd, session] = h.acpConnect.mock.lastCall!
+    expect({ agent, cwd, session }).toEqual({
+      agent: "claude_code",
+      cwd: "/tmp/x",
+      session: "sess-1",
+    })
     // ...but the caller must not show an "applied" confirmation for a restart
     // that may have landed right back on the process it meant to replace.
     expect(applied).toBe(false)

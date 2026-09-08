@@ -4,12 +4,15 @@ use serde_json::Value;
 
 use super::error::{BridgeError, BridgeErrorCode};
 use super::registry::registry;
+use crate::cerebro::FolderTargetProjection;
 
 /// P0-C 验证所需的最小消息集合；具体 Codeg DTO 仍封装在 PAYLOAD 内。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum MessageType {
     Hello,
+    Heartbeat,
+    TargetsReport,
     // acp_connect 是创建执行会话的写操作，必须先经过平台 SESSION_CREATE。
     SessionOpen,
     TaskStart,
@@ -62,7 +65,10 @@ impl Envelope {
         }
         require(&self.message_id, "MESSAGE_ID")?;
         require_option(&self.runner_id, "RUNNER_ID")?;
-        if self.message_type == MessageType::Hello {
+        if matches!(
+            self.message_type,
+            MessageType::Hello | MessageType::Heartbeat | MessageType::TargetsReport
+        ) {
             return Ok(());
         }
         require_option(&self.correlation_id, "CORRELATION_ID")?;
@@ -92,7 +98,9 @@ impl Envelope {
             | MessageType::CodegChannelUnsubscribe => {
                 require_option(&self.target_id, "TARGET_ID")?;
             }
-            MessageType::Hello => unreachable!("handled above"),
+            MessageType::Hello | MessageType::Heartbeat | MessageType::TargetsReport => {
+                unreachable!("handled above")
+            }
         }
         Ok(())
     }
@@ -135,6 +143,41 @@ pub fn runner_hello(runner_id: impl Into<String>, build_id: impl Into<String>) -
             codeg_upstream_commit: registry.codeg_upstream_commit.clone(),
         })
         .expect("RunnerHelloPayload serialization cannot fail"),
+        runner_id: Some(runner_id.into()),
+        correlation_id: None,
+        command_id: None,
+        target_id: None,
+        session_id: None,
+        task_id: None,
+    }
+}
+
+pub fn runner_heartbeat(runner_id: impl Into<String>) -> Envelope {
+    Envelope {
+        protocol_version: registry().protocol_version,
+        message_type: MessageType::Heartbeat,
+        message_id: uuid::Uuid::new_v4().to_string(),
+        occurred_at: Utc::now(),
+        payload: serde_json::json!({}),
+        runner_id: Some(runner_id.into()),
+        correlation_id: None,
+        command_id: None,
+        target_id: None,
+        session_id: None,
+        task_id: None,
+    }
+}
+
+pub fn runner_targets_report(
+    runner_id: impl Into<String>,
+    targets: Vec<FolderTargetProjection>,
+) -> Envelope {
+    Envelope {
+        protocol_version: registry().protocol_version,
+        message_type: MessageType::TargetsReport,
+        message_id: uuid::Uuid::new_v4().to_string(),
+        occurred_at: Utc::now(),
+        payload: serde_json::json!({"TARGETS": targets}),
         runner_id: Some(runner_id.into()),
         correlation_id: None,
         command_id: None,
@@ -187,5 +230,14 @@ mod tests {
     fn incompatible_revision_fails_with_a_stable_error() {
         let error = negotiate(1, 2).unwrap_err();
         assert_eq!(error.code, BridgeErrorCode::CodegApiRevisionUnsupported);
+    }
+
+    #[test]
+    fn heartbeat_uses_the_same_runner_envelope_without_command_scope() {
+        let heartbeat = runner_heartbeat("runner-1");
+        heartbeat.validate().unwrap();
+        let value = serde_json::to_value(heartbeat).unwrap();
+        assert_eq!(value["TYPE"], "HEARTBEAT");
+        assert!(value.get("COMMAND_ID").is_none());
     }
 }

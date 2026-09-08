@@ -1013,17 +1013,23 @@ fn tag_mcp_suspect(
 struct ConnectionCleanupGuard {
     connections: Arc<tokio::sync::Mutex<HashMap<String, AgentConnection>>>,
     connection_id: String,
+    tokens: Option<Arc<crate::acp::delegation::listener::TokenRegistry>>,
+    runtime: tokio::runtime::Handle,
 }
 
 impl Drop for ConnectionCleanupGuard {
     fn drop(&mut self) {
+        if let Some(tokens) = self.tokens.take() {
+            let connection_id = self.connection_id.clone();
+            self.runtime.spawn(async move { tokens.revoke_by_parent(&connection_id).await; });
+        }
         if let Ok(mut guard) = self.connections.try_lock() {
             guard.remove(&self.connection_id);
             return;
         }
         let connections = self.connections.clone();
         let connection_id = std::mem::take(&mut self.connection_id);
-        tokio::spawn(async move {
+        self.runtime.spawn(async move {
             connections.lock().await.remove(&connection_id);
         });
     }
@@ -1882,6 +1888,7 @@ pub async fn spawn_agent_connection(
     preferred_config_values: BTreeMap<String, String>,
     delegation_injection: Option<DelegationInjection>,
     terminal_shell_config: TerminalShellRuntimeConfig,
+    additional_mcp_servers: Vec<McpServer>,
 ) -> Result<tokio::sync::oneshot::Receiver<()>, AcpError> {
     // Create the authoritative session state up front. Subsequent emit_with_state
     // calls write through this state and increment its seq counter so the first
@@ -2033,6 +2040,8 @@ pub async fn spawn_agent_connection(
     let cleanup_guard = ConnectionCleanupGuard {
         connections: cleanup_connections,
         connection_id: cleanup_connection_id,
+        tokens: delegation_injection.as_ref().map(|injection| injection.tokens.clone()),
+        runtime: connection_rt.clone(),
     };
     let connection_thread = std::thread::Builder::new()
         .name(format!("acp-conn-{conn_id}"))
@@ -2055,6 +2064,7 @@ pub async fn spawn_agent_connection(
             preferred_mode_id,
             preferred_config_values,
             delegation_injection,
+            additional_mcp_servers,
             fs_policy,
             host_tools,
             stderr_tail,
@@ -2066,13 +2076,7 @@ pub async fn spawn_agent_connection(
         // best-effort: a missing token entry is a no-op, and both
         // `cancel_by_parent` calls are safe on an empty pending map.
         if let Some(inj) = delegation_for_cleanup {
-            let token = {
-                let snap = state_clone.read().await;
-                snap.delegation_token.clone()
-            };
-            if let Some(tok) = token {
-                inj.tokens.revoke(&tok).await;
-            }
+            inj.tokens.revoke_by_parent(&conn_id).await;
             inj.broker.cancel_by_parent(&conn_id).await;
             // Reclaim a parked `ask_user_question` instead of waiting for the
             // companion's ask socket to close (which a reparented/hard-killed
@@ -3941,6 +3945,47 @@ fn load_mcp_servers_for_agent(agent_type: AgentType) -> Vec<McpServer> {
     out
 }
 
+fn mcp_servers_for_launch(
+    agent_type: AgentType,
+    configured: Vec<McpServer>,
+    additional: Vec<McpServer>,
+    supports_http: bool,
+    supports_sse: bool,
+) -> Vec<McpServer> {
+    configured
+        .into_iter()
+        .chain(additional)
+        .filter(|server| match server {
+            McpServer::Stdio(_) => true,
+            McpServer::Http(server) => {
+                if supports_http {
+                    true
+                } else {
+                    tracing::warn!(
+                        "[ACP][{}] skip HTTP MCP server '{}': agent does not advertise mcpCapabilities.http",
+                        agent_type,
+                        server.name
+                    );
+                    false
+                }
+            }
+            McpServer::Sse(server) => {
+                if supports_sse {
+                    true
+                } else {
+                    tracing::warn!(
+                        "[ACP][{}] skip SSE MCP server '{}': agent does not advertise mcpCapabilities.sse",
+                        agent_type,
+                        server.name
+                    );
+                    false
+                }
+            }
+            _ => false,
+        })
+        .collect()
+}
+
 /// Context the connection layer needs to inject the built-in `codeg-mcp`
 /// MCP entry. Built once per `run_connection` from the live AppState pieces
 /// (broker config, token registry, UDS path) and passed through.
@@ -4440,6 +4485,7 @@ async fn run_connection(
     preferred_mode_id: Option<String>,
     preferred_config_values: BTreeMap<String, String>,
     delegation_injection: Option<DelegationInjection>,
+    additional_mcp_servers: Vec<McpServer>,
     fs_policy: FsAccessPolicy,
     host_tools: HostToolsPolicy,
     // Connection-scoped agent stderr buffer, shared with the `with_debug`
@@ -4902,35 +4948,13 @@ async fn run_connection(
             // ACP spec; HTTP/SSE are gated on `mcp_capabilities.{http,sse}`.
             let mut mcp_servers: Vec<McpServer> = if agent_supports_mcp {
                 let mcp_caps = &init_resp.agent_capabilities.mcp_capabilities;
-                load_mcp_servers_for_agent(agent_type)
-                    .into_iter()
-                    .filter(|s| match s {
-                        McpServer::Stdio(_) => true,
-                        McpServer::Http(server) => {
-                            if mcp_caps.http {
-                                true
-                            } else {
-                                tracing::warn!(
-                                    "[ACP][{}] skip HTTP MCP server '{}': agent does not advertise mcpCapabilities.http",
-                                    agent_type, server.name
-                                );
-                                false
-                            }
-                        }
-                        McpServer::Sse(server) => {
-                            if mcp_caps.sse {
-                                true
-                            } else {
-                                tracing::warn!(
-                                    "[ACP][{}] skip SSE MCP server '{}': agent does not advertise mcpCapabilities.sse",
-                                    agent_type, server.name
-                                );
-                                false
-                            }
-                        }
-                        _ => false,
-                    })
-                    .collect()
+                mcp_servers_for_launch(
+                    agent_type,
+                    load_mcp_servers_for_agent(agent_type),
+                    additional_mcp_servers.clone(),
+                    mcp_caps.http,
+                    mcp_caps.sse,
+                )
             } else {
                 tracing::info!(
                     "[ACP][{}] supports_mcp=false: skipping all MCP wire forwarding (user servers + codeg-mcp companion)",
@@ -18384,6 +18408,61 @@ mod tests {
             }
             other => panic!("expected Http variant, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn launch_mcp_servers_merge_additional_http_when_supported() {
+        let configured = canonical_spec_to_mcp_server(
+            "configured",
+            &serde_json::json!({
+                "type": "stdio",
+                "command": "configured-command",
+            }),
+        )
+        .unwrap();
+        let additional = canonical_spec_to_mcp_server(
+            "cerebro",
+            &serde_json::json!({
+                "type": "http",
+                "url": "http://cerebro/mcp/stream",
+                "headers": {"Authorization": "Bearer short-lived"},
+            }),
+        )
+        .unwrap();
+
+        let servers = mcp_servers_for_launch(
+            AgentType::Codex,
+            vec![configured],
+            vec![additional],
+            true,
+            false,
+        );
+
+        assert_eq!(servers.len(), 2);
+        assert!(matches!(servers[0], McpServer::Stdio(_)));
+        assert!(matches!(servers[1], McpServer::Http(_)));
+    }
+
+    #[test]
+    fn launch_mcp_servers_drop_additional_http_when_unsupported() {
+        let additional = canonical_spec_to_mcp_server(
+            "cerebro",
+            &serde_json::json!({
+                "type": "http",
+                "url": "http://cerebro/mcp/stream",
+            }),
+        )
+        .unwrap();
+
+        let servers = mcp_servers_for_launch(
+            AgentType::Codex,
+            Vec::new(),
+            vec![additional],
+            false,
+            false,
+        );
+
+        assert!(servers.is_empty());
     }
 
     #[test]

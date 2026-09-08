@@ -116,9 +116,12 @@ impl CerebroBridge {
 
     pub async fn dispatch(&self, envelope: Envelope) -> Result<DispatchResult, BridgeError> {
         envelope.validate()?;
-        if envelope.message_type == MessageType::Hello {
+        if matches!(
+            envelope.message_type,
+            MessageType::Hello | MessageType::Heartbeat | MessageType::TargetsReport
+        ) {
             return Err(BridgeError::invalid(
-                "HELLO is negotiated before command dispatch",
+                "connection control messages are handled before command dispatch",
             ));
         }
         let command_id = envelope
@@ -181,6 +184,8 @@ impl CerebroBridge {
                 Ok(BridgeResponse::CodegStreamDetached { result })
             }
             MessageType::Hello
+            | MessageType::Heartbeat
+            | MessageType::TargetsReport
             | MessageType::SessionOpen
             | MessageType::TaskStart
             | MessageType::TaskCancel
@@ -502,27 +507,20 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rpc_cannot_bypass_operations_or_remote_denials() {
+    async fn rpc_rejects_remote_denials_and_unregistered_commands() {
         let bridge = CerebroBridge::new(Arc::new(FakeAcpCore::default()));
-
-        let operation_error = bridge
-            .dispatch(envelope(
-                MessageType::CodegRpcRequest,
-                "rpc-write",
-                json!({ "command": "acp_prompt", "args": {} }),
-            ))
-            .await
-            .unwrap_err();
-        assert_eq!(
-            operation_error.code,
-            BridgeErrorCode::CodegCommandRequiresOperation
-        );
+        let registry = crate::cerebro_bridge::registry::registry();
+        let denied_command = registry
+            .commands
+            .iter()
+            .find(|policy| policy.route == CommandRoute::Deny)
+            .expect("registry must retain a remote-denied command");
 
         let denied_error = bridge
             .dispatch(envelope(
                 MessageType::CodegRpcRequest,
                 "rpc-denied",
-                json!({ "command": "forge_merge_change", "args": {} }),
+                json!({ "command": denied_command.command, "args": {} }),
             ))
             .await
             .unwrap_err();

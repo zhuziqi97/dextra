@@ -61,15 +61,52 @@ pub struct TokenEntry {
 #[derive(Default)]
 pub struct TokenRegistry {
     inner: RwLock<HashMap<String, TokenEntry>>,
+    credentials: RwLock<HashMap<String, Arc<dyn CompanionCredentials>>>,
+    changed: tokio::sync::Notify,
+}
+
+/// 由启动 adapter 固定作用域的临时凭据来源；IPC 不解释业务身份。
+#[async_trait]
+pub trait CompanionCredentials: Send + Sync {
+    async fn issue(&self) -> Result<Value, crate::app_error::AppCommandError>;
 }
 
 impl TokenRegistry {
+    pub async fn register_credentials(&self, token: String, entry: TokenEntry, provider: Arc<dyn CompanionCredentials>) {
+        self.credentials.write().await.insert(token.clone(), provider);
+        self.register(token, entry).await;
+    }
+
+    async fn issue_credentials(&self, token: &str) -> Value {
+        let provider = if self.lookup(token).await.is_some() {
+            self.credentials.read().await.get(token).cloned()
+        } else { None };
+        match provider {
+            Some(provider) => match provider.issue().await {
+                Ok(data) => serde_json::json!({"success": true, "data": data}),
+                Err(error) => serde_json::json!({"success": false, "error": error}),
+            },
+            None => serde_json::json!({"success": false, "error": {"message": "父连接已退出或临时身份已撤销"}}),
+        }
+    }
+
+    async fn wait_revoked(&self, token: &str) {
+        loop {
+            let changed = self.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if self.lookup(token).await.is_none() { return; }
+            changed.await;
+        }
+    }
     pub async fn register(&self, token: String, entry: TokenEntry) {
         self.inner.write().await.insert(token, entry);
     }
 
     pub async fn revoke(&self, token: &str) {
         self.inner.write().await.remove(token);
+        self.credentials.write().await.remove(token);
+        self.changed.notify_waiters();
     }
 
     pub async fn lookup(&self, token: &str) -> Option<TokenEntry> {
@@ -80,7 +117,12 @@ impl TokenRegistry {
     /// connection teardown so a leaked token can't be reused.
     pub async fn revoke_by_parent(&self, parent_connection_id: &str) {
         let mut map = self.inner.write().await;
+        let mut credentials = self.credentials.write().await;
+        for (token, entry) in map.iter() {
+            if entry.parent_connection_id == parent_connection_id { credentials.remove(token); }
+        }
         map.retain(|_, entry| entry.parent_connection_id != parent_connection_id);
+        self.changed.notify_waiters();
     }
 }
 
@@ -207,6 +249,15 @@ impl DelegationListener {
     {
         let msg: BrokerMessage = read_frame(conn).await?;
         let resp = match msg {
+            BrokerMessage::Credentials(req) => BrokerResponse { outcome: self.tokens.issue_credentials(&req.token).await },
+            BrokerMessage::WatchToken(req) => {
+                let mut probe = [0u8; 1];
+                tokio::select! {
+                    _ = self.tokens.wait_revoked(&req.token) => {},
+                    _ = conn.read(&mut probe) => return Ok(()),
+                }
+                BrokerResponse { outcome: Value::Null }
+            }
             BrokerMessage::Call(req) => report_response(self.process(req).await)?,
             BrokerMessage::Status(req) => {
                 // A status long-poll — especially `wait_ms = 0` (block until
@@ -1714,6 +1765,25 @@ mod tests {
         registry.revoke_by_parent("p1").await;
         assert!(registry.lookup("t2").await.is_none());
         assert!(registry.lookup("t3").await.is_some());
+    }
+
+    #[tokio::test]
+    async fn parent_exit_revokes_credential_source_and_wakes_companion() {
+        struct Credentials;
+        #[async_trait]
+        impl CompanionCredentials for Credentials {
+            async fn issue(&self) -> Result<Value, crate::app_error::AppCommandError> {
+                Ok(serde_json::json!({"access_token":"memory-only"}))
+            }
+        }
+        let registry = TokenRegistry::default();
+        registry.register_credentials("bridge-token".into(), TokenEntry {
+            parent_connection_id: "parent".into(), working_dir: PathBuf::new(),
+        }, Arc::new(Credentials)).await;
+        assert_eq!(registry.issue_credentials("bridge-token").await["data"]["access_token"], "memory-only");
+        tokio::join!(registry.wait_revoked("bridge-token"), registry.revoke_by_parent("parent"));
+        assert_eq!(registry.issue_credentials("bridge-token").await["success"], false);
+        assert!(registry.credentials.read().await.is_empty());
     }
 
     // Sanity: spawn failure surfaces as spawn_failed when the listener path

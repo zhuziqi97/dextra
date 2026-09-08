@@ -67,7 +67,7 @@ mod tauri_app {
         acp as acp_commands, app_update as app_update_commands,
         automation as automation_commands, background as background_commands, backup,
         chat_authoring as chat_authoring_commands, chat_channel as chat_channel_commands,
-        conversations,
+        cerebro as cerebro_commands, conversations,
         custom_skills as custom_skills_commands, delegation as delegation_commands,
         experts as experts_commands, feedback as feedback_commands, file_io, folder_commands,
         folder_links, office_tools as office_tools_commands, open_in,
@@ -356,6 +356,18 @@ mod tauri_app {
                 // Restore and apply saved system proxy settings before any network operation.
                 let db = app.state::<db::AppDatabase>();
                 tauri::async_runtime::block_on(network::proxy::init_proxy_from_db(&db.conn));
+                tauri::async_runtime::spawn(crate::cerebro::run_runner_connection_supervisor(
+                    crate::cerebro::CerebroRemoteRuntime::new(
+                        db.conn.clone(),
+                        app.state::<ConnectionManager>().clone_ref(),
+                        app.state::<TerminalManager>().clone_ref(),
+                        crate::web::event_bridge::EventEmitter::Tauri(app.handle().clone()),
+                        app.state::<std::sync::Arc<web::event_bridge::WebEventBroadcaster>>()
+                            .inner()
+                            .clone(),
+                        effective_data_dir.clone(),
+                    ),
+                ));
 
                 // Logging phase 2/3: override the default level from the
                 // persisted `logging.level` now that the DB is open, then wire
@@ -1201,6 +1213,16 @@ mod tauri_app {
                 project_boot::detect_hyperframes_skills,
                 project_boot::install_hyperframes_skills,
                 project_boot::create_hyperframes_project,
+                cerebro_commands::cerebro_get_auth_state,
+                cerebro_commands::cerebro_query_launch_binding,
+                cerebro_commands::cerebro_start_pairing,
+                cerebro_commands::cerebro_poll_pairing,
+                cerebro_commands::cerebro_cancel_pairing,
+                cerebro_commands::cerebro_forget_runner,
+                cerebro_commands::cerebro_get_storage_settings,
+                cerebro_commands::cerebro_select_storage,
+                cerebro_commands::cerebro_import_credential,
+                cerebro_commands::cerebro_refresh_access_token,
                 system_settings::get_system_proxy_settings,
                 system_settings::update_system_proxy_settings,
                 system_settings::get_system_language_settings,

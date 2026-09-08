@@ -1,4 +1,5 @@
 "use client"
+import type { CerebroSelection } from "@/lib/generated/cerebro/CerebroSelection"
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
@@ -24,6 +25,7 @@ interface UseConnectionLifecycleOptions {
    * (cross-client viewing) instead of always spawning a fresh agent.
    */
   conversationId?: number
+  cerebroSelection?: CerebroSelection
   /**
    * Read at unmount-cleanup time: true when the component is unmounting
    * because the view is being REPARENTED (its tab moved between split groups /
@@ -115,6 +117,7 @@ export function useConnectionLifecycle({
   workingDir,
   sessionId,
   conversationId,
+  cerebroSelection,
   isTransientUnmount,
 }: UseConnectionLifecycleOptions): UseConnectionLifecycleReturn {
   const t = useTranslations("Folder.chat.connectionLifecycle")
@@ -192,6 +195,8 @@ export function useConnectionLifecycle({
     sessionIdRef.current = sessionId
   }, [sessionId])
   const conversationIdRef = useRef(conversationId)
+  const cerebroSelectionRef = useRef(cerebroSelection)
+  cerebroSelectionRef.current = cerebroSelection
   useEffect(() => {
     conversationIdRef.current = conversationId
   }, [conversationId])
@@ -224,7 +229,8 @@ export function useConnectionLifecycle({
         agentType,
         workingDir,
         sessionIdRef.current,
-        conversationIdRef.current
+        conversationIdRef.current,
+        cerebroSelectionRef.current
       )
       .then(() => {
         if (!cancelled) {
@@ -381,7 +387,7 @@ export function useConnectionLifecycle({
     touchActivity(contextKey)
     if (!status || status === "disconnected" || status === "error") {
       setLastAutoConnectError(null)
-      connConnect(agentType, workingDir, sessionId, conversationId).catch(
+      connConnect(agentType, workingDir, sessionId, conversationId, cerebroSelection).catch(
         (e: unknown) => {
           if (!isExpectedConnectError(e)) {
             console.error("[ConnLifecycle] connect:", e)
@@ -395,6 +401,7 @@ export function useConnectionLifecycle({
     workingDir,
     sessionId,
     conversationId,
+    cerebroSelection,
     status,
     connConnect,
     contextKey,

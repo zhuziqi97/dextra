@@ -1,0 +1,58 @@
+use sea_orm_migration::prelude::*;
+
+#[derive(DeriveMigrationName)]
+pub struct Migration;
+
+#[async_trait::async_trait]
+impl MigrationTrait for Migration {
+    async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // 旧会话尚未选择作用域；首次重开解析后保存，不推测历史模块。
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Conversation::Table)
+                    .add_column(ColumnDef::new(Conversation::CerebroSelection).text().null())
+                    .to_owned(),
+            )
+            .await
+    }
+
+    async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        manager
+            .alter_table(
+                Table::alter()
+                    .table(Conversation::Table)
+                    .drop_column(Conversation::CerebroSelection)
+                    .to_owned(),
+            )
+            .await
+    }
+}
+
+#[derive(DeriveIden)]
+enum Conversation {
+    Table,
+    CerebroSelection,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sea_orm::EntityTrait;
+
+    #[tokio::test]
+    async fn selection_migration_preserves_existing_conversation() {
+        use crate::db::test_helpers::{fresh_in_memory_db, seed_conversation, seed_folder};
+        let db = fresh_in_memory_db().await;
+        let folder_id = seed_folder(&db, "/tmp/cerebro-selection-upgrade").await;
+        let id = seed_conversation(&db, folder_id, crate::models::AgentType::Codex).await;
+        let schema = SchemaManager::new(&db.conn);
+        Migration.down(&schema).await.unwrap();
+        assert!(!schema.has_column("conversation", "cerebro_selection").await.unwrap());
+        Migration.up(&schema).await.unwrap();
+        let row = crate::db::entities::conversation::Entity::find_by_id(id)
+            .one(&db.conn).await.unwrap().unwrap();
+        assert_eq!(row.folder_id, folder_id);
+        assert_eq!(row.cerebro_selection, None);
+    }
+}

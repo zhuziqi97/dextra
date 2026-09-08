@@ -1,4 +1,5 @@
 fn main() {
+    println!("cargo:rustc-env=DEXTRA_TARGET_TRIPLE={}", std::env::var("TARGET").expect("Cargo TARGET"));
     #[cfg(feature = "tauri-runtime")]
     {
         ensure_sidecar_placeholder();

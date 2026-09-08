@@ -1,0 +1,946 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "description": "Collaborative Vibe MCP Platform API",
+    "title": "convene",
+    "version": "5.9.1"
+  },
+  "paths": {
+    "/api/v1/execution-runner-pairings/approve": {
+      "post": {
+        "description": "由当前登录用户批准自己的 Dextra。",
+        "operationId": "approve_runner_pairing_api_v1_execution_runner_pairings_approve_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerPairingApproveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerPairingApproveResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }],
+        "summary": "Approve Runner Pairing",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-pairings/create": {
+      "post": {
+        "description": "为尚未登录的 Dextra 创建设备配对流程。",
+        "operationId": "create_runner_pairing_api_v1_execution_runner_pairings_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerPairingCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerPairingCreateResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Runner Pairing",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-pairings/exchange": {
+      "post": {
+        "description": "让 Dextra 一次性领取 refresh credential。",
+        "operationId": "exchange_runner_pairing_api_v1_execution_runner_pairings_exchange_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerPairingExchangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerPairingExchangeResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange Runner Pairing",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-mcp-sessions/create": {
+      "post": {
+        "description": "让 Runner 为本人的 ACTIVE Binding 领取短期 MCP principal。",
+        "operationId": "create_runner_mcp_session_principal_api_v1_execution_runner_mcp_sessions_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerMCPSessionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerMCPPrincipalResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Runner Mcp Session Principal",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-target-bindings/query": {
+      "post": {
+        "description": "本地会话启动时查询已认证 Runner 本人的目录绑定。",
+        "operationId": "query_runner_target_binding_api_v1_execution_runner_target_bindings_query_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerTargetBindingQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerTargetBindingQueryResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Query Runner Target Binding",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-task-principals/create": {
+      "post": {
+        "description": "让 Runner 为已可靠投递且仍有资格的 Task 领取 principal。",
+        "operationId": "create_runner_mcp_task_principal_api_v1_execution_task_principals_create_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerMCPTaskCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerMCPPrincipalResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Runner Mcp Task Principal",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-tokens/refresh": {
+      "post": {
+        "description": "使用设备 refresh credential 签发短期 access token。",
+        "operationId": "refresh_runner_token_api_v1_execution_runner_tokens_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunnerTokenRefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerTokenResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refresh Runner Token",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runners/list": {
+      "post": {
+        "description": "只列出当前用户自己的 Dextra。",
+        "operationId": "list_execution_runners_api_v1_execution_runners_list_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RunnerListRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_RunnerResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }],
+        "summary": "List Execution Runners",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runners/revoke": {
+      "post": {
+        "description": "撤销当前用户自己的 Dextra。",
+        "operationId": "revoke_execution_runner_api_v1_execution_runners_revoke_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RunnerRevokeRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }],
+        "summary": "Revoke Execution Runner",
+        "tags": ["Dextra执行端"]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": { "$ref": "#/components/schemas/ValidationError" },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ListData_RunnerResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "数据项列表",
+            "items": { "$ref": "#/components/schemas/RunnerResponse" },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "description": "当前页码",
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "description": "每页条数",
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "total": {
+            "description": "总记录数",
+            "title": "Total",
+            "type": "integer"
+          },
+          "total_pages": {
+            "description": "总页数",
+            "title": "Total Pages",
+            "type": "integer"
+          }
+        },
+        "required": ["items", "total", "page", "page_size", "total_pages"],
+        "title": "ListData[RunnerResponse]",
+        "type": "object"
+      },
+      "ListResponse_RunnerResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": { "$ref": "#/components/schemas/ListData_RunnerResponse_" },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "ListResponse[RunnerResponse]",
+        "type": "object"
+      },
+      "RunnerListRequest": {
+        "additionalProperties": false,
+        "description": "当前 owner 的 Runner 分页查询。",
+        "properties": {
+          "page": {
+            "default": 1,
+            "minimum": 1,
+            "title": "Page",
+            "type": "integer"
+          },
+          "page_size": {
+            "default": 20,
+            "maximum": 100,
+            "minimum": 1,
+            "title": "Page Size",
+            "type": "integer"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": ["REGISTERED", "OFFLINE", "ONLINE", "REVOKED"],
+                "type": "string"
+              },
+              { "type": "null" }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "RunnerListRequest",
+        "type": "object"
+      },
+      "RunnerMCPPrincipalResponse": {
+        "additionalProperties": false,
+        "description": "单次 Agent 启动使用的 Cerebro MCP HTTP 配置。",
+        "properties": {
+          "access_token": { "title": "Access Token", "type": "string" },
+          "expires_in": { "title": "Expires In", "type": "integer" },
+          "mcp_url": { "title": "Mcp Url", "type": "string" },
+          "token_type": {
+            "const": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": ["mcp_url", "access_token", "token_type", "expires_in"],
+        "title": "RunnerMCPPrincipalResponse",
+        "type": "object"
+      },
+      "RunnerMCPSessionCreateRequest": {
+        "additionalProperties": false,
+        "description": "Runner 为一个本地 Agent 会话领取短期 MCP principal。",
+        "properties": {
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "session_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": ["binding_id", "session_id"],
+        "title": "RunnerMCPSessionCreateRequest",
+        "type": "object"
+      },
+      "RunnerMCPTaskCreateRequest": {
+        "additionalProperties": false,
+        "description": "Runner 为已投递 Task 领取短期 MCP principal。",
+        "properties": {
+          "task_id": { "format": "uuid", "title": "Task Id", "type": "string" }
+        },
+        "required": ["task_id"],
+        "title": "RunnerMCPTaskCreateRequest",
+        "type": "object"
+      },
+      "RunnerPairingApproveRequest": {
+        "additionalProperties": false,
+        "description": "当前浏览器用户批准设备配对。",
+        "properties": {
+          "runner_display_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Runner Display Name",
+            "type": "string"
+          },
+          "user_code": {
+            "maxLength": 16,
+            "minLength": 3,
+            "title": "User Code",
+            "type": "string"
+          }
+        },
+        "required": ["user_code", "runner_display_name"],
+        "title": "RunnerPairingApproveRequest",
+        "type": "object"
+      },
+      "RunnerPairingApproveResponse": {
+        "additionalProperties": false,
+        "description": "配对批准结果。",
+        "properties": {
+          "display_name": { "title": "Display Name", "type": "string" },
+          "runner_id": { "title": "Runner Id", "type": "string" }
+        },
+        "required": ["runner_id", "display_name"],
+        "title": "RunnerPairingApproveResponse",
+        "type": "object"
+      },
+      "RunnerPairingCreateRequest": {
+        "additionalProperties": false,
+        "description": "创建设备配对流程。",
+        "properties": {},
+        "title": "RunnerPairingCreateRequest",
+        "type": "object"
+      },
+      "RunnerPairingCreateResponse": {
+        "additionalProperties": false,
+        "description": "Dextra device flow 参数。",
+        "properties": {
+          "device_code": { "title": "Device Code", "type": "string" },
+          "expires_in": { "title": "Expires In", "type": "integer" },
+          "interval": { "title": "Interval", "type": "integer" },
+          "user_code": { "title": "User Code", "type": "string" },
+          "verification_uri": { "title": "Verification Uri", "type": "string" }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "expires_in",
+          "interval"
+        ],
+        "title": "RunnerPairingCreateResponse",
+        "type": "object"
+      },
+      "RunnerPairingExchangeRequest": {
+        "additionalProperties": false,
+        "description": "Dextra 领取配对结果。",
+        "properties": {
+          "device_code": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Device Code",
+            "type": "string"
+          }
+        },
+        "required": ["device_code"],
+        "title": "RunnerPairingExchangeRequest",
+        "type": "object"
+      },
+      "RunnerPairingExchangeResponse": {
+        "additionalProperties": false,
+        "description": "一次性返回设备 refresh credential。",
+        "properties": {
+          "refresh_credential": {
+            "title": "Refresh Credential",
+            "type": "string"
+          },
+          "runner_id": { "title": "Runner Id", "type": "string" }
+        },
+        "required": ["runner_id", "refresh_credential"],
+        "title": "RunnerPairingExchangeResponse",
+        "type": "object"
+      },
+      "RunnerResponse": {
+        "additionalProperties": false,
+        "description": "不含凭据的 Runner 公开摘要。",
+        "properties": {
+          "codeg_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Codeg Version"
+          },
+          "created_at": { "title": "Created At", "type": "string" },
+          "dextra_build": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dextra Build"
+          },
+          "display_name": { "title": "Display Name", "type": "string" },
+          "last_seen_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Last Seen At"
+          },
+          "runner_id": { "title": "Runner Id", "type": "string" },
+          "status": {
+            "enum": ["REGISTERED", "OFFLINE", "ONLINE", "REVOKED"],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "runner_id",
+          "display_name",
+          "status",
+          "last_seen_at",
+          "dextra_build",
+          "codeg_version",
+          "created_at"
+        ],
+        "title": "RunnerResponse",
+        "type": "object"
+      },
+      "RunnerRevokeRequest": {
+        "additionalProperties": false,
+        "description": "撤销当前 owner 的 Runner。",
+        "properties": {
+          "client_request_id": {
+            "format": "uuid",
+            "title": "Client Request Id",
+            "type": "string"
+          },
+          "runner_id": {
+            "format": "uuid",
+            "title": "Runner Id",
+            "type": "string"
+          }
+        },
+        "required": ["client_request_id", "runner_id"],
+        "title": "RunnerRevokeRequest",
+        "type": "object"
+      },
+      "RunnerTargetBindingQueryRequest": {
+        "additionalProperties": false,
+        "description": "Runner 查询本人的唯一目录绑定。",
+        "properties": {
+          "target_id": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          }
+        },
+        "required": ["target_id"],
+        "title": "RunnerTargetBindingQueryRequest",
+        "type": "object"
+      },
+      "RunnerTargetBindingQueryResponse": {
+        "additionalProperties": false,
+        "description": "查询成功但目录未绑定时，binding 明确为空。",
+        "properties": {
+          "binding": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/RunnerTargetBindingResponse" },
+              { "type": "null" }
+            ]
+          }
+        },
+        "required": ["binding"],
+        "title": "RunnerTargetBindingQueryResponse",
+        "type": "object"
+      },
+      "RunnerTargetBindingResponse": {
+        "additionalProperties": false,
+        "description": "目录绑定的模块展示信息与不可用原因，不含凭据。",
+        "properties": {
+          "binding_id": { "title": "Binding Id", "type": "string" },
+          "module_display_name": {
+            "title": "Module Display Name",
+            "type": "string"
+          },
+          "module_path": { "title": "Module Path", "type": "string" },
+          "status": {
+            "enum": ["ACTIVE", "DISABLED"],
+            "title": "Status",
+            "type": "string"
+          },
+          "unavailable_code": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Unavailable Code"
+          },
+          "unavailable_message": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Unavailable Message"
+          }
+        },
+        "required": [
+          "binding_id",
+          "module_path",
+          "module_display_name",
+          "status",
+          "unavailable_code",
+          "unavailable_message"
+        ],
+        "title": "RunnerTargetBindingResponse",
+        "type": "object"
+      },
+      "RunnerTokenRefreshRequest": {
+        "additionalProperties": false,
+        "description": "Runner 使用 refresh credential 换取 access token。",
+        "properties": {
+          "refresh_credential": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Refresh Credential",
+            "type": "string"
+          }
+        },
+        "required": ["refresh_credential"],
+        "title": "RunnerTokenRefreshRequest",
+        "type": "object"
+      },
+      "RunnerTokenResponse": {
+        "additionalProperties": false,
+        "description": "Runner 短期 access token。",
+        "properties": {
+          "access_token": { "title": "Access Token", "type": "string" },
+          "expires_in": { "title": "Expires In", "type": "integer" },
+          "token_type": {
+            "const": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          }
+        },
+        "required": ["access_token", "token_type", "expires_in"],
+        "title": "RunnerTokenResponse",
+        "type": "object"
+      },
+      "SuccessResponse_RunnerMCPPrincipalResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": { "$ref": "#/components/schemas/RunnerMCPPrincipalResponse" },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerMCPPrincipalResponse]",
+        "type": "object"
+      },
+      "SuccessResponse_RunnerPairingApproveResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunnerPairingApproveResponse"
+          },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerPairingApproveResponse]",
+        "type": "object"
+      },
+      "SuccessResponse_RunnerPairingCreateResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunnerPairingCreateResponse"
+          },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerPairingCreateResponse]",
+        "type": "object"
+      },
+      "SuccessResponse_RunnerPairingExchangeResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunnerPairingExchangeResponse"
+          },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerPairingExchangeResponse]",
+        "type": "object"
+      },
+      "SuccessResponse_RunnerResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": { "$ref": "#/components/schemas/RunnerResponse" },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerResponse]",
+        "type": "object"
+      },
+      "SuccessResponse_RunnerTargetBindingQueryResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/RunnerTargetBindingQueryResponse"
+          },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerTargetBindingQueryResponse]",
+        "type": "object"
+      },
+      "SuccessResponse_RunnerTokenResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": { "$ref": "#/components/schemas/RunnerTokenResponse" },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerTokenResponse]",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": { "title": "Context", "type": "object" },
+          "input": { "title": "Input" },
+          "loc": {
+            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": { "title": "Message", "type": "string" },
+          "type": { "title": "Error Type", "type": "string" }
+        },
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "x-dextra-contract-examples": {
+    "/api/v1/execution-runner-pairings/approve": {
+      "request": { "runner_display_name": "string", "user_code": "string" },
+      "response": {
+        "data": { "display_name": "string", "runner_id": "string" },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-pairings/create": {
+      "request": {},
+      "response": {
+        "data": {
+          "device_code": "string",
+          "expires_in": 1,
+          "interval": 1,
+          "user_code": "string",
+          "verification_uri": "string"
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-pairings/exchange": {
+      "request": { "device_code": "string" },
+      "response": {
+        "data": { "refresh_credential": "string", "runner_id": "string" },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-mcp-sessions/create": {
+      "request": {
+        "binding_id": "00000000-0000-4000-8000-000000000000",
+        "session_id": "string"
+      },
+      "response": {
+        "data": {
+          "access_token": "string",
+          "expires_in": 1,
+          "mcp_url": "string",
+          "token_type": "bearer"
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-target-bindings/query": {
+      "request": { "target_id": "string" },
+      "response": {
+        "data": {
+          "binding": {
+            "binding_id": "string",
+            "module_display_name": "string",
+            "module_path": "string",
+            "status": "ACTIVE",
+            "unavailable_code": "string",
+            "unavailable_message": "string"
+          }
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-task-principals/create": {
+      "request": { "task_id": "00000000-0000-4000-8000-000000000000" },
+      "response": {
+        "data": {
+          "access_token": "string",
+          "expires_in": 1,
+          "mcp_url": "string",
+          "token_type": "bearer"
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-tokens/refresh": {
+      "request": { "refresh_credential": "string" },
+      "response": {
+        "data": {
+          "access_token": "string",
+          "expires_in": 1,
+          "token_type": "bearer"
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runners/list": {
+      "request": {},
+      "response": {
+        "data": {
+          "items": [
+            {
+              "codeg_version": "string",
+              "created_at": "string",
+              "dextra_build": "string",
+              "display_name": "string",
+              "last_seen_at": "string",
+              "runner_id": "string",
+              "status": "REGISTERED"
+            }
+          ],
+          "page": 1,
+          "page_size": 1,
+          "total": 1,
+          "total_pages": 1
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runners/revoke": {
+      "request": {
+        "client_request_id": "00000000-0000-4000-8000-000000000000",
+        "runner_id": "00000000-0000-4000-8000-000000000000"
+      },
+      "response": {
+        "data": {
+          "codeg_version": "string",
+          "created_at": "string",
+          "dextra_build": "string",
+          "display_name": "string",
+          "last_seen_at": "string",
+          "runner_id": "string",
+          "status": "REGISTERED"
+        },
+        "success": true
+      }
+    }
+  }
+}

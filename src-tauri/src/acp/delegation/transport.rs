@@ -229,6 +229,8 @@ pub struct BrokerCreateWorkTaskRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BrokerMessage {
+    Credentials(BrokerTokenRequest),
+    WatchToken(BrokerTokenRequest),
     Call(BrokerRequest),
     Cancel(BrokerCancelRequest),
     Status(BrokerStatusRequest),
@@ -241,6 +243,20 @@ pub enum BrokerMessage {
     TaskComplete(BrokerTaskCompleteRequest),
     CreateAutomation(BrokerCreateAutomationRequest),
     CreateWorkTask(BrokerCreateWorkTaskRequest),
+}
+
+/// 伴生进程内部凭据与生命周期请求，不进入模型工具目录。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrokerTokenRequest {
+    pub token: String,
+}
+
+pub async fn client_credentials_round_trip(socket_path: &str, token: &str) -> io::Result<BrokerResponse> {
+    message_round_trip(socket_path, &BrokerMessage::Credentials(BrokerTokenRequest { token: token.to_string() })).await
+}
+
+pub async fn client_watch_token(socket_path: &str, token: &str) -> io::Result<BrokerResponse> {
+    message_round_trip(socket_path, &BrokerMessage::WatchToken(BrokerTokenRequest { token: token.to_string() })).await
 }
 
 /// The wrapped outcome the main process returns over the same socket.

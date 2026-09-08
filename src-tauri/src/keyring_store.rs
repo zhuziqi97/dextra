@@ -9,6 +9,8 @@ fn channel_token_key(channel_id: i32) -> String {
     format!("chat-channel:{}", channel_id)
 }
 
+const CEREBRO_RUNNER_CREDENTIAL_KEY: &str = "cerebro-runner-credential";
+
 // ── Tauri mode: OS keyring ──
 
 #[cfg(feature = "tauri-runtime")]
@@ -208,6 +210,62 @@ pub fn delete_channel_token(channel_id: i32) -> Result<(), String> {
     }
 }
 
+// ── Cerebro Runner credential ──
+//
+// 设备只绑定一个当前 Cerebro 身份，因此使用固定账户键。值由 cerebro adapter
+// 序列化，包含平台地址、runner_id 和 refresh credential；短期 access token
+// 永不写入这里。
+
+#[cfg(feature = "tauri-runtime")]
+pub fn set_cerebro_runner_credential(value: &str) -> Result<(), String> {
+    let entry = keyring::Entry::new(SERVICE_NAME, CEREBRO_RUNNER_CREDENTIAL_KEY)
+        .map_err(|e| format!("keyring init error: {e}"))?;
+    entry
+        .set_password(value)
+        .map_err(|e| format!("keyring set error: {e}"))
+}
+
+#[cfg(feature = "tauri-runtime")]
+pub fn get_cerebro_runner_credential() -> Result<Option<String>, String> {
+    let entry = keyring::Entry::new(SERVICE_NAME, CEREBRO_RUNNER_CREDENTIAL_KEY)
+        .map_err(|e| format!("keyring init error: {e}"))?;
+    match entry.get_password() {
+        Ok(value) => Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("keyring get error: {e}")),
+    }
+}
+
+#[cfg(feature = "tauri-runtime")]
+pub fn delete_cerebro_runner_credential() -> Result<(), String> {
+    let entry = keyring::Entry::new(SERVICE_NAME, CEREBRO_RUNNER_CREDENTIAL_KEY)
+        .map_err(|e| format!("keyring init error: {e}"))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("keyring delete error: {e}")),
+    }
+}
+
+#[cfg(not(feature = "tauri-runtime"))]
+pub fn set_cerebro_runner_credential(value: &str) -> Result<(), String> {
+    let mut tokens = read_tokens();
+    tokens.insert(CEREBRO_RUNNER_CREDENTIAL_KEY.to_string(), value.to_string());
+    write_tokens(&tokens)
+}
+
+#[cfg(not(feature = "tauri-runtime"))]
+pub fn get_cerebro_runner_credential() -> Result<Option<String>, String> {
+    Ok(read_tokens().get(CEREBRO_RUNNER_CREDENTIAL_KEY).cloned())
+}
+
+#[cfg(not(feature = "tauri-runtime"))]
+pub fn delete_cerebro_runner_credential() -> Result<(), String> {
+    let mut tokens = read_tokens();
+    tokens.remove(CEREBRO_RUNNER_CREDENTIAL_KEY);
+    write_tokens(&tokens)
+}
+
 #[cfg(not(feature = "tauri-runtime"))]
 pub fn set_channel_token(channel_id: i32, token: &str) -> Result<(), String> {
     let mut tokens = read_tokens();
@@ -325,5 +383,27 @@ mod tests {
         let tokens = read_tokens_at(&path);
         assert_eq!(tokens.get("github-token:c").unwrap(), "s3");
         assert_eq!(mode_bits(&path), 0o600);
+    }
+
+    /// server 模式复用同一 token map，但 Cerebro 身份必须落到固定键，
+    /// 才能在进程重启后由唯一的 Runner 身份入口读回。
+    #[test]
+    fn test_cerebro_runner_credential_round_trips_under_fixed_key() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("tokens.json");
+        let credential = r#"{"cerebro_base_url":"http://cerebro.internal","runner_id":"runner-42","refresh_credential":"refresh-secret"}"#;
+        let mut tokens = std::collections::HashMap::new();
+        tokens.insert(
+            CEREBRO_RUNNER_CREDENTIAL_KEY.to_string(),
+            credential.to_string(),
+        );
+
+        write_tokens_at(&path, &tokens).expect("write");
+        assert_eq!(
+            read_tokens_at(&path)
+                .get(CEREBRO_RUNNER_CREDENTIAL_KEY)
+                .map(String::as_str),
+            Some(credential)
+        );
     }
 }

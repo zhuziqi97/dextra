@@ -134,8 +134,45 @@ async fn project_folder(
     }
 }
 
-fn target_id(runner_id: &str, folder_id: i32) -> String {
+pub(crate) fn target_id(runner_id: &str, folder_id: i32) -> String {
     format!("dextra-target:{runner_id}:folder:{folder_id}")
+}
+
+/// 把本机生成的不透明 Target 身份解析回当前仍可后台执行的根 Folder。
+pub(crate) async fn resolve_background_task_folder(
+    conn: &DatabaseConnection,
+    runner_id: &str,
+    requested_target_id: &str,
+) -> Result<i32, DbError> {
+    let folders = folder::Entity::find()
+        .filter(folder::Column::DeletedAt.is_null())
+        .filter(folder::Column::Kind.eq(FolderKind::Regular))
+        .filter(folder::Column::ParentId.is_null())
+        .order_by_asc(folder::Column::Id)
+        .all(conn)
+        .await?;
+    let folder = folders
+        .into_iter()
+        .find(|folder| target_id(runner_id, folder.id) == requested_target_id)
+        .ok_or_else(|| DbError::NotFound(format!("target {requested_target_id}")))?;
+    let settings = work_task_service::settings_get_effective(conn, folder.id).await?;
+    let projection = project_folder(runner_id, folder.clone(), settings, Utc::now()).await;
+    if !projection.supports_background_task {
+        return Err(DbError::Validation(
+            projection.background_task_unavailable_reason.map_or_else(
+                || "target does not support background tasks".into(),
+                |reason| reason.message,
+            ),
+        ));
+    }
+    if projection.availability != TargetAvailability::Available {
+        return Err(DbError::Validation(
+            projection
+                .unavailable_reason
+                .map_or_else(|| "target is unavailable".into(), |reason| reason.message),
+        ));
+    }
+    Ok(folder.id)
 }
 
 fn availability_reason(folder: &folder::Model, path: &Path) -> Option<TargetProjectionReason> {

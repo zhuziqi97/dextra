@@ -1,3 +1,4 @@
+import { extractAppCommandError } from "./app-error"
 import {
   getActiveRemoteConnectionId,
   getShellTransport,
@@ -7,6 +8,8 @@ import {
   notifyRemoteDesktopUnauthorized,
 } from "./transport"
 import { getCodegToken } from "./transport/web-auth"
+import type { CerebroLaunchBinding } from "./generated/cerebro/CerebroLaunchBinding"
+import type { CerebroSelection } from "./generated/cerebro/CerebroSelection"
 import { notifyWebUnauthorized } from "./transport/web-connection-store"
 import { getCurrentEffectiveAppLocale } from "./i18n"
 import {
@@ -170,6 +173,12 @@ import type {
   TokenUsageReport,
   TokenUsageSyncResult,
   TokenUsageSyncStatus,
+  CerebroAuthState,
+  CerebroStorageSettings,
+  CerebroStorageMode,
+  CerebroPairingPoll,
+  CerebroPairingStart,
+  CerebroRunnerAccess,
 } from "./types"
 
 export async function listConversations(params?: {
@@ -205,21 +214,87 @@ export async function getSidebarData(): Promise<SidebarData> {
   return getTransport().call("get_sidebar_data")
 }
 
+export async function getCerebroStorageSettings(): Promise<CerebroStorageSettings> {
+  return getTransport().call("cerebro_get_storage_settings")
+}
+
+export async function selectCerebroStorage(
+  mode: CerebroStorageMode
+): Promise<CerebroStorageSettings> {
+  return getTransport().call("cerebro_select_storage", { mode })
+}
+
+export async function importCerebroCredential(): Promise<void> {
+  return getTransport().call("cerebro_import_credential")
+}
+
+export async function getCerebroAuthState(): Promise<CerebroAuthState> {
+  return getTransport().call("cerebro_get_auth_state")
+}
+
+export async function startCerebroPairing(
+  cerebroBaseUrl: string
+): Promise<CerebroPairingStart> {
+  return getTransport().call("cerebro_start_pairing", {
+    cerebroBaseUrl,
+  })
+}
+
+export async function pollCerebroPairing(
+  handle: string
+): Promise<CerebroPairingPoll> {
+  return getTransport().call("cerebro_poll_pairing", { handle })
+}
+
+export async function cancelCerebroPairing(
+  handle: string
+): Promise<CerebroAuthState> {
+  return getTransport().call("cerebro_cancel_pairing", { handle })
+}
+
+export async function forgetCerebroRunner(): Promise<CerebroAuthState> {
+  return getTransport().call("cerebro_forget_runner")
+}
+
+export async function refreshCerebroAccessToken(): Promise<CerebroRunnerAccess> {
+  return getTransport().call("cerebro_refresh_access_token")
+}
+
 // ACP commands
+
+export async function queryCerebroLaunchBinding(
+  folderId: number,
+  conversationId?: number,
+  workTaskId?: number
+): Promise<CerebroLaunchBinding> {
+  return getTransport().call("cerebro_query_launch_binding", {
+    folderId,
+    conversationId: conversationId ?? null,
+    workTaskId: workTaskId ?? null,
+  })
+}
 
 export async function acpConnect(
   agentType: AgentType,
   workingDir?: string,
   sessionId?: string,
   preferredModeId?: string | null,
-  preferredConfigValues?: Record<string, string> | null
+  preferredConfigValues?: Record<string, string> | null,
+  conversationId?: number,
+  cerebroSelection?: CerebroSelection
 ): Promise<string> {
-  return getTransport().call("acp_connect", {
+  return getTransport().call<string>("acp_connect", {
     agentType,
     workingDir: workingDir ?? null,
     sessionId: sessionId ?? null,
     preferredModeId: preferredModeId ?? null,
     preferredConfigValues: preferredConfigValues ?? null,
+    conversationId: conversationId ?? null,
+    cerebroSelection: cerebroSelection ?? null,
+  }).catch((error: unknown) => {
+    const commandError = extractAppCommandError(error)
+    if (commandError) throw Object.assign(new Error(commandError.message), commandError)
+    throw error
   })
 }
 

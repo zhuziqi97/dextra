@@ -967,6 +967,15 @@ impl TaskEngine {
         if task.status != mode.expected_status() {
             return Ok(()); // canceled (or otherwise moved on) before we got here
         }
+        let cerebro_task_id = serde_json::from_str::<serde_json::Value>(&task.config)
+            .ok()
+            .and_then(|config| {
+                config
+                    .get("cerebro_task")
+                    .and_then(|value| value.get("task_id"))
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned)
+            });
         let run_seq = task.run_seq;
         launched_seq.set(run_seq);
         let root = get_folder_core(&self.db, task.folder_id)
@@ -1094,6 +1103,22 @@ impl TaskEngine {
             .await
             .map_err(|e| e.to_string())?;
 
+        let additional_mcp_servers = match cerebro_task_id.as_deref() {
+            Some(platform_task_id) => crate::cerebro::mcp::server_for_task(&self.manager, platform_task_id)
+                .await
+                .map_err(|error| error.to_string())?,
+            None => {
+                let selected = cfg.cerebro_selection.as_ref()
+                    .ok_or_else(|| "任务尚未保存模块选择，请编辑任务选择 Cerebro 模块或纯本地".to_string())?;
+                let selection = crate::cerebro::session_binding::resolve_folder_selection(
+                    &self.db.conn, task.folder_id, Some(selected),
+                ).await.map_err(|error| error.to_string())?;
+                crate::cerebro::mcp::server_for_selection(
+                    &self.manager, &selection, &format!("work-task:{}:{}", task.id, run_seq),
+                ).await.map_err(|error| error.to_string())?
+            },
+        };
+
         // Cancel gate before spawning the CLI.
         if !still_expected(&self.db.conn, task_id, run_seq, mode.in_flight_status()).await {
             return Ok(());
@@ -1102,7 +1127,7 @@ impl TaskEngine {
         let mut resumed = resume_session_id.is_some();
         let conn_id = match self
             .manager
-            .spawn_agent(
+            .spawn_agent_with_additional_mcp_servers(
                 agent_type,
                 Some(wt.path.clone()),
                 resume_session_id.clone(),
@@ -1111,6 +1136,7 @@ impl TaskEngine {
                 self.emitter.clone(),
                 mode_id.clone(),
                 config_values.clone(),
+                additional_mcp_servers.clone(),
             )
             .await
         {
@@ -1130,7 +1156,7 @@ impl TaskEngine {
                 .await;
                 resumed = false;
                 self.manager
-                    .spawn_agent(
+                    .spawn_agent_with_additional_mcp_servers(
                         agent_type,
                         Some(wt.path.clone()),
                         None,
@@ -1139,6 +1165,7 @@ impl TaskEngine {
                         self.emitter.clone(),
                         mode_id.clone(),
                         config_values.clone(),
+                        additional_mcp_servers,
                     )
                     .await
                     .map_err(|e| e.to_string())?
@@ -1183,6 +1210,13 @@ impl TaskEngine {
             }
             id
         };
+        if cerebro_task_id.is_none() {
+            if let Some(selection) = cfg.cerebro_selection.as_ref() {
+                crate::cerebro::session_binding::save_conversation_selection(
+                    &self.db.conn, conversation_id, selection,
+                ).await.map_err(|error| error.to_string())?;
+            }
+        }
         emit_conversation_upsert(&self.emitter, &self.db.conn, conversation_id).await;
 
         let mut blocks =
