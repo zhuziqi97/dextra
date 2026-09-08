@@ -2,14 +2,13 @@ import { extractAppCommandError } from "./app-error"
 import {
   getActiveRemoteConnectionId,
   getShellTransport,
+  getServerBaseUrl,
   getTransport,
   isDesktop,
   isRemoteDesktopMode,
   notifyRemoteDesktopUnauthorized,
 } from "./transport"
 import { getCodegToken } from "./transport/web-auth"
-import type { CerebroLaunchBinding } from "./generated/cerebro/CerebroLaunchBinding"
-import type { CerebroSelection } from "./generated/cerebro/CerebroSelection"
 import { notifyWebUnauthorized } from "./transport/web-connection-store"
 import { getCurrentEffectiveAppLocale } from "./i18n"
 import {
@@ -262,18 +261,6 @@ export async function refreshCerebroAccessToken(): Promise<CerebroRunnerAccess> 
 
 // ACP commands
 
-export async function queryCerebroLaunchBinding(
-  folderId: number,
-  conversationId?: number,
-  workTaskId?: number
-): Promise<CerebroLaunchBinding> {
-  return getTransport().call("cerebro_query_launch_binding", {
-    folderId,
-    conversationId: conversationId ?? null,
-    workTaskId: workTaskId ?? null,
-  })
-}
-
 export async function acpConnect(
   agentType: AgentType,
   workingDir?: string,
@@ -281,7 +268,6 @@ export async function acpConnect(
   preferredModeId?: string | null,
   preferredConfigValues?: Record<string, string> | null,
   conversationId?: number,
-  cerebroSelection?: CerebroSelection
 ): Promise<string> {
   return getTransport().call<string>("acp_connect", {
     agentType,
@@ -290,7 +276,6 @@ export async function acpConnect(
     preferredModeId: preferredModeId ?? null,
     preferredConfigValues: preferredConfigValues ?? null,
     conversationId: conversationId ?? null,
-    cerebroSelection: cerebroSelection ?? null,
   }).catch((error: unknown) => {
     const commandError = extractAppCommandError(error)
     if (commandError) throw Object.assign(new Error(commandError.message), commandError)
@@ -3714,7 +3699,7 @@ export async function uploadAttachment(
   form.append("file", file, file.name)
   if (sessionId) form.append("session_id", sessionId)
 
-  const res = await fetch(`${window.location.origin}/api/upload_attachment`, {
+  const res = await fetch(`${getServerBaseUrl()}/api/upload_attachment`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
     body: form,
@@ -3816,7 +3801,7 @@ async function workspaceFileFetch(
   if (!isMultipart) {
     headers["Content-Type"] = "application/json"
   }
-  const res = await fetch(`${window.location.origin}/api/${endpoint}`, {
+  const res = await fetch(`${getServerBaseUrl()}/api/${endpoint}`, {
     method: "POST",
     headers,
     body,
@@ -3879,7 +3864,7 @@ export async function uploadWorkspaceFile(
   return new Promise<UploadWorkspaceFileResult>((resolve, reject) => {
     const token = getCodegToken()
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", `${window.location.origin}/api/upload_workspace_file`)
+    xhr.open("POST", `${getServerBaseUrl()}/api/upload_workspace_file`)
     xhr.setRequestHeader("Authorization", `Bearer ${token}`)
 
     if (args.onProgress) {
@@ -4951,7 +4936,7 @@ export async function exportBackupWeb(
     { timeoutMs: BACKUP_LONG_CALL_TIMEOUT_MS }
   )
   const a = document.createElement("a")
-  a.href = `${window.location.origin}${ticket.url}`
+  a.href = `${getServerBaseUrl()}${ticket.url}`
   a.download = ticket.filename
   document.body.appendChild(a)
   a.click()
@@ -4966,7 +4951,7 @@ export async function uploadBackupWeb(
   return new Promise<string>((resolve, reject) => {
     const token = getCodegToken()
     const xhr = new XMLHttpRequest()
-    xhr.open("POST", `${window.location.origin}/api/backup_upload`)
+    xhr.open("POST", `${getServerBaseUrl()}/api/backup_upload`)
     xhr.setRequestHeader("Authorization", `Bearer ${token}`)
     if (onProgress) {
       xhr.upload.onprogress = (event) => {
@@ -5456,4 +5441,29 @@ export async function forgeSettingsSet(
   settings: ForgePanelSettings | null
 ): Promise<ForgeSettingsStore> {
   return getTransport().call("forge_settings_set", { folderId, settings })
+}
+
+export function queryCerebroFolderConfiguration(folderId: number): Promise<import("./generated/cerebro/FolderConfigurationState").FolderConfigurationState> {
+  return getTransport().call("cerebro_query_folder_configuration", { folderId })
+}
+
+export function saveCerebroFolderConfiguration(folderId: number, input: import("./generated/cerebro/ConfigurationInput").ConfigurationInput): Promise<import("./generated/cerebro/ClientConfiguration").ClientConfiguration> {
+  return getTransport().call("cerebro_save_folder_configuration", { folderId, input })
+}
+
+export function getCerebroFolderCredential(folderId: number, rotate = false): Promise<import("./generated/cerebro/FolderCredential").FolderCredential> {
+  return getTransport().call("cerebro_folder_credential", { folderId, rotate })
+}
+
+export function listCerebroConfigurationProjects(page = 1, search?: string): Promise<import("./generated/cerebro/ProjectPage").ProjectPage> {
+  return getTransport().call("cerebro_configuration_projects", { page, search: search ?? null })
+}
+
+export function listCerebroConfigurationModules(projectId: string): Promise<import("./generated/cerebro/ModuleOptions").ModuleOptions> {
+  return getTransport().call("cerebro_configuration_modules", { projectId })
+}
+
+
+export function resolveCerebroTarget(targetId: string): Promise<number> {
+  return getTransport().call("cerebro_resolve_target", { targetId })
 }

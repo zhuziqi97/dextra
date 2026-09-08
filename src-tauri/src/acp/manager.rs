@@ -219,6 +219,8 @@ async fn wait_for_session_started(
 
 pub struct ConnectionManager {
     pub(crate) connections: Arc<Mutex<HashMap<String, AgentConnection>>>,
+    /// 已退出连接的真实错误快照，供网页和工具在进程清理后读取；不保留 Agent 资源。
+    terminal_snapshots: Arc<Mutex<std::collections::VecDeque<crate::acp::LiveSessionSnapshot>>>,
     /// Per-(agent, working_dir, session_id) async mutex. Held across the
     /// dedup-lookup + spawn + SessionStarted-wait critical section so two
     /// concurrent `spawn_agent` calls for the same logical session can't
@@ -298,6 +300,7 @@ impl ConnectionManager {
     pub fn new() -> Self {
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
+            terminal_snapshots: Arc::new(Mutex::new(std::collections::VecDeque::new())),
             spawn_locks: Arc::new(Mutex::new(HashMap::new())),
             spawn_handshake_timeout: spawn_handshake_timeout_from_env(),
             terminal_shell_config: TerminalShellRuntimeConfig::new(),
@@ -313,6 +316,7 @@ impl ConnectionManager {
     pub fn clone_ref(&self) -> Self {
         Self {
             connections: self.connections.clone(),
+            terminal_snapshots: self.terminal_snapshots.clone(),
             spawn_locks: self.spawn_locks.clone(),
             spawn_handshake_timeout: self.spawn_handshake_timeout,
             terminal_shell_config: self.terminal_shell_config.clone(),
@@ -369,6 +373,7 @@ impl ConnectionManager {
     fn with_spawn_handshake_timeout(timeout: Duration) -> Self {
         Self {
             connections: Arc::new(Mutex::new(HashMap::new())),
+            terminal_snapshots: Arc::new(Mutex::new(std::collections::VecDeque::new())),
             spawn_locks: Arc::new(Mutex::new(HashMap::new())),
             spawn_handshake_timeout: timeout,
             terminal_shell_config: TerminalShellRuntimeConfig::new(),
@@ -580,6 +585,7 @@ impl ConnectionManager {
             owner_window_label,
             emitter,
             self.connections.clone(),
+            self.terminal_snapshots.clone(),
             preferred_mode_id,
             preferred_config_values,
             self.delegation_snapshot(),
@@ -1987,7 +1993,6 @@ impl ConnectionManager {
                     // Inheriting (not forcing) keeps an auto-titled sibling
                     // eligible for later backfills.
                     let title_locked = current.title_locked;
-                    let cerebro_selection = current.cerebro_selection.clone();
                     // The sibling keeps the original's sidebar routing (a forked
                     // chat conversation must stay in the Chat group). `Delegate`
                     // is unreachable here — children are never forked from the
@@ -2073,7 +2078,6 @@ impl ConnectionManager {
                         deleted_at: Set(None),
                         pinned_at: Set(None),
                         origin_cwd: Set(None),
-                        cerebro_selection: Set(cerebro_selection),
                     };
                     let inserted = sibling.insert(txn).await?;
                     Ok(inserted.id)
@@ -2472,6 +2476,14 @@ impl ConnectionManager {
     ) -> Option<std::sync::Arc<tokio::sync::RwLock<crate::acp::SessionState>>> {
         let connections = self.connections.lock().await;
         connections.get(conn_id).map(|conn| conn.state.clone())
+    }
+
+    /// 返回客户端最近保存的终态错误，不把已退出进程假装为可复用连接。
+    pub async fn terminal_snapshot(&self, connection_id: Option<&str>, conversation_id: Option<i32>) -> Option<crate::acp::LiveSessionSnapshot> {
+        self.terminal_snapshots.lock().await.iter().rev().find(|snapshot| {
+            connection_id.is_some_and(|id| snapshot.connection_id == id)
+                || conversation_id.is_some_and(|id| snapshot.conversation_id == Some(id))
+        }).cloned()
     }
 
     /// Like `get_state`, but also clones the connection's `EventEmitter`.

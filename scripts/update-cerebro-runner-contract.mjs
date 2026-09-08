@@ -4,17 +4,7 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 import prettier from "prettier"
 
-const runnerPaths = [
-  "/api/v1/execution-runner-pairings/approve",
-  "/api/v1/execution-runner-pairings/create",
-  "/api/v1/execution-runner-pairings/exchange",
-  "/api/v1/execution-runner-mcp-sessions/create",
-  "/api/v1/execution-runner-target-bindings/query",
-  "/api/v1/execution-task-principals/create",
-  "/api/v1/execution-runner-tokens/refresh",
-  "/api/v1/execution-runners/list",
-  "/api/v1/execution-runners/revoke",
-]
+
 
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const outputPath = path.resolve(
@@ -65,6 +55,7 @@ function visit(value) {
   Object.values(value).forEach(visit)
 }
 
+const runnerPaths = Object.keys(source.paths ?? {}).filter((route) => route.startsWith("/api/v1/execution-runner"))
 const selectedPaths = {}
 for (const runnerPath of runnerPaths) {
   const pathItem = source.paths?.[runnerPath]

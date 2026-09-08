@@ -1,5 +1,7 @@
 "use client"
 
+import { clientStorageKey } from "@/lib/web-mount"
+
 import type { JSONContent } from "@tiptap/core"
 
 import { sanitizeComposerDraftDoc } from "./composer-draft-sanitize"
@@ -14,8 +16,8 @@ interface PersistedDraftStateV2 {
   doc: JSONContent
 }
 
-const STORAGE_PREFIX = "codeg:message-input-draft:v1"
-const STORAGE_PREFIX_V2 = "codeg:message-input-draft:v2"
+const STORAGE_PREFIX = clientStorageKey("codeg:message-input-draft:v1")
+const STORAGE_PREFIX_V2 = clientStorageKey("codeg:message-input-draft:v2")
 const draftTextCache = new Map<string, string>()
 const draftDocCache = new Map<string, JSONContent>()
 const pendingPersistDrafts = new Map<string, string>()

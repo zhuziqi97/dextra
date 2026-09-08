@@ -1778,7 +1778,7 @@
       "removeFolderConfirmDescription": "Remover \"{name}\" do espaço de trabalho? As abas e terminais relacionados serão fechados.",
       "folderHeaderMenu": {
         "manageConversations": "Gerenciar conversas…",
-        "manageLinks": "Pastas vinculadas",
+        "manageLinks": "Configuração da pasta",
         "changeColor": "Alterar cor",
         "useThemeColor": "Usar tema do app",
         "setDefaultAgent": "Definir agente padrão",
@@ -5452,5 +5452,28 @@
     "settingsPromptScenarioHint": "Vai só nas tarefas criadas com este cenário.",
     "settingsPromptPlaceholder": "ex.: Responda em português. Rode os testes do projeto antes de terminar.",
     "save": "Salvar"
+  },
+  "CerebroFolder": {
+    "title": "Client configuration",
+    "folderLinks": "Folder links",
+    "project": "Project",
+    "selectProject": "Select a project",
+    "executionModule": "Execution module",
+    "mcpModules": "MCP accessible modules",
+    "enabled": "Enabled",
+    "credential": "MCP credential",
+    "view": "View credential",
+    "copy": "Copy credential",
+    "rotate": "Regenerate credential",
+    "save": "Save",
+    "saved": "Saved",
+    "copied": "Copied",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "connect": "Connect to server",
+    "unbound": "Not bound",
+    "removeModule": "Remove module",
+    "expiresAt": "Expires: {time}",
+    "tooManyModules": "This project has more modules than the selector can display."
   }
 }

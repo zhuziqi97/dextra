@@ -18,7 +18,6 @@ pub mod app_state;
 pub mod automation;
 pub mod backgrounds;
 pub mod cerebro;
-pub mod cerebro_bridge;
 pub mod chat_channel;
 pub mod commands;
 pub mod db;
@@ -356,18 +355,7 @@ mod tauri_app {
                 // Restore and apply saved system proxy settings before any network operation.
                 let db = app.state::<db::AppDatabase>();
                 tauri::async_runtime::block_on(network::proxy::init_proxy_from_db(&db.conn));
-                tauri::async_runtime::spawn(crate::cerebro::run_runner_connection_supervisor(
-                    crate::cerebro::CerebroRemoteRuntime::new(
-                        db.conn.clone(),
-                        app.state::<ConnectionManager>().clone_ref(),
-                        app.state::<TerminalManager>().clone_ref(),
-                        crate::web::event_bridge::EventEmitter::Tauri(app.handle().clone()),
-                        app.state::<std::sync::Arc<web::event_bridge::WebEventBroadcaster>>()
-                            .inner()
-                            .clone(),
-                        effective_data_dir.clone(),
-                    ),
-                ));
+
 
                 // Logging phase 2/3: override the default level from the
                 // persisted `logging.level` now that the DB is open, then wire
@@ -747,6 +735,13 @@ mod tauri_app {
                         Some(broker_for_lifecycle),
                     ));
                 }
+
+                tauri::async_runtime::spawn(crate::cerebro::run_runner_connection_supervisor(
+                    crate::cerebro::CerebroRuntime::new(
+                        web::app_state_from_tauri(app.handle()),
+                        web::find_static_dir_tauri(app.handle()),
+                    ),
+                ));
 
                 match tauri::async_runtime::block_on(web::load_web_service_config(&db.conn)) {
                     Ok(config) if config.auto_start => {
@@ -1214,7 +1209,12 @@ mod tauri_app {
                 project_boot::install_hyperframes_skills,
                 project_boot::create_hyperframes_project,
                 cerebro_commands::cerebro_get_auth_state,
-                cerebro_commands::cerebro_query_launch_binding,
+                cerebro_commands::cerebro_resolve_target,
+                cerebro_commands::cerebro_query_folder_configuration,
+                cerebro_commands::cerebro_save_folder_configuration,
+                cerebro_commands::cerebro_folder_credential,
+                cerebro_commands::cerebro_configuration_projects,
+                cerebro_commands::cerebro_configuration_modules,
                 cerebro_commands::cerebro_start_pairing,
                 cerebro_commands::cerebro_poll_pairing,
                 cerebro_commands::cerebro_cancel_pairing,

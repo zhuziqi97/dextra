@@ -322,7 +322,6 @@ impl ChatAuthoringAccess for DbChatAuthoring {
         // `agent_type: None` deliberately stays None — that is "inherit the
         // board's settings", which is what the user configured for this project.
         let config = WorkTaskConfig {
-            cerebro_selection: None,
             prompt_blocks,
             display_text: spec.prompt.clone(),
             agent_type: agent.map(|a| a.as_wire().into_owned()),

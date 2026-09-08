@@ -1,5 +1,4 @@
 "use client"
-import type { CerebroSelection } from "@/lib/generated/cerebro/CerebroSelection"
 
 import {
   createContext,
@@ -352,7 +351,6 @@ export interface ConnectionState {
 }
 
 type ConnectRequest = {
-  cerebroSelection?: CerebroSelection
   agentType: AgentType
   workingDir?: string
   sessionId?: string
@@ -367,10 +365,7 @@ function sameConnectRequest(a: ConnectRequest, b: ConnectRequest) {
   return (
     a.agentType === b.agentType &&
     (a.workingDir ?? null) === (b.workingDir ?? null) &&
-    (a.sessionId ?? null) === (b.sessionId ?? null) &&
-    a.cerebroSelection?.mode === b.cerebroSelection?.mode &&
-    (a.cerebroSelection?.mode === "BINDING" ? a.cerebroSelection.binding_id : null) ===
-      (b.cerebroSelection?.mode === "BINDING" ? b.cerebroSelection.binding_id : null)
+    (a.sessionId ?? null) === (b.sessionId ?? null)
   )
 }
 
@@ -2528,7 +2523,6 @@ export interface AcpActionsValue {
     workingDir?: string,
     sessionId?: string,
     conversationId?: number,
-    cerebroSelection?: CerebroSelection
   ): Promise<void>
   /**
    * Release the connection for `contextKey`. The LOCAL entry always goes away
@@ -4915,10 +4909,8 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
       workingDir?: string,
       sessionId?: string,
       conversationId?: number,
-      cerebroSelection?: CerebroSelection
     ) => {
       const request: ConnectRequest = {
-        cerebroSelection,
         agentType,
         workingDir,
         sessionId,
@@ -5227,7 +5219,6 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           savedPrefs.modeId,
           savedPrefs.configValues,
           conversationId,
-          cerebroSelection
         )
 
         // If disconnect was requested while connect was in flight, tear down
@@ -5410,7 +5401,6 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
                   pendingRequest.workingDir,
                   pendingRequest.sessionId,
                   pendingRequest.conversationId,
-                  pendingRequest.cerebroSelection
                 )
                 .catch(() => {})
             })
@@ -5578,7 +5568,6 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
         workingDir: conn?.workingDir ?? remembered?.workingDir ?? undefined,
         sessionId: conn?.sessionId ?? remembered?.sessionId ?? undefined,
         conversationId: remembered?.conversationId,
-        cerebroSelection: remembered?.cerebroSelection,
       }
     },
     []
@@ -5675,7 +5664,6 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
         request.workingDir,
         request.sessionId,
         request.conversationId,
-        request.cerebroSelection
       )
       return true
     },

@@ -914,7 +914,6 @@ pub async fn work_task_create_from_forge_core(
             .map_err(|e| AppCommandError::invalid_input(e.to_string()))?,
     ];
     let config = WorkTaskConfig {
-        cerebro_selection: None,
         prompt_blocks: blocks,
         display_text: instruction,
         agent_type: draft
@@ -957,7 +956,6 @@ pub async fn work_task_create_from_forge_core(
             return Ok(ForgeCreateResult::Duplicate { existing: work_task_service::to_info(existing) });
         }
     }
-    let task_draft = crate::cerebro::session_binding::prepare_work_task_draft(&db.conn, task_draft).await?;
     match work_task_service::create_from_forge(&db.conn, task_draft, source_row, draft.force)
         .await?
     {

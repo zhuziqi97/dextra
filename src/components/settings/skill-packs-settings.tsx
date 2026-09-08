@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useRef, useState } from "react"
-import { usePathname, useRouter, useSearchParams } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "@/lib/navigation"
 import { useTranslations } from "next-intl"
 import { FolderOpen, RefreshCw } from "lucide-react"
 import { toast } from "sonner"

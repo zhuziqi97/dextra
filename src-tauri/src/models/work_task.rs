@@ -153,9 +153,6 @@ pub struct WorkTaskTemplateDraft {
 /// event instead of being frozen here.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct WorkTaskConfig {
-    /// 创建时固定的模块选择；空值仅表示尚未选择的旧任务。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
     #[serde(default)]
     pub prompt_blocks: Vec<serde_json::Value>,
     #[serde(default)]

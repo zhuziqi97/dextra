@@ -12,7 +12,7 @@ import {
 import { Reorder, useDragControls } from "motion/react"
 import { useLocale, useTranslations } from "next-intl"
 import { useImeGuard } from "@/hooks/use-ime-guard"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams } from "@/lib/navigation"
 import {
   AlertCircle,
   CheckCircle2,

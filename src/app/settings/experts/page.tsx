@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@/lib/navigation"
 
 // The Experts settings page was merged into the unified "Skill Packs" hub.
 // This stub keeps the old route working (bookmarks, in-app deep-links) by

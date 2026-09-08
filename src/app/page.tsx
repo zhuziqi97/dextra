@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@/lib/navigation"
+import { getCodegToken } from "@/lib/transport/web-auth"
+import { webPath } from "@/lib/web-mount"
 import { isDesktop } from "@/lib/platform"
 
 export default function Page() {
@@ -12,13 +14,13 @@ export default function Page() {
       return
     }
     // Web mode: validate token before entering app
-    const token = localStorage.getItem("codeg_token")
+    const token = getCodegToken()
     if (!token) {
       router.replace("/login")
       return
     }
     // Verify token is still valid
-    fetch("/api/health", {
+    fetch(webPath("/api/health"), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

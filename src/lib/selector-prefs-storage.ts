@@ -1,5 +1,7 @@
 "use client"
 
+import { clientStorageKey } from "@/lib/web-mount"
+
 /**
  * Persists user's selector preferences (mode & config option selections)
  * per agentType to localStorage, so they survive session restarts.
@@ -19,7 +21,7 @@
 
 import type { SessionModeStateInfo } from "@/lib/types"
 
-const STORAGE_KEY = "codeg:selector-prefs"
+const STORAGE_KEY = clientStorageKey("codeg:selector-prefs")
 
 interface SelectorPrefs {
   modeId?: string

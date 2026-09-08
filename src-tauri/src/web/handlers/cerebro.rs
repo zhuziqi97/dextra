@@ -9,21 +9,6 @@ use crate::commands::cerebro as commands;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FolderBindingParams {
-    pub folder_id: i32,
-    pub conversation_id: Option<i32>,
-    pub work_task_id: Option<i32>,
-}
-
-pub async fn query_launch_binding(
-    axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>,
-    Json(params): Json<FolderBindingParams>,
-) -> Result<Json<crate::cerebro::session_binding::CerebroLaunchBinding>, AppCommandError> {
-    commands::cerebro_query_launch_binding_core(&state.db, params.folder_id, params.conversation_id, params.work_task_id).await.map(Json)
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct StartPairingParams {
     pub cerebro_base_url: String,
 }
@@ -84,4 +69,52 @@ pub async fn select_storage(Json(params): Json<StorageParams>) -> Result<Json<cr
 
 pub async fn import_credential() -> Result<Json<()>, AppCommandError> {
     commands::cerebro_import_credential().await.map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderConfigurationParams { pub folder_id: i32 }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderConfigurationSaveParams { pub folder_id: i32, pub input: crate::cerebro::configuration::ConfigurationInput }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderCredentialParams { pub folder_id: i32, pub rotate: bool }
+
+#[derive(Deserialize)]
+pub struct ProjectsParams { pub page: u32, pub search: Option<String> }
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModulesParams { pub project_id: String }
+
+pub async fn query_folder_configuration(axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>, Json(params): Json<FolderConfigurationParams>) -> Result<Json<crate::cerebro::configuration::FolderConfigurationState>, AppCommandError> {
+    commands::cerebro_query_folder_configuration_core(&state.db, params.folder_id).await.map(Json)
+}
+
+pub async fn save_folder_configuration(axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>, Json(params): Json<FolderConfigurationSaveParams>) -> Result<Json<crate::cerebro::configuration::ClientConfiguration>, AppCommandError> {
+    commands::cerebro_save_folder_configuration_core(&state.db, &state.emitter, params.folder_id, params.input).await.map(Json)
+}
+
+pub async fn folder_credential(Json(params): Json<FolderCredentialParams>) -> Result<Json<crate::cerebro::configuration::FolderCredential>, AppCommandError> {
+    commands::cerebro_folder_credential(params.folder_id, params.rotate).await.map(Json)
+}
+
+pub async fn configuration_projects(Json(params): Json<ProjectsParams>) -> Result<Json<crate::cerebro::configuration::ProjectPage>, AppCommandError> {
+    commands::cerebro_configuration_projects(params.page, params.search).await.map(Json)
+}
+
+pub async fn configuration_modules(Json(params): Json<ModulesParams>) -> Result<Json<crate::cerebro::configuration::ModuleOptions>, AppCommandError> {
+    commands::cerebro_configuration_modules(params.project_id).await.map(Json)
+}
+
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetParams { pub target_id: String }
+
+pub async fn resolve_target(axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>, Json(params): Json<TargetParams>) -> Result<Json<i32>, AppCommandError> {
+    commands::cerebro_resolve_target_core(&state.db, params.target_id).await.map(Json)
 }

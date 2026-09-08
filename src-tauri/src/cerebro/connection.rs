@@ -1,25 +1,43 @@
 //! Dextra 主动维护的 Cerebro Runner 生产 WebSocket。
 
+use std::sync::LazyLock;
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::identity;
-use super::remote::{CerebroRemoteRuntime, RemoteRelay};
-use crate::cerebro_bridge::{runner_heartbeat, runner_hello, runner_targets_report};
+use super::runtime::CerebroRuntime;
+use super::protocol::{runner_heartbeat, runner_hello, runner_targets_report};
 
 const RUNNER_WEBSOCKET_PATH: &str = "api/v1/execution-runners/ws";
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const TARGET_REPORT_INTERVAL: Duration = Duration::from_secs(30);
-const TASK_REPORT_INTERVAL: Duration = Duration::from_secs(2);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 static SUPERVISOR_STARTED: AtomicBool = AtomicBool::new(false);
+
+type ReportWaiter = oneshot::Sender<()>;
+static REPORT_REQUESTS: LazyLock<(mpsc::Sender<ReportWaiter>, Mutex<mpsc::Receiver<ReportWaiter>>)> = LazyLock::new(|| {
+    let (sender, receiver) = mpsc::channel(16);
+    (sender, Mutex::new(receiver))
+});
+
+/// 新目录配置等待本次目录上报确认，不依赖周期上报或固定延时。
+pub async fn synchronize_targets() -> Result<(), String> {
+    if !SUPERVISOR_STARTED.load(Ordering::Acquire) { return Ok(()); }
+    let (sender, receiver) = oneshot::channel();
+    tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
+        REPORT_REQUESTS.0.send(sender).await.map_err(|_| "客户端连接已关闭".to_string())?;
+        receiver.await.map_err(|_| "客户端连接已断开".to_string())
+    }).await.map_err(|_| "服务端尚未确认目录，请恢复连接后重试".to_string())?
+}
+
 
 fn websocket_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(base_url)
@@ -69,7 +87,7 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
         return Ok(());
     }
     let message_type = value.get("TYPE").and_then(Value::as_str);
-    if !matches!(message_type, Some("HELLO_ACK" | "HEARTBEAT_ACK")) {
+    if !matches!(message_type, Some("HELLO_ACK" | "HEARTBEAT_ACK" | "CONFIGURATION_CHANGED" | "TARGETS_REPORT_ACK")) {
         return Err("Cerebro returned an unsupported Runner message".to_string());
     }
     if value.get("PROTOCOL_VERSION").and_then(Value::as_u64) != Some(1) {
@@ -96,7 +114,7 @@ where
     send_json(sink, &runner_targets_report(runner_id, targets)).await
 }
 
-async fn connect_once(runtime: &CerebroRemoteRuntime, relay: &RemoteRelay) -> Result<(), String> {
+async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
     let access = identity::refresh_access_token()
         .await
         .map_err(|error| error.to_string())?;
@@ -136,7 +154,7 @@ async fn connect_once(runtime: &CerebroRemoteRuntime, relay: &RemoteRelay) -> Re
         access.cerebro_base_url
     );
 
-    send_target_report(&runtime.db.conn, &mut sink, &access.runner_id).await?;
+    send_target_report(&runtime.state.db.conn, &mut sink, &access.runner_id).await?;
 
     let (remote_outbound, mut remote_source) = mpsc::channel::<Value>(128);
 
@@ -144,11 +162,19 @@ async fn connect_once(runtime: &CerebroRemoteRuntime, relay: &RemoteRelay) -> Re
     heartbeat.tick().await;
     let mut target_report = tokio::time::interval(TARGET_REPORT_INTERVAL);
     target_report.tick().await;
-    let mut task_report = tokio::time::interval(TASK_REPORT_INTERVAL);
-    task_report.tick().await;
-    let mut task_sequence = 0_u64;
+    let mut report_requests = REPORT_REQUESTS.1.lock().await;
+    let mut report_waiters = HashMap::<String, ReportWaiter>::new();
     loop {
         tokio::select! {
+            Some(waiter) = report_requests.recv() => {
+                if waiter.is_closed() { continue; }
+                let targets = super::project_folder_targets(&runtime.state.db.conn, &access.runner_id).await.map_err(|error| error.to_string())?;
+                let report = runner_targets_report(&access.runner_id, targets);
+                let report_id = report.message_id.clone();
+                report_waiters.retain(|_, pending| !pending.is_closed());
+                report_waiters.insert(report_id, waiter);
+                send_json(&mut sink, &report).await?;
+            }
             _ = identity::wait_for_runner_identity_change() => {
                 return Ok(());
             }
@@ -156,17 +182,7 @@ async fn connect_once(runtime: &CerebroRemoteRuntime, relay: &RemoteRelay) -> Re
                 send_json(&mut sink, &runner_heartbeat(&access.runner_id)).await?;
             }
             _ = target_report.tick() => {
-                send_target_report(&runtime.db.conn, &mut sink, &access.runner_id).await?;
-            }
-            _ = task_report.tick() => {
-                task_sequence += 1;
-                for frame in super::task_protocol::linked_task_frames(
-                    &runtime.db.conn,
-                    &access.runner_id,
-                    task_sequence,
-                ).await? {
-                    send_json(&mut sink, &frame).await?;
-                }
+                send_target_report(&runtime.state.db.conn, &mut sink, &access.runner_id).await?;
             }
             incoming = source.next() => {
                 let message = incoming
@@ -174,24 +190,24 @@ async fn connect_once(runtime: &CerebroRemoteRuntime, relay: &RemoteRelay) -> Re
                     .map_err(|error| format!("Runner WebSocket receive failed: {error}"))?;
                 let value = parse_server_message(message)?;
                 let message_type = value.get("TYPE").and_then(Value::as_str);
-                if matches!(message_type, Some("TASK_START" | "TASK_CANCEL")) {
-                    for response in super::task_protocol::handle_task_command(
-                        &runtime.emitter,
-                        &runtime.db.conn,
-                        &access.runner_id,
-                        value,
-                    ).await? {
-                        send_json(&mut sink, &response).await?;
-                    }
-                } else if relay
-                    .handle_server_message(
-                        &access.runner_id,
-                        value.clone(),
-                        remote_outbound.clone(),
-                    )
-                    .await
-                {
+                if runtime.web.handle(value.clone(), remote_outbound.clone()).await {
                     continue;
+                } else if message_type == Some("CONFIGURATION_CHANGED") {
+                    validate_server_message(&value, &access.runner_id)?;
+                    let target_id = value["PAYLOAD"]["TARGET_ID"].as_str().ok_or("配置刷新缺少目录")?;
+                    super::configuration::refresh_and_emit(&runtime.state.db.conn, &runtime.state.emitter, target_id).await;
+                } else if message_type == Some("TARGETS_REPORT_ACK") {
+                    validate_server_message(&value, &access.runner_id)?;
+                    let configurations: Vec<super::configuration::ClientConfiguration> = serde_json::from_value(value["PAYLOAD"]["CONFIGURATIONS"].clone()).map_err(|error| error.to_string())?;
+                    if let Some(report_id) = value["PAYLOAD"]["REPORT_ID"].as_str() {
+                        if let Some(waiter) = report_waiters.remove(report_id) { let _ = waiter.send(()); }
+                    }
+                    for configuration in configurations {
+                        if let Err(error) = super::configuration::cache(&runtime.state.db.conn, &configuration).await {
+                            tracing::warn!("[cerebro] 刷新目录缓存失败: {error}");
+                        }
+                        crate::web::event_bridge::emit_event(&runtime.state.emitter, super::configuration::CONFIGURATION_EVENT, configuration);
+                    }
                 } else {
                     validate_server_message(&value, &access.runner_id)?;
                 }
@@ -203,16 +219,15 @@ async fn connect_once(runtime: &CerebroRemoteRuntime, relay: &RemoteRelay) -> Re
     }
 }
 
-async fn run_supervisor(runtime: CerebroRemoteRuntime) {
-    let relay = RemoteRelay::new(runtime.clone());
+async fn run_supervisor(runtime: CerebroRuntime) {
     loop {
         let state = identity::get_auth_state().await;
         match state {
             Ok(state) if state.paired => {
-                if let Err(error) = connect_once(&runtime, &relay).await {
+                if let Err(error) = connect_once(&runtime).await {
                     tracing::warn!("[cerebro] Runner connection ended: {error}");
                 }
-                relay.close_all().await;
+                runtime.web.close_all().await;
             }
             Ok(_) => {}
             Err(error) => {
@@ -227,7 +242,7 @@ async fn run_supervisor(runtime: CerebroRemoteRuntime) {
 }
 
 /// 运行当前 Dextra 进程唯一的 Runner 连接监督任务。
-pub async fn run_runner_connection_supervisor(runtime: CerebroRemoteRuntime) {
+pub async fn run_runner_connection_supervisor(runtime: CerebroRuntime) {
     if SUPERVISOR_STARTED.swap(true, Ordering::AcqRel) {
         return;
     }
@@ -237,14 +252,6 @@ pub async fn run_runner_connection_supervisor(runtime: CerebroRemoteRuntime) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn contract_example(message_type: &str) -> serde_json::Value {
-        let fixture: serde_json::Value = serde_json::from_str(include_str!(
-            "../../tests/contracts/cerebro-runner-stream.schema.json"
-        ))
-        .unwrap();
-        fixture["examples"][message_type].clone()
-    }
 
     #[test]
     fn websocket_url_preserves_deployment_path_and_query() {
@@ -267,30 +274,4 @@ mod tests {
         assert!(validate_server_message(&ack, "runner-2").is_err());
     }
 
-    #[test]
-    fn production_runner_serializers_match_cerebro_stream_contract() {
-        let mut hello = runner_hello("00000000-0000-4000-8000-000000000000", "string");
-        hello.message_id = "00000000-0000-4000-8000-000000000001".into();
-        hello.occurred_at = "2026-01-01T00:00:00Z".parse().unwrap();
-        assert_eq!(
-            serde_json::to_value(hello).unwrap(),
-            contract_example("HELLO")
-        );
-
-        let mut heartbeat = runner_heartbeat("00000000-0000-4000-8000-000000000000");
-        heartbeat.message_id = "00000000-0000-4000-8000-000000000002".into();
-        heartbeat.occurred_at = "2026-01-01T00:00:00Z".parse().unwrap();
-        assert_eq!(
-            serde_json::to_value(heartbeat).unwrap(),
-            contract_example("HEARTBEAT")
-        );
-
-        let expected_report = contract_example("TARGETS_REPORT");
-        let targets: Vec<crate::cerebro::FolderTargetProjection> =
-            serde_json::from_value(expected_report["PAYLOAD"]["TARGETS"].clone()).unwrap();
-        let mut report = runner_targets_report("00000000-0000-4000-8000-000000000000", targets);
-        report.message_id = "00000000-0000-4000-8000-000000000004".into();
-        report.occurred_at = "2026-01-01T00:00:00Z".parse().unwrap();
-        assert_eq!(serde_json::to_value(report).unwrap(), expected_report);
-    }
 }

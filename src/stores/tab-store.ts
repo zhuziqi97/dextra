@@ -1,3 +1,4 @@
+import { clientStorageKey } from "@/lib/web-mount"
 import { create } from "zustand"
 import { useShallow } from "zustand/react/shallow"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
@@ -307,10 +308,10 @@ export interface TabStoreState {
 }
 
 /** Legacy pre-groups tile flag — read once as the first group's default. */
-const TILE_MODE_STORAGE_KEY = "workspace:tile-mode"
+const TILE_MODE_STORAGE_KEY = clientStorageKey("workspace:tile-mode")
 /** Device-local split-group state (layout tree, assignments, selection, tile
  *  flags), keyed by canonical tab ids. See `persistGroupState`. */
-const TAB_GROUPS_STORAGE_KEY = "workspace:tab-groups:v1"
+const TAB_GROUPS_STORAGE_KEY = clientStorageKey("workspace:tab-groups:v1")
 
 /** Per-window/session identity stamped on every tab save and echoed back on
  *  `tabs://changed`, so this client ignores its own broadcast (echo

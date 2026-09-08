@@ -1778,7 +1778,7 @@
       "removeFolderConfirmDescription": "從工作區移除 \"{name}\"？相關分頁與終端機將會關閉。",
       "folderHeaderMenu": {
         "manageConversations": "會話管理…",
-        "manageLinks": "已連結的資料夾",
+        "manageLinks": "資料夾設定",
         "changeColor": "修改顏色",
         "useThemeColor": "使用設定主題",
         "setDefaultAgent": "設定預設智能體",
@@ -5452,5 +5452,28 @@
     "settingsPromptScenarioHint": "只有這個情境建立的任務才會帶上。",
     "settingsPromptPlaceholder": "例如：用繁體中文回覆；完成前先跑一次專案的測試。",
     "save": "儲存"
+  },
+  "CerebroFolder": {
+    "title": "Client configuration",
+    "folderLinks": "Folder links",
+    "project": "Project",
+    "selectProject": "Select a project",
+    "executionModule": "Execution module",
+    "mcpModules": "MCP accessible modules",
+    "enabled": "Enabled",
+    "credential": "MCP credential",
+    "view": "View credential",
+    "copy": "Copy credential",
+    "rotate": "Regenerate credential",
+    "save": "Save",
+    "saved": "Saved",
+    "copied": "Copied",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "connect": "Connect to server",
+    "unbound": "Not bound",
+    "removeModule": "Remove module",
+    "expiresAt": "Expires: {time}",
+    "tooManyModules": "This project has more modules than the selector can display."
   }
 }

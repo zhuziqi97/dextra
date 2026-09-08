@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams } from "@/lib/navigation"
 import { useTranslations } from "next-intl"
 import { Loader2 } from "lucide-react"
 import { StashWorkspace } from "@/components/layout/unstash-dialog"

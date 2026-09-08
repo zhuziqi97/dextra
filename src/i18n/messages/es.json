@@ -1778,7 +1778,7 @@
       "removeFolderConfirmDescription": "¿Eliminar \"{name}\" del espacio de trabajo? Sus pestañas y terminales se cerrarán.",
       "folderHeaderMenu": {
         "manageConversations": "Gestionar conversaciones…",
-        "manageLinks": "Carpetas vinculadas",
+        "manageLinks": "Configuración de carpeta",
         "changeColor": "Cambiar color",
         "useThemeColor": "Usar tema de la app",
         "setDefaultAgent": "Establecer agente predeterminado",
@@ -5452,5 +5452,28 @@
     "settingsPromptScenarioHint": "Va solo en las tareas creadas con este escenario.",
     "settingsPromptPlaceholder": "p. ej.: Responde en español. Ejecuta las pruebas del proyecto antes de terminar.",
     "save": "Guardar"
+  },
+  "CerebroFolder": {
+    "title": "Client configuration",
+    "folderLinks": "Folder links",
+    "project": "Project",
+    "selectProject": "Select a project",
+    "executionModule": "Execution module",
+    "mcpModules": "MCP accessible modules",
+    "enabled": "Enabled",
+    "credential": "MCP credential",
+    "view": "View credential",
+    "copy": "Copy credential",
+    "rotate": "Regenerate credential",
+    "save": "Save",
+    "saved": "Saved",
+    "copied": "Copied",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "connect": "Connect to server",
+    "unbound": "Not bound",
+    "removeModule": "Remove module",
+    "expiresAt": "Expires: {time}",
+    "tooManyModules": "This project has more modules than the selector can display."
   }
 }

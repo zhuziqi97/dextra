@@ -8,11 +8,10 @@ use futures::{
     FutureExt, StreamExt,
 };
 use serde_json::{json, Value};
-use std::{sync::Arc, time::Duration};
+use std::sync::Arc;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::{mpsc, Mutex, RwLock},
-    time::Instant,
 };
 
 #[async_trait]
@@ -39,20 +38,16 @@ impl PrincipalSource for IpcSource {
     }
 }
 
-struct CachedPrincipal {
-    value: CerebroMcpPrincipal,
-    deadline: Instant,
-}
-
 type PrincipalRefresh = Shared<BoxFuture<'static, Result<CerebroMcpPrincipal, String>>>;
 
 pub struct Bridge {
     client: reqwest::Client,
     source: Arc<dyn PrincipalSource>,
-    cached: Arc<Mutex<Option<CachedPrincipal>>>,
     refreshing: Mutex<Option<PrincipalRefresh>>,
     session_id: RwLock<Option<String>>,
     protocol_version: RwLock<Option<String>>,
+    initialize_request: RwLock<Option<Value>>,
+    recovering: Mutex<()>,
 }
 
 impl Bridge {
@@ -60,10 +55,11 @@ impl Bridge {
         Self {
             client: reqwest::Client::new(),
             source,
-            cached: Arc::new(Mutex::new(None)),
             refreshing: Mutex::new(None),
             session_id: RwLock::new(None),
             protocol_version: RwLock::new(None),
+            initialize_request: RwLock::new(None),
+            recovering: Mutex::new(()),
         }
     }
 
@@ -75,27 +71,9 @@ impl Bridge {
             drop(refreshing);
             return self.finish_refresh(pending).await;
         }
-        let cached = self.cached.lock().await;
-        if let Some(current) = cached.as_ref() {
-            if current.deadline.saturating_duration_since(Instant::now()) >= Duration::from_secs(30)
-            {
-                return Ok(current.value.clone());
-            }
-        }
-        drop(cached);
+        // 每次独立调用领取当前凭证，重新生成后不先发送一次失效凭证。
         let source = self.source.clone();
-        let cache = self.cached.clone();
-        let pending = async move {
-            let started = Instant::now();
-            let value = source.issue().await?;
-            *cache.lock().await = Some(CachedPrincipal {
-                deadline: started + Duration::from_secs(value.expires_in),
-                value: value.clone(),
-            });
-            Ok(value)
-        }
-        .boxed()
-        .shared();
+        let pending = async move { source.issue().await }.boxed().shared();
         *refreshing = Some(pending.clone());
         drop(refreshing);
         self.finish_refresh(pending).await
@@ -138,7 +116,9 @@ impl Bridge {
         message: &Value,
         output: &mpsc::Sender<Value>,
     ) -> Result<(), String> {
-        // send 之后不再重试，包括认证失败；下一次独立调用重新领凭据。
+        let initialize = message["method"] == "initialize";
+        if !initialize { self.recover_session_if_needed().await?; }
+        // send 之后不重放任何调用；会话丢失仅在下一次独立调用前恢复握手。
         let response = self
             .request(reqwest::Method::POST)
             .await?
@@ -149,7 +129,25 @@ impl Bridge {
         let expected_id = message
             .get("id")
             .filter(|_| message.get("method").is_some());
-        self.consume(response, output, expected_id).await
+        self.consume(response, output, expected_id).await?;
+        if initialize { *self.initialize_request.write().await = Some(message.clone()); }
+        Ok(())
+    }
+
+    async fn recover_session_if_needed(&self) -> Result<(), String> {
+        if self.session_id.read().await.is_some() { return Ok(()); }
+        let Some(mut initialize) = self.initialize_request.read().await.clone() else { return Ok(()); };
+        let _guard = self.recovering.lock().await;
+        if self.session_id.read().await.is_some() { return Ok(()); }
+        initialize["id"] = json!(uuid::Uuid::new_v4().to_string());
+        let (output, mut receiver) = mpsc::channel(16);
+        let response = self.request(reqwest::Method::POST).await?.json(&initialize).send().await.map_err(|error| error.to_string())?;
+        self.consume(response, &output, initialize.get("id")).await?;
+        while let Ok(message) = receiver.try_recv() {
+            if let Some(error) = message.get("error") { return Err(error.to_string()); }
+        }
+        let response = self.request(reqwest::Method::POST).await?.json(&json!({"jsonrpc": "2.0", "method": "notifications/initialized"})).send().await.map_err(|error| error.to_string())?;
+        self.consume(response, &output, None).await
     }
 
     async fn listen(&self, output: &mpsc::Sender<Value>) -> Result<(), String> {
@@ -183,12 +181,7 @@ impl Bridge {
         expected_id: Option<&Value>,
     ) -> Result<(), String> {
         let status = response.status();
-        if matches!(
-            status,
-            reqwest::StatusCode::UNAUTHORIZED | reqwest::StatusCode::FORBIDDEN
-        ) {
-            self.cached.lock().await.take();
-        }
+        if status == reqwest::StatusCode::NOT_FOUND { *self.session_id.write().await = None; }
         if !status.is_success() {
             let body = response.text().await.map_err(|e| e.to_string())?;
             return Err(format!("MCP HTTP {status}: {body}"));
@@ -365,18 +358,26 @@ mod tests {
         })
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn refresh_boundary_and_concurrent_requests_share_one_principal() {
-        let source = source("http://unused/mcp/stream".into());
+    #[tokio::test]
+    async fn independent_calls_refresh_and_concurrent_requests_share_one_principal() {
+        struct DelayedSource { calls: AtomicUsize, release: tokio::sync::Semaphore }
+        #[async_trait]
+        impl PrincipalSource for DelayedSource {
+            async fn issue(&self) -> Result<CerebroMcpPrincipal, String> {
+                let count = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+                self.release.acquire().await.unwrap().forget();
+                Ok(CerebroMcpPrincipal { mcp_url: "http://unused/mcp/stream".into(), access_token: format!("token-{count}"), token_type: "bearer".into(), expires_in: 600 })
+            }
+        }
+        let source = Arc::new(DelayedSource { calls: AtomicUsize::new(0), release: tokio::sync::Semaphore::new(1) });
         let bridge = Bridge::new(source.clone());
         assert_eq!(bridge.principal().await.unwrap().access_token, "token-1");
-        tokio::time::advance(Duration::from_secs(570)).await;
-        assert_eq!(bridge.principal().await.unwrap().access_token, "token-1");
-        tokio::time::advance(Duration::from_secs(1)).await;
-        let refreshed = futures::future::join_all((0..8).map(|_| bridge.principal())).await;
-        assert!(refreshed
-            .into_iter()
-            .all(|value| value.unwrap().access_token == "token-2"));
+        let batch = futures::future::join_all((0..8).map(|_| bridge.principal()));
+        tokio::pin!(batch);
+        assert!(futures::poll!(&mut batch).is_pending());
+        assert_eq!(source.calls.load(Ordering::SeqCst), 2);
+        source.release.add_permits(1);
+        assert!(batch.await.into_iter().all(|value| value.unwrap().access_token == "token-2"));
         assert_eq!(source.calls.load(Ordering::SeqCst), 2);
     }
 
@@ -497,15 +498,14 @@ mod tests {
         let read =
             json!({"jsonrpc":"2.0", "id":3, "method":"tools/call", "params":{"name":"read"}});
         bridge.forward(&read, &output).await.unwrap();
-        assert_eq!(source.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(source.calls.load(Ordering::SeqCst), 3);
         assert_eq!(
             *server.headers.lock().await,
             vec![
-                ("Bearer token-1".into(), "stable-session".into()),
-                ("Bearer token-2".into(), "stable-session".into())
+                ("Bearer token-2".into(), "stable-session".into()),
+                ("Bearer token-3".into(), "stable-session".into())
             ]
         );
-        bridge.cached.lock().await.as_mut().unwrap().deadline = Instant::now();
         source.fail.store(true, Ordering::SeqCst);
         assert!(bridge
             .forward(&write, &output)
@@ -516,4 +516,38 @@ mod tests {
         assert_eq!(server.writes.load(Ordering::SeqCst), 1);
         task.abort();
     }
+    #[tokio::test]
+    async fn lost_session_fails_current_write_and_next_read_reinitializes() {
+        use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::post, Json, Router};
+        #[derive(Clone, Default)]
+        struct Server { methods: Arc<Mutex<Vec<String>>> }
+        async fn handle(State(state): State<Server>, Json(body): Json<Value>) -> axum::response::Response {
+            let method = body["method"].as_str().unwrap().to_string();
+            let name = body["params"]["name"].as_str().unwrap_or(&method).to_string();
+            state.methods.lock().await.push(name.clone());
+            match name.as_str() {
+                "initialize" => ([("Mcp-Session-Id", "new-session")], Json(json!({"jsonrpc":"2.0", "id":body["id"], "result":{"protocolVersion":"2025-03-26"}}))).into_response(),
+                "notifications/initialized" => StatusCode::ACCEPTED.into_response(),
+                "write" => (StatusCode::NOT_FOUND, "session disappeared").into_response(),
+                _ => Json(json!({"jsonrpc":"2.0", "id":body["id"], "result":{"content":[]}})).into_response(),
+            }
+        }
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let source = source(format!("http://{}/mcp/stream", listener.local_addr().unwrap()));
+        let server = Server::default();
+        let app = Router::new().route("/mcp/stream", post(handle)).with_state(server.clone());
+        let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap(); });
+        let bridge = Bridge::new(source);
+        let (output, mut received) = mpsc::channel(8);
+        bridge.forward(&json!({"jsonrpc":"2.0", "id":1, "method":"initialize"}), &output).await.unwrap();
+        received.recv().await.unwrap();
+        let error = bridge.forward(&json!({"jsonrpc":"2.0", "id":2, "method":"tools/call", "params":{"name":"write"}}), &output).await.unwrap_err();
+        assert!(error.contains("session disappeared"));
+        assert!(received.try_recv().is_err());
+        bridge.forward(&json!({"jsonrpc":"2.0", "id":3, "method":"tools/call", "params":{"name":"read"}}), &output).await.unwrap();
+        assert_eq!(received.recv().await.unwrap()["id"], 3);
+        assert_eq!(*server.methods.lock().await, vec!["initialize", "write", "initialize", "notifications/initialized", "read"]);
+        task.abort();
+    }
+
 }

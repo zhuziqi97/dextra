@@ -1,17 +1,12 @@
+import { getWebMountPath } from "../web-mount"
 import { detectEnvironment } from "./detect"
-import {
-  CerebroRemoteTransport,
-  type CerebroPlatformPeer,
-} from "./cerebro-remote-transport"
 import type { RemoteTransportConfig, Transport } from "./types"
 
 export type { RemoteTransportConfig, Transport, UnsubscribeFn } from "./types"
-export type { CerebroPlatformPeer } from "./cerebro-remote-transport"
 
 let _shellTransport: Transport | null = null
 let _remoteTransport: Transport | null = null
 let _remoteConfig: RemoteTransportConfig | null = null
-let _cerebroTransport: Transport | null = null
 
 function createTauriTransport(): Transport {
   // Use dynamic require to avoid bundling tauri deps in web mode.
@@ -36,7 +31,7 @@ export function getShellTransport(): Transport {
     _shellTransport =
       env === "tauri"
         ? createTauriTransport()
-        : createWebTransport(window.location.origin)
+        : createWebTransport(window.location.origin + getWebMountPath())
   }
   return _shellTransport
 }
@@ -59,32 +54,12 @@ export function clearRemoteDesktopTransport(): void {
   _remoteConfig = null
 }
 
-/**
- * 把隔离的 Dextra Web 子应用绑定到 Cerebro command router。
- * 该入口只接收窄 peer，不接收 Runner URL、本地 bearer 或设备凭据。
- */
-export function configureCerebroRemoteTransport(
-  peer: CerebroPlatformPeer
-): void {
-  _cerebroTransport?.destroy?.()
-  _cerebroTransport = new CerebroRemoteTransport(peer)
-}
-
-export function clearCerebroRemoteTransport(): void {
-  _cerebroTransport?.destroy?.()
-  _cerebroTransport = null
-}
-
-export function isCerebroRemoteMode(): boolean {
-  return _cerebroTransport !== null
-}
-
 export function getActiveRemoteConnectionId(): number | null {
   return _remoteConfig?.id ?? null
 }
 
 export function getTransport(): Transport {
-  return _cerebroTransport ?? _remoteTransport ?? getShellTransport()
+  return _remoteTransport ?? getShellTransport()
 }
 
 export function isDesktop(): boolean {
@@ -107,7 +82,7 @@ export function isRemoteDesktopMode(): boolean {
 /// the local origin only as a harmless fallback.
 export function getServerBaseUrl(): string {
   if (_remoteConfig) return _remoteConfig.baseUrl.replace(/\/+$/, "")
-  return typeof window !== "undefined" ? window.location.origin : ""
+  return typeof window !== "undefined" ? window.location.origin + getWebMountPath() : ""
 }
 
 /// Surface a remote-server 401 to the same UI the transport uses for its
@@ -135,9 +110,7 @@ export function __resetTransportForTests(): void {
   if (process.env.NODE_ENV !== "test") return
   _shellTransport?.destroy?.()
   _remoteTransport?.destroy?.()
-  _cerebroTransport?.destroy?.()
   _shellTransport = null
   _remoteTransport = null
   _remoteConfig = null
-  _cerebroTransport = null
 }

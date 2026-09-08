@@ -299,14 +299,7 @@ async fn async_main() -> ExitCode {
         .connection_manager
         .install_chat_channel(state.chat_channel_manager.clone_ref());
     tokio::spawn(codeg_lib::cerebro::run_runner_connection_supervisor(
-        codeg_lib::cerebro::CerebroRemoteRuntime::new(
-            state.db.conn.clone(),
-            state.connection_manager.clone_ref(),
-            state.terminal_manager.clone_ref(),
-            state.emitter.clone(),
-            state.event_broadcaster.clone(),
-            state.data_dir.clone(),
-        ),
+        codeg_lib::cerebro::CerebroRuntime::new(state.clone(), static_dir.clone()),
     ));
 
     // Logging phase 3: wire the emitter so the Logs viewer's live tail

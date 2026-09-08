@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams } from "@/lib/navigation"
 import { useTranslations } from "next-intl"
 import { PetWindow } from "./_components/PetWindow"
 

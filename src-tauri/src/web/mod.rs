@@ -30,22 +30,23 @@ const WEB_SERVICE_PORT_KEY: &str = "web_service_port";
 const WEB_SERVICE_AUTO_START_KEY: &str = "web_service_auto_start";
 pub const DEFAULT_WEB_SERVICE_PORT: u16 = 3080;
 
+#[derive(Clone)]
 pub struct WebServerState {
-    handle: Mutex<Option<tokio::task::JoinHandle<()>>>,
-    shutdown_tx: Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
+    handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    shutdown_tx: Arc<Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
     /// Coordinates shutdown of live WebSocket handlers. Sticky flag +
     /// `Notify` together: existing handlers wake immediately, and any
     /// handshake completing during the stop window also exits without
     /// leaking an orphan task. Reused across stop→start cycles via
     /// `reset()` at the start of every successful bind.
     pub(crate) shutdown_signal: Arc<ShutdownSignal>,
-    port: AtomicU16,
-    token: Mutex<String>,
+    port: Arc<AtomicU16>,
+    token: Arc<Mutex<String>>,
     /// Address the listener is bound to (`0.0.0.0` for a wildcard bind).
     /// Lets `get_web_server_status` advertise only reachable addresses: a
     /// specific bind makes the other interfaces' IPs unreachable.
-    host: Mutex<String>,
-    running: std::sync::atomic::AtomicBool,
+    host: Arc<Mutex<String>>,
+    running: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl Default for WebServerState {
@@ -57,13 +58,13 @@ impl Default for WebServerState {
 impl WebServerState {
     pub fn new() -> Self {
         Self {
-            handle: Mutex::new(None),
-            shutdown_tx: Mutex::new(None),
+            handle: Arc::new(Mutex::new(None)),
+            shutdown_tx: Arc::new(Mutex::new(None)),
             shutdown_signal: Arc::new(ShutdownSignal::new()),
-            port: AtomicU16::new(0),
-            token: Mutex::new(String::new()),
-            host: Mutex::new("0.0.0.0".to_string()),
-            running: std::sync::atomic::AtomicBool::new(false),
+            port: Arc::new(AtomicU16::new(0)),
+            token: Arc::new(Mutex::new(String::new())),
+            host: Arc::new(Mutex::new("0.0.0.0".to_string())),
+            running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -761,8 +762,60 @@ pub(crate) async fn do_start_web_server_tauri(
 
     let static_dir = find_static_dir_tauri(&app);
 
-    // Build AppState for the router
-    let app_state = Arc::new(AppState {
+    let app_state = app_state_from_tauri(&app);
+
+    // See do_start_web_server_with_state for rationale on the reset.
+    ws.shutdown_signal.reset();
+    let shutdown_signal = ws.shutdown_signal.clone();
+
+    // Sweep abandoned upload staging files. See the matching call in
+    // `do_start_web_server_with_state` for rationale. Quota log/validate
+    // already ran earlier in this function before the bind.
+    handlers::files::purge_upload_staging().await;
+
+    let router = router::build_router(
+        app_state,
+        token.clone(),
+        static_dir,
+        shutdown_signal.clone(),
+    );
+
+    let local_addr = listener.local_addr().ok();
+    let actual_port = local_addr.map(|a| a.port()).unwrap_or(port_val);
+    // Advertise the IP the socket is actually bound to, not the raw config.
+    let advertised_host = advertise_host(local_addr, &host_val);
+    tracing::info!("[WEB] Starting web server on {}", addr);
+
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    let handle = tokio::spawn(async move {
+        let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
+            let _ = shutdown_rx.await;
+        });
+        if let Err(e) = serve.await {
+            tracing::error!("[WEB] Server error: {}", e);
+        }
+    });
+
+    *ws.handle.lock().unwrap() = Some(handle);
+    *ws.shutdown_tx.lock().unwrap() = Some(shutdown_tx);
+    ws.port.store(actual_port, Ordering::Relaxed);
+    *ws.token.lock().unwrap() = token.clone();
+    *ws.host.lock().unwrap() = advertised_host.clone();
+    // running already true from compare_exchange; disarm guard so it doesn't flip back.
+    guard.disarm();
+
+    let addresses = addresses_for_bind(&advertised_host, actual_port);
+    Ok(WebServerInfo {
+        port: actual_port,
+        token,
+        addresses,
+    })
+}
+
+#[cfg(feature = "tauri-runtime")]
+pub(crate) fn app_state_from_tauri(app: &tauri::AppHandle) -> Arc<AppState> {
+    use tauri::Manager;
+    Arc::new(AppState {
         db: crate::db::AppDatabase {
             conn: app.state::<crate::db::AppDatabase>().conn.clone(),
         },
@@ -784,7 +837,7 @@ pub(crate) async fn do_start_web_server_tauri(
         data_dir: crate::paths::resolve_effective_data_dir(
             &app.path().app_data_dir().unwrap_or_default(),
         ),
-        web_server_state: WebServerState::new(), // placeholder; not used by handlers
+        web_server_state: app.state::<WebServerState>().inner().clone(),
         // Reuse the manager Tauri registered and started, NOT a fresh one: a
         // fresh `ChatChannelManager` has an empty channel registry, so every
         // handler that renames a bound chat thread (`update_conversation_title`,
@@ -853,53 +906,6 @@ pub(crate) async fn do_start_web_server_tauri(
             .state::<crate::update::AppUpdateStateHandle>()
             .inner()
             .clone(),
-    });
-
-    // See do_start_web_server_with_state for rationale on the reset.
-    ws.shutdown_signal.reset();
-    let shutdown_signal = ws.shutdown_signal.clone();
-
-    // Sweep abandoned upload staging files. See the matching call in
-    // `do_start_web_server_with_state` for rationale. Quota log/validate
-    // already ran earlier in this function before the bind.
-    handlers::files::purge_upload_staging().await;
-
-    let router = router::build_router(
-        app_state,
-        token.clone(),
-        static_dir,
-        shutdown_signal.clone(),
-    );
-
-    let local_addr = listener.local_addr().ok();
-    let actual_port = local_addr.map(|a| a.port()).unwrap_or(port_val);
-    // Advertise the IP the socket is actually bound to, not the raw config.
-    let advertised_host = advertise_host(local_addr, &host_val);
-    tracing::info!("[WEB] Starting web server on {}", addr);
-
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
-    let handle = tokio::spawn(async move {
-        let serve = axum::serve(listener, router).with_graceful_shutdown(async move {
-            let _ = shutdown_rx.await;
-        });
-        if let Err(e) = serve.await {
-            tracing::error!("[WEB] Server error: {}", e);
-        }
-    });
-
-    *ws.handle.lock().unwrap() = Some(handle);
-    *ws.shutdown_tx.lock().unwrap() = Some(shutdown_tx);
-    ws.port.store(actual_port, Ordering::Relaxed);
-    *ws.token.lock().unwrap() = token.clone();
-    *ws.host.lock().unwrap() = advertised_host.clone();
-    // running already true from compare_exchange; disarm guard so it doesn't flip back.
-    guard.disarm();
-
-    let addresses = addresses_for_bind(&advertised_host, actual_port);
-    Ok(WebServerInfo {
-        port: actual_port,
-        token,
-        addresses,
     })
 }
 

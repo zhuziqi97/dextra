@@ -225,7 +225,6 @@ pub async fn work_task_create_core(
     db: &AppDatabase,
     draft: WorkTaskDraft,
 ) -> Result<WorkTaskInfo, crate::app_error::AppCommandError> {
-    let draft = crate::cerebro::session_binding::prepare_work_task_draft(&db.conn, draft).await?;
     let info = work_task_service::create(&db.conn, draft).await?;
     emit_event(
         emitter,
@@ -241,36 +240,12 @@ pub async fn work_task_update_core(
     db: &AppDatabase,
     chat_channel_manager: &crate::chat_channel::manager::ChatChannelManager,
     id: i32,
-    mut draft: WorkTaskDraft,
+    draft: WorkTaskDraft,
 ) -> Result<WorkTaskInfo, crate::app_error::AppCommandError> {
     // Read the pre-edit name first: a session this card already produced was
     // named after it (and locked), so a rename here should carry over — but only
     // while the two are still in sync, which only the OLD name can attest.
     let before = work_task_service::get_model(&db.conn, id).await?;
-    let stored: serde_json::Value = serde_json::from_str(&before.config)
-        .map_err(|error| crate::app_error::AppCommandError::invalid_input(error.to_string()))?;
-    let link = crate::cerebro::session_binding::platform_task_for_work_task(&db.conn, id).await?;
-    if link.is_some() {
-        if draft.folder_id != before.folder_id {
-            return Err(crate::app_error::AppCommandError::invalid_input("平台 WorkTask 的目录由平台 Task 固定，不能覆盖"));
-        }
-        if draft.config.get("cerebro_selection").is_some_and(|value| !value.is_null()) {
-            return Err(crate::app_error::AppCommandError::invalid_input("平台 WorkTask 的模块作用域不能覆盖"));
-        }
-    } else {
-        if draft.config.get("cerebro_selection").is_none_or(|value| value.is_null()) {
-            if let (Some(object), Some(saved)) = (draft.config.as_object_mut(), stored.get("cerebro_selection")) {
-                object.insert("cerebro_selection".into(), saved.clone());
-            }
-        }
-        if draft.folder_id != before.folder_id
-            || draft.config.get("cerebro_selection").is_none_or(|value| value.is_null())
-            || draft.config.get("cerebro_selection") != stored.get("cerebro_selection")
-        {
-            draft = crate::cerebro::session_binding::prepare_work_task_draft(&db.conn, draft).await?;
-        }
-    }
-
     let info = work_task_service::update(&db.conn, id, draft).await?;
     emit_event(
         emitter,

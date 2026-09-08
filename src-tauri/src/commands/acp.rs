@@ -9972,10 +9972,8 @@ pub async fn acp_connect_core(
     preferred_mode_id: Option<String>,
     preferred_config_values: BTreeMap<String, String>,
     conversation_id: Option<i32>,
-    cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
 ) -> Result<String, crate::app_error::AppCommandError> {
     use crate::app_error::AppCommandError;
-    use crate::cerebro::session_binding;
     let working_dir_path = working_dir.as_ref().map(PathBuf::from);
     if let Some(existing) = manager.find_connection_for_reuse(
         agent_type, working_dir_path.as_ref(), session_id.as_deref(),
@@ -9990,36 +9988,13 @@ pub async fn acp_connect_core(
     let runtime_env = build_session_runtime_env(db, agent_type, session_id.as_deref(), data_dir)
         .await.map_err(acp_error)?;
     verify_agent_installed(agent_type).await.map_err(acp_error)?;
-    let conversation_id = session_binding::resolve_conversation_id(
-        &db.conn, agent_type, session_id.as_deref(), conversation_id,
+    let additional = crate::cerebro::mcp::server_for_conversation(
+        &db.conn, manager, working_dir.as_deref(), conversation_id,
     ).await?;
-    let platform_task = match conversation_id {
-        Some(id) => session_binding::platform_task_for_conversation(&db.conn, id).await?,
-        None => None,
-    };
-    let (selection, additional) = if let Some(task_id) = platform_task {
-        if cerebro_selection.is_some() {
-            return Err(AppCommandError::new(crate::app_error::AppErrorCode::InvalidInput,
-                "平台 WorkTask 的模块作用域由平台 Task 固定，不能覆盖"));
-        }
-        (None, crate::cerebro::mcp::server_for_task(manager, &task_id).await?)
-    } else {
-        let selection = session_binding::selection_for_start(
-            &db.conn, working_dir.as_deref(), conversation_id, cerebro_selection.as_ref(),
-        ).await?;
-        let principal_session = session_id.clone().unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let additional = crate::cerebro::mcp::server_for_selection(manager, &selection, &principal_session).await?;
-        (Some(selection), additional)
-    };
     let connection_id = manager.spawn_agent_with_additional_mcp_servers(
         agent_type, working_dir, session_id, runtime_env, owner_window,
         emitter, preferred_mode_id, preferred_config_values, additional,
     ).await.map_err(acp_error)?;
-    if let Some(selection) = selection {
-        session_binding::persist_launch_selection(
-            &db.conn, manager, &connection_id, conversation_id, selection,
-        ).await?;
-    }
     Ok(connection_id)
 }
 
@@ -10033,7 +10008,6 @@ pub async fn acp_connect(
     preferred_mode_id: Option<String>,
     preferred_config_values: Option<BTreeMap<String, String>>,
     conversation_id: Option<i32>,
-    cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
     manager: State<'_, ConnectionManager>,
     db: State<'_, AppDatabase>,
     app_handle: tauri::AppHandle,
@@ -10052,7 +10026,7 @@ pub async fn acp_connect(
     let emitter = EventEmitter::Tauri(app_handle);
     acp_connect_core(&db, &manager, &app_data_dir, emitter, window.label().to_string(),
         agent_type, working_dir, session_id, preferred_mode_id,
-        preferred_config_values.unwrap_or_default(), conversation_id, cerebro_selection).await
+        preferred_config_values.unwrap_or_default(), conversation_id).await
 }
 
 #[cfg(feature = "tauri-runtime")]
@@ -10255,7 +10229,7 @@ pub(crate) async fn acp_get_session_snapshot_core(
     connection_id: &str,
 ) -> Result<Option<crate::acp::LiveSessionSnapshot>, AcpError> {
     let Some(state) = manager.get_state(connection_id).await else {
-        return Ok(None);
+        return Ok(manager.terminal_snapshot(Some(connection_id), None).await);
     };
     let snap = state.read().await.to_snapshot();
     Ok(Some(snap))
@@ -10278,7 +10252,7 @@ pub(crate) async fn acp_get_session_snapshot_by_conversation_core(
         .find_connection_by_conversation_id(conversation_id)
         .await
     else {
-        return Ok(None);
+        return Ok(manager.terminal_snapshot(None, Some(conversation_id)).await);
     };
     acp_get_session_snapshot_core(manager, &conn_id).await
 }

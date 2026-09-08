@@ -1606,6 +1606,7 @@ impl SessionState {
             status: self.status.clone(),
             external_id: self.external_id.clone(),
             live_message: self.live_message.clone(),
+            last_assistant_text: self.last_assistant_text.clone(),
             active_tool_calls: self.active_tool_calls.values().cloned().collect(),
             pending_permission: self.pending_permission.clone(),
             pending_question: self.pending_question.clone(),
@@ -1660,6 +1661,9 @@ pub struct LiveSessionSnapshot {
     pub status: ConnectionStatus,
     pub external_id: Option<String>,
     pub live_message: Option<LiveMessage>,
+    /// 最近一次实际助手回复，供普通会话读取入口复用。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_assistant_text: Option<String>,
     pub active_tool_calls: Vec<ToolCallState>,
     pub pending_permission: Option<PendingPermissionState>,
     /// The agent's in-flight `ask_user_question` (see

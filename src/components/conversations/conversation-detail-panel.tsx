@@ -1,6 +1,4 @@
 "use client"
-import { CerebroBindingSelect } from "@/components/shared/cerebro-binding-select"
-import type { CerebroSelection } from "@/lib/generated/cerebro/CerebroSelection"
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -116,7 +114,7 @@ import {
   type QuestionAnswer,
   type UserMessageBlock,
 } from "@/lib/types"
-import { useRouter } from "next/navigation"
+import { useRouter } from "@/lib/navigation"
 import {
   lastUserPromptText,
   type SessionFailureAction,
@@ -561,13 +559,6 @@ const ConversationTabView = memo(function ConversationTabView({
   // briefly exposes the previous folder's path to the ACP auto-connect
   // effect, and the connection sticks with the wrong cwd.
   const workingDirForConnection = workingDir ?? folder?.path
-  const [cerebroSelection, setCerebroSelection] = useState<CerebroSelection>()
-  const [cerebroReady, setCerebroReady] = useState(false)
-  const [cerebroEditing, setCerebroEditing] = useState(false)
-  const onCerebroChange = useCallback((selection: CerebroSelection | undefined, ready: boolean) => {
-    setCerebroSelection(selection)
-    setCerebroReady(ready)
-  }, [])
 
   const {
     conn,
@@ -583,8 +574,7 @@ const ConversationTabView = memo(function ConversationTabView({
   } = useConnectionLifecycle({
     contextKey: tabId,
     agentType: selectedAgent,
-    isActive: isActive && canAutoConnect && !cerebroEditing && (isChatDraft || cerebroReady),
-    cerebroSelection,
+    isActive: isActive && canAutoConnect,
     workingDir: workingDirForConnection,
     sessionId:
       dbConversationId != null && selectedAgent !== "cline"
@@ -1971,20 +1961,6 @@ const ConversationTabView = memo(function ConversationTabView({
     <ConversationShell
       topBanner={
         <>
-          {!isChatDraft && <div className="border-b px-4 py-2">
-            <CerebroBindingSelect folderId={ownFolderId} conversationId={dbConversationId ?? undefined}
-              disabled={conn.connectionId != null} onChange={onCerebroChange} />
-            {connStatus === "connected" && !conn.isViewer && <button type="button" className="mt-1 text-sm underline"
-              onClick={async () => {
-                setCerebroEditing(true)
-                try { await acpActions.disconnect(tabId) } catch (error) {
-                  setCerebroEditing(false)
-                  toast.error(error instanceof Error ? error.message : String(error))
-                }
-              }}>断开后更改模块选择</button>}
-            {cerebroEditing && <button type="button" className="mt-1 text-sm underline" disabled={!cerebroReady || conn.connectionId != null}
-              onClick={() => setCerebroEditing(false)}>使用当前选择重新连接</button>}
-          </div>}
           <SessionConfigStaleBanner contextKey={tabId} />
           <PiProjectTrustBanner
             contextKey={tabId}

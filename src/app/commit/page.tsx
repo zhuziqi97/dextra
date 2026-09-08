@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense, useCallback, useEffect, useState } from "react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams } from "@/lib/navigation"
 import { useTranslations } from "next-intl"
 const getCurrentWindow = async () => {
   const m = await import("@tauri-apps/api/window")

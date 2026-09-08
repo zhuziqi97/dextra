@@ -2392,7 +2392,7 @@ pub(crate) struct CanceledExecutionContext {
     pub connection_id: Option<String>,
 }
 
-/// 普通本地取消和 Cerebro adapter 共享的事务边界。
+/// 普通任务取消的事务边界。
 pub(crate) async fn cancel_with_context(
     conn: &DatabaseConnection,
     id: i32,

@@ -981,14 +981,7 @@ fn tag_mcp_suspect(
     if mcp_servers.is_empty() || !matches!(agent_type, AgentType::Custom(_)) {
         return err;
     }
-    // Also log it. The coded error reaches the desktop webview through the
-    // global `acp://event` emit, but a web/remote client that has not attached
-    // yet never sees it — the connection is removed from the manager map as
-    // soon as this task unwinds, so there is no state left to snapshot. That
-    // loss is not specific to this hint (it costs `initialize_timeout`,
-    // `spawn_failed` and every protocol error just the same), and repairing it
-    // means changing how long terminal connections are retained. Until then the
-    // log is the one channel that survives on every transport.
+    // 同时记录到本地日志；终态快照由连接退出路径保留，尚未 attach 的调用方也能读取原错误。
     tracing::warn!(
         "[ACP][{}] session/new failed with {} MCP server(s) attached; if this agent \
          does not accept MCP, turn off \"MCP support\" for it in settings: {}",
@@ -1884,6 +1877,7 @@ pub async fn spawn_agent_connection(
     owner_window_label: String,
     emitter: EventEmitter,
     connections: Arc<tokio::sync::Mutex<HashMap<String, AgentConnection>>>,
+    terminal_snapshots: Arc<tokio::sync::Mutex<std::collections::VecDeque<crate::acp::LiveSessionSnapshot>>>,
     preferred_mode_id: Option<String>,
     preferred_config_values: BTreeMap<String, String>,
     delegation_injection: Option<DelegationInjection>,
@@ -2130,6 +2124,15 @@ pub async fn spawn_agent_connection(
             },
         )
         .await;
+        let snapshot = state_clone.read().await.to_snapshot();
+        if snapshot.last_error.is_some() {
+            // 每个会话保留最后一条原生错误；有界保留最近 128 条，避免终态诊断占用无界内存。
+            let mut snapshots = terminal_snapshots.lock().await;
+            snapshots.retain(|previous| previous.conversation_id != snapshot.conversation_id || snapshot.conversation_id.is_none());
+            snapshots.push_back(snapshot);
+            while snapshots.len() > 128 { snapshots.pop_front(); }
+        }
+
                 // Connection loop ended; `block_on` returns and `_cleanup`
                 // (bound at the top of the thread body) drops next, removing
                 // the manager map entry — same as on a panic unwind.
@@ -8173,6 +8176,281 @@ async fn run_conversation_loop<'a>(
                 // to avoid deadlocking when the agent awaits a permission response.
                 loop {
                     tokio::select! {
+                        // ACP 按顺序发出的输出通知必须先于 prompt 终态处理；
+                        // 两个队列同时就绪时不能把快速回复误判为空，再将正文落到轮次之外。
+                        biased;
+                        cmd = cmd_rx.recv() => {
+                            match cmd {
+                                Some(ConnectionCommand::RespondPermission {
+                                    request_id,
+                                    option_id,
+                                }) => {
+                                    resolve_permission(
+                                        perms, state, emitter, request_id, option_id,
+                                    )
+                                    .await;
+                                }
+                                Some(ConnectionCommand::SetMode { mode_id }) => {
+                                    let req = SetSessionModeRequest::new(sid.clone(), mode_id.clone());
+                                    match cx.send_request_to(Agent, req).block_task().await {
+                                        Ok(_) => {
+                                            emit_with_state(
+                                                state,
+                                                emitter,
+                                                AcpEvent::ModeChanged { mode_id },
+                                            )
+                                            .await;
+                                        }
+                                        Err(e) => {
+                                            emit_with_state(
+                                                state,
+                                                emitter,
+                                                AcpEvent::Error {
+                                                    message: format!("Failed to set mode: {e}"),
+                                                    agent_type: agent_type.to_string(),
+                                                    code: None,
+                                                    details: None,
+                                                    // Recoverable: just a failed mode toggle.
+                                                    terminal: false,
+                                                },
+                                            )
+                                            .await;
+                                        }
+                                    }
+                                }
+                                Some(ConnectionCommand::SetConfigOption {
+                                    config_id,
+                                    value_id,
+                                }) => {
+                                    let set_result = if agent_type == AgentType::Grok {
+                                        set_grok_config_option(
+                                            &cx, &sid, state, emitter, config_id, value_id,
+                                        )
+                                        .await
+                                    } else {
+                                        set_session_config_option(
+                                            &cx, &sid, state, emitter, config_id, value_id,
+                                        )
+                                        .await
+                                    };
+                                    if let Err(e) = set_result {
+                                        emit_with_state(
+                                            state,
+                                            emitter,
+                                            AcpEvent::Error {
+                                                message: format!("Failed to set config option: {e}"),
+                                                agent_type: agent_type.to_string(),
+                                                code: None,
+                                                details: None,
+                                                // Recoverable: just a failed config-option toggle.
+                                                terminal: false,
+                                            },
+                                        )
+                                        .await;
+                                    }
+                                }
+                                Some(ConnectionCommand::GoalControl { action, reply }) => {
+                                    let method = state.read().await.goal_control_method.clone();
+                                    let landed =
+                                        match send_goal_control(&cx, &sid, action, &method).await {
+                                            Ok(()) => true,
+                                            Err(e) => {
+                                                emit_with_state(
+                                                    state,
+                                                    emitter,
+                                                    AcpEvent::Error {
+                                                        message: format!(
+                                                            "Failed to control goal: {e}"
+                                                        ),
+                                                        agent_type: agent_type.to_string(),
+                                                        code: None,
+                                                        details: None,
+                                                        // Recoverable: the goal
+                                                        // is unchanged and the
+                                                        // session is untouched.
+                                                        terminal: false,
+                                                    },
+                                                )
+                                                .await;
+                                                false
+                                            }
+                                        };
+                                    if let Some(reply) = reply {
+                                        // A dead receiver is fine — the caller
+                                        // that wanted to follow up with an
+                                        // interrupt went away, and the control
+                                        // itself already happened.
+                                        let _ = reply.send(landed);
+                                    }
+                                }
+                                Some(ConnectionCommand::Steer { text, reply }) => {
+                                    // Protocol round-trip only — the manager's
+                                    // cancellation-shielded task records the
+                                    // note + broadcasts `FeedbackSubmitted`
+                                    // once this outcome arrives (Fork's
+                                    // protocol/persistence split). Awaiting
+                                    // inline matches SetMode/SetConfigOption:
+                                    // sacp pumps I/O on its own task, so the
+                                    // round-trip only defers other queued
+                                    // commands, not session updates. A dead
+                                    // receiver is fine — the reply is then
+                                    // moot (teardown), nothing to unwind.
+                                    let outcome = send_steer_request(&cx, &sid, &text).await;
+                                    // A steered message still lands in the
+                                    // agent's OWN transcript as a user record,
+                                    // which `group_into_turns` reads as the
+                                    // start of a turn. Fingerprint it so the
+                                    // background watcher classifies that turn
+                                    // as wire-rendered foreground: the owning
+                                    // prompt stays in flight across the steered
+                                    // work (claude-agent-acp #958), so all of
+                                    // it already streams into the live turn —
+                                    // surfacing it as overlay activity too
+                                    // renders it twice and reorders the
+                                    // transcript as the upserts land.
+                                    //
+                                    // `Injected` ONLY: `PromptRequired` leaves
+                                    // the content unconsumed (the caller
+                                    // resends it as a real prompt, which
+                                    // fingerprints itself, and a stale entry
+                                    // would swallow a same-text out-of-turn
+                                    // refire for the whole ledger TTL), and a
+                                    // `StartedNewTurn` genuinely runs detached
+                                    // — the overlay is the only place its work
+                                    // can surface at all.
+                                    if matches!(outcome, Ok(SteerOutcome::Injected)) {
+                                        prompt_ledger.record_text(&text);
+                                    }
+                                    let _ = reply.send(outcome);
+                                }
+                                Some(ConnectionCommand::Cancel) => {
+                                    // Send CancelNotification to agent to stop the current turn
+                                    let _ = cx.send_notification_to(
+                                        Agent,
+                                        CancelNotification::new(sid.clone()),
+                                    );
+                                    // Also terminate any command runtimes created for this
+                                    // session so cancellation does not hang on long-running
+                                    // terminal tools.
+                                    terminal_runtime
+                                        .release_all_for_session(sid.0.as_ref())
+                                        .await;
+                                    tracked_terminal_tool_calls.clear();
+                                    // Also cancel any pending permission requests
+                                    // (queued ones included), clearing the card
+                                    // that was on screen, and immediately emit
+                                    // TurnComplete so the frontend transitions out
+                                    // of "prompting" and the user can send new
+                                    // messages. Don't wait for the agent -- it may
+                                    // be slow to respond or not respond at all.
+                                    // One critical section for the same reason as
+                                    // the turn-end exits: a request admitted
+                                    // between the two would be published and then
+                                    // silently un-displayed by TurnComplete,
+                                    // wedging the queue.
+                                    drain_permissions_then_emit(
+                                        perms,
+                                        state,
+                                        emitter,
+                                        AcpEvent::TurnComplete {
+                                            session_id: sid.0.to_string(),
+                                            stop_reason: "cancelled".into(),
+                                            agent_type: agent_type.to_string(),
+                                        },
+                                    )
+                                    .await;
+                                    // Cascade-cancel any in-flight delegations owned by
+                                    // this parent connection. Idempotent with the
+                                    // cleanup-guard cancel_by_parent at the end of
+                                    // run_connection (#1: empty pending → no-op).
+                                    // Without this, a user-initiated cancel of a parent
+                                    // prompt mid-delegation would leave the child agent
+                                    // running indefinitely (broker no longer applies a
+                                    // timeout; only an MCP `notifications/cancelled` or
+                                    // a parent/child disconnect would otherwise tear
+                                    // the delegation down). Turn-scoped: the
+                                    // connection stays alive after a prompt cancel,
+                                    // so keep the parent's `consumed` tool_call
+                                    // memory (a re-emit must not mis-bind the next
+                                    // same-key delegation); the cleanup-guard
+                                    // teardown still clears everything when the
+                                    // connection finally goes away.
+                                    //
+                                    // Await inline so the fast tracker +
+                                    // parked-call drain is ordered before the
+                                    // next prompt (keeping it scoped to the
+                                    // just-ended turn); the broker backgrounds
+                                    // the slow child teardown internally, so the
+                                    // user-visible Cancel path doesn't wait on
+                                    // (potentially slow) child agent teardown.
+                                    // The user already saw the parent's
+                                    // TurnComplete above, and the broker's
+                                    // drain-first lock guarantees no double
+                                    // DelegationCompleted emit.
+                                    if let Some(inj) = delegation_injection {
+                                        inj.broker.cancel_by_parent_turn(conn_id).await;
+                                        // Reclaim any parked `ask_user_question` /
+                                        // Grok `exit_plan_mode` approval owned by this
+                                        // connection. Unlike `perms` (drained inline
+                                        // above), these registries live on the manager
+                                        // and are otherwise only drained on full
+                                        // connection teardown -- but a turn-scoped
+                                        // Cancel keeps the connection alive. Without
+                                        // this the entry lingers, and the
+                                        // one-pending-per-connection guard in
+                                        // `register_{question,plan_approval}` then
+                                        // silently rejects the NEXT one on this
+                                        // connection (its card never shows). Idempotent
+                                        // with the cleanup-guard drain (empty map ->
+                                        // no-op); the dropped sender declines the tool /
+                                        // replies disconnect, exactly like the
+                                        // permission drain above.
+                                        inj.questions.cancel_questions_by_parent(conn_id).await;
+                                        inj.plan_approvals
+                                            .cancel_plan_approvals_by_parent(conn_id)
+                                            .await;
+                                    }
+                                    // Drain the prompt response in the background so
+                                    // the SACP library doesn't log "receiver dropped"
+                                    // errors when the agent eventually responds.
+                                    tokio::spawn(async move {
+                                        let _ = prompt_response.await;
+                                    });
+                                    break;
+                                }
+                                Some(ConnectionCommand::Disconnect) | None => {
+                                    tracing::info!(
+                                        "[ACP] disconnect requested during prompting; connection_id={conn_id}"
+                                    );
+                                    let _ = cx.send_notification_to(
+                                        Agent,
+                                        CancelNotification::new(sid.clone()),
+                                    );
+                                    terminal_runtime
+                                        .release_all_for_session(sid.0.as_ref())
+                                        .await;
+                                    tracked_terminal_tool_calls.clear();
+                                    drain_permissions(perms, state, emitter).await;
+                                    disconnect_requested = true;
+                                    break;
+                                }
+                                Some(ConnectionCommand::Prompt { .. }) => {
+                                    // Tripwire, not a user-facing case. The
+                                    // `turn_in_flight` gate in `send_prompt_inner`
+                                    // rejects a second prompt BEFORE it is ever
+                                    // enqueued, so a `Prompt` reaching this mid-turn
+                                    // command handler means an ungated sender slipped
+                                    // past the gate (a broken invariant) — surface it
+                                    // at `warn` instead of letting the `_ => {}` below
+                                    // swallow it silently.
+                                    tracing::warn!(
+                                        connection_id = %conn_id,
+                                        "[ACP] in-turn Prompt DROPPED — the turn_in_flight gate should have rejected this"
+                                    );
+                                }
+                                _ => {}
+                            }
+                        }
                         update = session.read_update() => {
                             let update = match update {
                                 Ok(u) => u,
@@ -8475,278 +8753,6 @@ async fn run_conversation_loop<'a>(
                                 &mut tracked_terminal_tool_calls,
                             )
                             .await;
-                        }
-                        cmd = cmd_rx.recv() => {
-                            match cmd {
-                                Some(ConnectionCommand::RespondPermission {
-                                    request_id,
-                                    option_id,
-                                }) => {
-                                    resolve_permission(
-                                        perms, state, emitter, request_id, option_id,
-                                    )
-                                    .await;
-                                }
-                                Some(ConnectionCommand::SetMode { mode_id }) => {
-                                    let req = SetSessionModeRequest::new(sid.clone(), mode_id.clone());
-                                    match cx.send_request_to(Agent, req).block_task().await {
-                                        Ok(_) => {
-                                            emit_with_state(
-                                                state,
-                                                emitter,
-                                                AcpEvent::ModeChanged { mode_id },
-                                            )
-                                            .await;
-                                        }
-                                        Err(e) => {
-                                            emit_with_state(
-                                                state,
-                                                emitter,
-                                                AcpEvent::Error {
-                                                    message: format!("Failed to set mode: {e}"),
-                                                    agent_type: agent_type.to_string(),
-                                                    code: None,
-                                                    details: None,
-                                                    // Recoverable: just a failed mode toggle.
-                                                    terminal: false,
-                                                },
-                                            )
-                                            .await;
-                                        }
-                                    }
-                                }
-                                Some(ConnectionCommand::SetConfigOption {
-                                    config_id,
-                                    value_id,
-                                }) => {
-                                    let set_result = if agent_type == AgentType::Grok {
-                                        set_grok_config_option(
-                                            &cx, &sid, state, emitter, config_id, value_id,
-                                        )
-                                        .await
-                                    } else {
-                                        set_session_config_option(
-                                            &cx, &sid, state, emitter, config_id, value_id,
-                                        )
-                                        .await
-                                    };
-                                    if let Err(e) = set_result {
-                                        emit_with_state(
-                                            state,
-                                            emitter,
-                                            AcpEvent::Error {
-                                                message: format!("Failed to set config option: {e}"),
-                                                agent_type: agent_type.to_string(),
-                                                code: None,
-                                                details: None,
-                                                // Recoverable: just a failed config-option toggle.
-                                                terminal: false,
-                                            },
-                                        )
-                                        .await;
-                                    }
-                                }
-                                Some(ConnectionCommand::GoalControl { action, reply }) => {
-                                    let method = state.read().await.goal_control_method.clone();
-                                    let landed =
-                                        match send_goal_control(&cx, &sid, action, &method).await {
-                                            Ok(()) => true,
-                                            Err(e) => {
-                                                emit_with_state(
-                                                    state,
-                                                    emitter,
-                                                    AcpEvent::Error {
-                                                        message: format!(
-                                                            "Failed to control goal: {e}"
-                                                        ),
-                                                        agent_type: agent_type.to_string(),
-                                                        code: None,
-                                                        details: None,
-                                                        // Recoverable: the goal
-                                                        // is unchanged and the
-                                                        // session is untouched.
-                                                        terminal: false,
-                                                    },
-                                                )
-                                                .await;
-                                                false
-                                            }
-                                        };
-                                    if let Some(reply) = reply {
-                                        // A dead receiver is fine — the caller
-                                        // that wanted to follow up with an
-                                        // interrupt went away, and the control
-                                        // itself already happened.
-                                        let _ = reply.send(landed);
-                                    }
-                                }
-                                Some(ConnectionCommand::Steer { text, reply }) => {
-                                    // Protocol round-trip only — the manager's
-                                    // cancellation-shielded task records the
-                                    // note + broadcasts `FeedbackSubmitted`
-                                    // once this outcome arrives (Fork's
-                                    // protocol/persistence split). Awaiting
-                                    // inline matches SetMode/SetConfigOption:
-                                    // sacp pumps I/O on its own task, so the
-                                    // round-trip only defers other queued
-                                    // commands, not session updates. A dead
-                                    // receiver is fine — the reply is then
-                                    // moot (teardown), nothing to unwind.
-                                    let outcome = send_steer_request(&cx, &sid, &text).await;
-                                    // A steered message still lands in the
-                                    // agent's OWN transcript as a user record,
-                                    // which `group_into_turns` reads as the
-                                    // start of a turn. Fingerprint it so the
-                                    // background watcher classifies that turn
-                                    // as wire-rendered foreground: the owning
-                                    // prompt stays in flight across the steered
-                                    // work (claude-agent-acp #958), so all of
-                                    // it already streams into the live turn —
-                                    // surfacing it as overlay activity too
-                                    // renders it twice and reorders the
-                                    // transcript as the upserts land.
-                                    //
-                                    // `Injected` ONLY: `PromptRequired` leaves
-                                    // the content unconsumed (the caller
-                                    // resends it as a real prompt, which
-                                    // fingerprints itself, and a stale entry
-                                    // would swallow a same-text out-of-turn
-                                    // refire for the whole ledger TTL), and a
-                                    // `StartedNewTurn` genuinely runs detached
-                                    // — the overlay is the only place its work
-                                    // can surface at all.
-                                    if matches!(outcome, Ok(SteerOutcome::Injected)) {
-                                        prompt_ledger.record_text(&text);
-                                    }
-                                    let _ = reply.send(outcome);
-                                }
-                                Some(ConnectionCommand::Cancel) => {
-                                    // Send CancelNotification to agent to stop the current turn
-                                    let _ = cx.send_notification_to(
-                                        Agent,
-                                        CancelNotification::new(sid.clone()),
-                                    );
-                                    // Also terminate any command runtimes created for this
-                                    // session so cancellation does not hang on long-running
-                                    // terminal tools.
-                                    terminal_runtime
-                                        .release_all_for_session(sid.0.as_ref())
-                                        .await;
-                                    tracked_terminal_tool_calls.clear();
-                                    // Also cancel any pending permission requests
-                                    // (queued ones included), clearing the card
-                                    // that was on screen, and immediately emit
-                                    // TurnComplete so the frontend transitions out
-                                    // of "prompting" and the user can send new
-                                    // messages. Don't wait for the agent -- it may
-                                    // be slow to respond or not respond at all.
-                                    // One critical section for the same reason as
-                                    // the turn-end exits: a request admitted
-                                    // between the two would be published and then
-                                    // silently un-displayed by TurnComplete,
-                                    // wedging the queue.
-                                    drain_permissions_then_emit(
-                                        perms,
-                                        state,
-                                        emitter,
-                                        AcpEvent::TurnComplete {
-                                            session_id: sid.0.to_string(),
-                                            stop_reason: "cancelled".into(),
-                                            agent_type: agent_type.to_string(),
-                                        },
-                                    )
-                                    .await;
-                                    // Cascade-cancel any in-flight delegations owned by
-                                    // this parent connection. Idempotent with the
-                                    // cleanup-guard cancel_by_parent at the end of
-                                    // run_connection (#1: empty pending → no-op).
-                                    // Without this, a user-initiated cancel of a parent
-                                    // prompt mid-delegation would leave the child agent
-                                    // running indefinitely (broker no longer applies a
-                                    // timeout; only an MCP `notifications/cancelled` or
-                                    // a parent/child disconnect would otherwise tear
-                                    // the delegation down). Turn-scoped: the
-                                    // connection stays alive after a prompt cancel,
-                                    // so keep the parent's `consumed` tool_call
-                                    // memory (a re-emit must not mis-bind the next
-                                    // same-key delegation); the cleanup-guard
-                                    // teardown still clears everything when the
-                                    // connection finally goes away.
-                                    //
-                                    // Await inline so the fast tracker +
-                                    // parked-call drain is ordered before the
-                                    // next prompt (keeping it scoped to the
-                                    // just-ended turn); the broker backgrounds
-                                    // the slow child teardown internally, so the
-                                    // user-visible Cancel path doesn't wait on
-                                    // (potentially slow) child agent teardown.
-                                    // The user already saw the parent's
-                                    // TurnComplete above, and the broker's
-                                    // drain-first lock guarantees no double
-                                    // DelegationCompleted emit.
-                                    if let Some(inj) = delegation_injection {
-                                        inj.broker.cancel_by_parent_turn(conn_id).await;
-                                        // Reclaim any parked `ask_user_question` /
-                                        // Grok `exit_plan_mode` approval owned by this
-                                        // connection. Unlike `perms` (drained inline
-                                        // above), these registries live on the manager
-                                        // and are otherwise only drained on full
-                                        // connection teardown -- but a turn-scoped
-                                        // Cancel keeps the connection alive. Without
-                                        // this the entry lingers, and the
-                                        // one-pending-per-connection guard in
-                                        // `register_{question,plan_approval}` then
-                                        // silently rejects the NEXT one on this
-                                        // connection (its card never shows). Idempotent
-                                        // with the cleanup-guard drain (empty map ->
-                                        // no-op); the dropped sender declines the tool /
-                                        // replies disconnect, exactly like the
-                                        // permission drain above.
-                                        inj.questions.cancel_questions_by_parent(conn_id).await;
-                                        inj.plan_approvals
-                                            .cancel_plan_approvals_by_parent(conn_id)
-                                            .await;
-                                    }
-                                    // Drain the prompt response in the background so
-                                    // the SACP library doesn't log "receiver dropped"
-                                    // errors when the agent eventually responds.
-                                    tokio::spawn(async move {
-                                        let _ = prompt_response.await;
-                                    });
-                                    break;
-                                }
-                                Some(ConnectionCommand::Disconnect) | None => {
-                                    tracing::info!(
-                                        "[ACP] disconnect requested during prompting; connection_id={conn_id}"
-                                    );
-                                    let _ = cx.send_notification_to(
-                                        Agent,
-                                        CancelNotification::new(sid.clone()),
-                                    );
-                                    terminal_runtime
-                                        .release_all_for_session(sid.0.as_ref())
-                                        .await;
-                                    tracked_terminal_tool_calls.clear();
-                                    drain_permissions(perms, state, emitter).await;
-                                    disconnect_requested = true;
-                                    break;
-                                }
-                                Some(ConnectionCommand::Prompt { .. }) => {
-                                    // Tripwire, not a user-facing case. The
-                                    // `turn_in_flight` gate in `send_prompt_inner`
-                                    // rejects a second prompt BEFORE it is ever
-                                    // enqueued, so a `Prompt` reaching this mid-turn
-                                    // command handler means an ungated sender slipped
-                                    // past the gate (a broken invariant) — surface it
-                                    // at `warn` instead of letting the `_ => {}` below
-                                    // swallow it silently.
-                                    tracing::warn!(
-                                        connection_id = %conn_id,
-                                        "[ACP] in-turn Prompt DROPPED — the turn_in_flight gate should have rejected this"
-                                    );
-                                }
-                                _ => {}
-                            }
                         }
                     }
                 }

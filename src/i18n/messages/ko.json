@@ -1778,7 +1778,7 @@
       "removeFolderConfirmDescription": "워크스페이스에서 \"{name}\"을(를) 제거하시겠습니까? 관련 탭과 터미널이 닫힙니다.",
       "folderHeaderMenu": {
         "manageConversations": "대화 관리…",
-        "manageLinks": "연결된 폴더",
+        "manageLinks": "폴더 설정",
         "changeColor": "색상 변경",
         "useThemeColor": "앱 테마 사용",
         "setDefaultAgent": "기본 에이전트 설정",
@@ -5452,5 +5452,28 @@
     "settingsPromptScenarioHint": "이 시나리오로 만든 작업에만 붙습니다.",
     "settingsPromptPlaceholder": "예: 한국어로 답하세요. 끝내기 전에 프로젝트 테스트를 실행하세요.",
     "save": "저장"
+  },
+  "CerebroFolder": {
+    "title": "Client configuration",
+    "folderLinks": "Folder links",
+    "project": "Project",
+    "selectProject": "Select a project",
+    "executionModule": "Execution module",
+    "mcpModules": "MCP accessible modules",
+    "enabled": "Enabled",
+    "credential": "MCP credential",
+    "view": "View credential",
+    "copy": "Copy credential",
+    "rotate": "Regenerate credential",
+    "save": "Save",
+    "saved": "Saved",
+    "copied": "Copied",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "connect": "Connect to server",
+    "unbound": "Not bound",
+    "removeModule": "Remove module",
+    "expiresAt": "Expires: {time}",
+    "tooManyModules": "This project has more modules than the selector can display."
   }
 }

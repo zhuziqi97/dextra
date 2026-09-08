@@ -1376,7 +1376,6 @@ export type WorkTaskStatus =
  *  agent/mode/config fields are per-task overrides; empty = inherit the
  *  folder's task settings at launch. */
 export interface WorkTaskConfig {
-  cerebro_selection?: import("./generated/cerebro/CerebroSelection").CerebroSelection | null
   prompt_blocks: PromptInputBlock[]
   display_text: string
   agent_type?: AgentType | null
@@ -2789,6 +2788,7 @@ export interface LiveSessionSnapshot {
   /** Which settings surface drifted; present only while `config_stale`. */
   config_stale_kind?: ConfigStaleKind | null
   /** Latest agent/runtime error recoverable after reconnect. */
+  last_assistant_text?: string | null
   last_error?: SessionLastError | null
   /** AIR typed session failure table — resolved entries and their revision
    *  watermarks included, so an attaching client seeds the same monotonic

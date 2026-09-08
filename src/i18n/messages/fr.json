@@ -1778,7 +1778,7 @@
       "removeFolderConfirmDescription": "Retirer \"{name}\" de l'espace de travail ? Les onglets et terminaux associés seront fermés.",
       "folderHeaderMenu": {
         "manageConversations": "Gérer les conversations…",
-        "manageLinks": "Dossiers liés",
+        "manageLinks": "Configuration du dossier",
         "changeColor": "Changer la couleur",
         "useThemeColor": "Utiliser le thème de l'app",
         "setDefaultAgent": "Définir l'agent par défaut",
@@ -5452,5 +5452,28 @@
     "settingsPromptScenarioHint": "Envoyé uniquement avec les tâches créées dans ce scénario.",
     "settingsPromptPlaceholder": "ex. : Réponds en français. Lance les tests du projet avant de terminer.",
     "save": "Enregistrer"
+  },
+  "CerebroFolder": {
+    "title": "Client configuration",
+    "folderLinks": "Folder links",
+    "project": "Project",
+    "selectProject": "Select a project",
+    "executionModule": "Execution module",
+    "mcpModules": "MCP accessible modules",
+    "enabled": "Enabled",
+    "credential": "MCP credential",
+    "view": "View credential",
+    "copy": "Copy credential",
+    "rotate": "Regenerate credential",
+    "save": "Save",
+    "saved": "Saved",
+    "copied": "Copied",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "connect": "Connect to server",
+    "unbound": "Not bound",
+    "removeModule": "Remove module",
+    "expiresAt": "Expires: {time}",
+    "tooManyModules": "This project has more modules than the selector can display."
   }
 }

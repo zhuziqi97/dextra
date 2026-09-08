@@ -1778,7 +1778,7 @@
       "removeFolderConfirmDescription": "从工作区移除 \"{name}\"？其相关 Tab 与终端将会关闭。",
       "folderHeaderMenu": {
         "manageConversations": "会话管理…",
-        "manageLinks": "关联的文件夹",
+        "manageLinks": "文件夹配置",
         "changeColor": "修改颜色",
         "useThemeColor": "使用设置主题",
         "setDefaultAgent": "设置默认智能体",
@@ -5452,5 +5452,28 @@
     "settingsPromptScenarioHint": "只有这个场景创建的任务才会带上。",
     "settingsPromptPlaceholder": "例如：用中文回复；完成前先跑一遍项目的测试。",
     "save": "保存"
+  },
+  "CerebroFolder": {
+    "title": "客户端配置",
+    "folderLinks": "文件夹链接",
+    "project": "项目",
+    "selectProject": "选择项目",
+    "executionModule": "执行模块",
+    "mcpModules": "MCP 可访问模块",
+    "enabled": "启用",
+    "credential": "MCP 凭证",
+    "view": "查看凭证",
+    "copy": "复制凭证",
+    "rotate": "重新生成凭证",
+    "save": "保存",
+    "saved": "已保存",
+    "copied": "已复制",
+    "loading": "正在加载…",
+    "retry": "重试",
+    "connect": "连接服务端",
+    "unbound": "未绑定",
+    "removeModule": "移除模块",
+    "expiresAt": "有效期至：{time}",
+    "tooManyModules": "该项目模块数量超过选择器显示上限。"
   }
 }

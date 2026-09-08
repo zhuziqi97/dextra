@@ -73,7 +73,6 @@ pub struct AcpConnectParams {
     #[serde(default)]
     pub preferred_config_values: Option<BTreeMap<String, String>>,
     pub conversation_id: Option<i32>,
-    pub cerebro_selection: Option<crate::cerebro::session_binding::CerebroSelection>,
 }
 
 pub async fn acp_connect(
@@ -85,7 +84,7 @@ pub async fn acp_connect(
         state.emitter.clone(), "web".to_string(), params.agent_type,
         params.working_dir, params.session_id, params.preferred_mode_id,
         params.preferred_config_values.unwrap_or_default(),
-        params.conversation_id, params.cerebro_selection,
+        params.conversation_id,
     ).await.map(Json)
 }
 

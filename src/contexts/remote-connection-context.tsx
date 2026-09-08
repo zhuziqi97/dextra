@@ -10,7 +10,7 @@ import {
   type ReactNode,
 } from "react"
 import { Loader2 } from "lucide-react"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams } from "@/lib/navigation"
 import { useTranslations } from "next-intl"
 import {
   clearRemoteDesktopTransport,

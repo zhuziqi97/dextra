@@ -25,6 +25,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { ClientFolderConfiguration } from "@/components/shared/client-folder-configuration"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { InputGroupButton } from "@/components/ui/input-group"
@@ -71,7 +73,7 @@ import type {
 } from "@/lib/types"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
 
-type View = "pick-root" | "links" | "add-targets"
+type View = "pick-root" | "links" | "add-targets" | "client-config"
 
 interface WorkspaceFolderDialogProps {
   open: boolean
@@ -102,6 +104,7 @@ export function WorkspaceFolderDialog({
   onFolderOpened,
 }: WorkspaceFolderDialogProps) {
   const t = useTranslations("Folder.workspaceDialog")
+  const tConfiguration = useTranslations("CerebroFolder")
   const tBrowser = useTranslations("DirectoryBrowser")
   const openFolder = useAppWorkspaceStore((s) => s.openFolder)
 
@@ -378,25 +381,55 @@ export function WorkspaceFolderDialog({
   // ── Render ────────────────────────────────────────────────────────────────
 
   const title =
-    view === "add-targets"
-      ? t("addTargetsTitle")
-      : manageMode
-        ? t("manageTitle")
-        : t("title")
+    view === "client-config"
+      ? tConfiguration("title")
+      : view === "add-targets"
+        ? t("addTargetsTitle")
+        : manageMode
+          ? t("manageTitle")
+          : t("title")
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>
-            {view === "pick-root"
-              ? t("pickRootDescription")
-              : view === "add-targets"
-                ? t("addTargetsDescription")
-                : t("linksDescription")}
-          </DialogDescription>
+          {view !== "client-config" && (
+            <DialogDescription>
+              {view === "pick-root"
+                ? t("pickRootDescription")
+                : view === "add-targets"
+                  ? t("addTargetsDescription")
+                  : t("linksDescription")}
+            </DialogDescription>
+          )}
         </DialogHeader>
+
+        {rootFolder && (view === "links" || view === "client-config") && (
+          <Tabs
+            value={view}
+            onValueChange={(value) =>
+              setView(value as "links" | "client-config")
+            }
+          >
+            <TabsList className="w-full">
+              <TabsTrigger value="links" className="flex-1">
+                {tConfiguration("folderLinks")}
+              </TabsTrigger>
+              <TabsTrigger value="client-config" className="flex-1">
+                {tConfiguration("title")}
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        )}
+        {view === "client-config" && rootFolder && (
+          <div className="min-h-0 overflow-y-auto">
+            <ClientFolderConfiguration
+              key={rootFolder.id}
+              folderId={rootFolder.id}
+            />
+          </div>
+        )}
 
         {view === "pick-root" ? (
           <>

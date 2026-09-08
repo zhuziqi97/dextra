@@ -1,6 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useRef } from "react"
+import { getFolderConversation, resolveCerebroTarget } from "@/lib/api"
+import { toErrorMessage } from "@/lib/app-error"
 import { toast } from "sonner"
 import { useAppWorkspaceStore } from "@/stores/app-workspace-store"
 import { useTabStore, useTabActions } from "@/contexts/tab-context"
@@ -13,7 +15,7 @@ import type { AgentType } from "@/lib/types"
 export function DeepLinkBootstrap() {
   const foldersHydrated = useAppWorkspaceStore((s) => s.foldersHydrated)
   const tabsHydrated = useTabStore((s) => s.tabsHydrated)
-  const { openTab } = useTabActions()
+  const { openTab, openNewConversationTab } = useTabActions()
   const ranRef = useRef(false)
 
   useEffect(() => {
@@ -24,15 +26,19 @@ export function DeepLinkBootstrap() {
     if (typeof window === "undefined") return
 
     const params = new URLSearchParams(window.location.search)
+    const targetId = params.get("target")
     const rawFolderId = params.get("folderId")
     const rawConversationId = params.get("conversationId")
     const rawAgent = params.get("agent") as AgentType | null
 
-    if (!rawFolderId && !rawConversationId) return
+    if (!rawFolderId && !rawConversationId && !targetId) return
 
     const clearUrl = () => {
       try {
-        window.history.replaceState({}, "", "/workspace")
+        const url = new URL(window.location.href)
+        for (const key of ["folderId", "conversationId", "agent", "target"])
+          url.searchParams.delete(key)
+        window.history.replaceState({}, "", url.pathname + url.search)
       } catch {
         /* ignore */
       }
@@ -40,14 +46,16 @@ export function DeepLinkBootstrap() {
 
     void (async () => {
       try {
-        const folderId = rawFolderId ? Number(rawFolderId) : null
+        const folderId = targetId
+          ? await resolveCerebroTarget(targetId)
+          : rawFolderId
+            ? Number(rawFolderId)
+            : null
         const conversationId = rawConversationId
           ? Number(rawConversationId)
           : null
 
         if (folderId == null || !Number.isFinite(folderId)) return
-        if (conversationId == null || !Number.isFinite(conversationId)) return
-        if (!rawAgent) return
 
         // Read at run time: this effect fires once when hydration completes,
         // and getState() sees exactly the lists as of that moment.
@@ -60,28 +68,53 @@ export function DeepLinkBootstrap() {
             folder = await addFolderToWorkspaceById(folderId)
           } catch (err) {
             console.error("[DeepLinkBootstrap] open folder failed:", err)
-            toast.error("Unable to open linked folder")
+            toast.error(toErrorMessage(err))
             return
           }
         }
 
-        const hasConv = conversations.some(
-          (c) =>
-            c.id === conversationId &&
-            c.folder_id === folderId &&
-            c.agent_type === rawAgent
-        )
-        if (!hasConv) {
+        if (conversationId == null) {
+          if (targetId) {
+            // 模块入口定位目录并接续已有会话，不额外创建草稿或启动另一个 Agent。
+            await useAppWorkspaceStore.getState().refreshConversations()
+            const latest = useAppWorkspaceStore
+              .getState()
+              .conversations.filter(
+                (conversation) => conversation.folder_id === folderId
+              )
+              .sort((left, right) =>
+                right.updated_at.localeCompare(left.updated_at)
+              )[0]
+            if (latest) {
+              openTab(folderId, latest.id, latest.agent_type, true)
+              return
+            }
+          }
+          openNewConversationTab(folderId, folder.path)
+          return
+        }
+        if (!Number.isFinite(conversationId) || !rawAgent) return
+        // 文件夹与会话列表分别加载；深链不把尚未加载的侧栏当作会话不存在。
+        const conversation =
+          conversations.find((c) => c.id === conversationId) ??
+          (await getFolderConversation(conversationId, { tailTurns: 1 }))
+            .summary
+        if (
+          conversation.folder_id !== folderId ||
+          conversation.agent_type !== rawAgent
+        ) {
           toast.error("Linked conversation not found")
           return
         }
 
         openTab(folderId, conversationId, rawAgent, true)
+      } catch (error) {
+        toast.error(toErrorMessage(error))
       } finally {
         clearUrl()
       }
     })()
-  }, [foldersHydrated, tabsHydrated, openTab])
+  }, [foldersHydrated, tabsHydrated, openTab, openNewConversationTab])
 
   return null
 }

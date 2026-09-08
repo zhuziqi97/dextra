@@ -376,7 +376,6 @@ impl AutomationEngine {
             .root_folder_id
             .ok_or_else(|| "automation has no target folder".to_string())?;
         let task_cfg = crate::models::WorkTaskConfig {
-            cerebro_selection: None,
             prompt_blocks: cfg.prompt_blocks.clone(),
             display_text: cfg.display_text.clone(),
             agent_type: Some(auto.agent_type.clone()),

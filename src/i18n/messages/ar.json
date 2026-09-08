@@ -1778,7 +1778,7 @@
       "removeFolderConfirmDescription": "إزالة \"{name}\" من مساحة العمل؟ سيتم إغلاق علامات التبويب والمحطات المرتبطة.",
       "folderHeaderMenu": {
         "manageConversations": "إدارة المحادثات…",
-        "manageLinks": "المجلدات المرتبطة",
+        "manageLinks": "إعدادات المجلد",
         "changeColor": "تغيير اللون",
         "useThemeColor": "استخدام سمة التطبيق",
         "setDefaultAgent": "تعيين الوكيل الافتراضي",
@@ -5452,5 +5452,28 @@
     "settingsPromptScenarioHint": "تُرسل فقط مع المهام المنشأة بهذا السيناريو.",
     "settingsPromptPlaceholder": "مثال: أجب بالعربية. شغّل اختبارات المشروع قبل الإنهاء.",
     "save": "حفظ"
+  },
+  "CerebroFolder": {
+    "title": "Client configuration",
+    "folderLinks": "Folder links",
+    "project": "Project",
+    "selectProject": "Select a project",
+    "executionModule": "Execution module",
+    "mcpModules": "MCP accessible modules",
+    "enabled": "Enabled",
+    "credential": "MCP credential",
+    "view": "View credential",
+    "copy": "Copy credential",
+    "rotate": "Regenerate credential",
+    "save": "Save",
+    "saved": "Saved",
+    "copied": "Copied",
+    "loading": "Loading…",
+    "retry": "Retry",
+    "connect": "Connect to server",
+    "unbound": "Not bound",
+    "removeModule": "Remove module",
+    "expiresAt": "Expires: {time}",
+    "tooManyModules": "This project has more modules than the selector can display."
   }
 }

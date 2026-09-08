@@ -1,3 +1,4 @@
+import { getWebMountPath } from "../web-mount"
 // Shared helpers for web-mode HTTP calls — the JSON transport in
 // `web-transport.ts` and direct multipart/file callers in `lib/api.ts` both
 // need consistent token retrieval and 401 redirect behavior. Keeping them in
@@ -8,10 +9,12 @@
 const TOKEN_KEY = "codeg_token"
 
 export function getCodegToken(): string {
+  if (getWebMountPath()) return "client-session"
   return localStorage.getItem(TOKEN_KEY) ?? ""
 }
 
 export function redirectToCodegLogin(): void {
+  if (getWebMountPath()) { window.close(); return }
   if (window.location.pathname.startsWith("/login")) return
   localStorage.removeItem(TOKEN_KEY)
   window.location.href = "/login"

@@ -26,8 +26,9 @@ import {
   SlidersHorizontal,
 } from "lucide-react"
 import { useTranslations } from "next-intl"
-import { usePathname } from "next/navigation"
-import { useRouter } from "next/navigation"
+import { webPath } from "@/lib/web-mount"
+import { usePathname } from "@/lib/navigation"
+import { useRouter } from "@/lib/navigation"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { AppToaster } from "@/components/ui/app-toaster"
@@ -184,7 +185,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
       const fullTarget = search ? `${target}${search}` : target
 
       if (isWindowsRuntime()) {
-        window.location.assign(fullTarget)
+        window.location.assign(webPath(fullTarget))
         return
       }
 

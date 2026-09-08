@@ -11,30 +11,22 @@ use async_trait::async_trait;
 use sacp::schema::{McpServer, McpServerStdio};
 use std::{path::PathBuf, sync::Arc};
 
-enum PrincipalTarget {
-    Session {
-        binding_id: String,
-        session_id: String,
-    },
-    Task(String),
-}
-
 struct PrincipalScope {
     identity: identity::RunnerIdentity,
-    target: PrincipalTarget,
+    target_id: String,
 }
 
 #[async_trait]
 impl CompanionCredentials for PrincipalScope {
     async fn issue(&self) -> Result<serde_json::Value, AppCommandError> {
-        let principal = match &self.target {
-            PrincipalTarget::Session {
-                binding_id,
-                session_id,
-            } => self.identity.session_principal(binding_id, session_id).await?,
-            PrincipalTarget::Task(task_id) => self.identity.task_principal(task_id).await?,
-        };
-        Ok(serde_json::json!(principal))
+        let credential = super::configuration::credential_for_target(&self.identity, &self.target_id, false).await?;
+        let expires_at = chrono::DateTime::parse_from_rfc3339(&credential.expires_at)
+            .map_err(|error| AppCommandError::configuration_invalid(error.to_string()))?;
+        let expires_in = (expires_at.with_timezone(&chrono::Utc) - chrono::Utc::now()).num_seconds().max(0) as u64;
+        Ok(serde_json::json!(identity::CerebroMcpPrincipal {
+            mcp_url: credential.mcp_url, access_token: credential.access_token,
+            token_type: "bearer".into(), expires_in,
+        }))
     }
 }
 
@@ -120,41 +112,38 @@ fn launch(
     })))
 }
 
-pub async fn server_for_binding(
+pub async fn server_for_folder(
+    conn: &sea_orm::DatabaseConnection,
     manager: &ConnectionManager,
-    binding_id: &str,
-    session_id: &str,
+    folder_id: i32,
 ) -> Result<AdditionalMcpServers, AppCommandError> {
-    let identity = identity::RunnerIdentity::current()?;
-    identity.session_principal(binding_id, session_id).await?;
-    launch(
-        manager,
-        PrincipalScope { identity, target: PrincipalTarget::Session {
-            binding_id: binding_id.to_string(),
-            session_id: session_id.to_string(),
-        } },
-    )
+    let state = super::configuration::query(conn, folder_id).await?;
+    if let Some(error) = state.error {
+        tracing::warn!("[cerebro] 服务端当前不可用，继续本地会话: {error}");
+        return Ok(Vec::new().into());
+    }
+    let Some(configuration) = state.configuration else {
+        return Ok(Vec::new().into());
+    };
+    launch(manager, PrincipalScope { identity: identity::RunnerIdentity::current()?, target_id: configuration.target_id })
 }
 
-pub async fn server_for_selection(
+pub async fn server_for_conversation(
+    conn: &sea_orm::DatabaseConnection,
     manager: &ConnectionManager,
-    selection: &super::session_binding::CerebroSelection,
-    session_id: &str,
+    working_dir: Option<&str>,
+    conversation_id: Option<i32>,
 ) -> Result<AdditionalMcpServers, AppCommandError> {
-    let servers = match selection {
-        super::session_binding::CerebroSelection::Local => Ok(Vec::new().into()),
-        super::session_binding::CerebroSelection::Binding { binding_id } => {
-            server_for_binding(manager, binding_id, session_id).await
-        }
-    }?;
-    Ok(servers)
-}
-
-pub async fn server_for_task(
-    manager: &ConnectionManager,
-    task_id: &str,
-) -> Result<AdditionalMcpServers, AppCommandError> {
-    let identity = identity::RunnerIdentity::current()?;
-    identity.task_principal(task_id).await?;
-    launch(manager, PrincipalScope { identity, target: PrincipalTarget::Task(task_id.to_string()) })
+    use crate::db::entities::{conversation, folder};
+    use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
+    let folder_id = if let Some(id) = conversation_id {
+        conversation::Entity::find_by_id(id).one(conn).await.map_err(crate::db::error::DbError::from)?.map(|row| row.folder_id)
+    } else if let Some(path) = working_dir {
+        folder::Entity::find().filter(folder::Column::Path.eq(path)).filter(folder::Column::DeletedAt.is_null())
+            .one(conn).await.map_err(crate::db::error::DbError::from)?.map(|row| row.id)
+    } else { None };
+    match folder_id {
+        Some(id) => server_for_folder(conn, manager, id).await,
+        None => Ok(Vec::new().into()),
+    }
 }

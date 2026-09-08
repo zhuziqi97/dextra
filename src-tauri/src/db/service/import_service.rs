@@ -454,7 +454,6 @@ async fn import_one(
         deleted_at: Set(None),
         pinned_at: Set(None),
         origin_cwd: Set(None),
-        cerebro_selection: Set(None),
     };
     conv.insert(conn).await?;
     Ok(ImportOutcome::Imported)
@@ -1014,7 +1013,6 @@ mod tests {
             deleted_at: Set(None),
             pinned_at: Set(None),
             origin_cwd: Set(None),
-            cerebro_selection: Set(None),
         }
         .insert(&db.conn)
         .await
