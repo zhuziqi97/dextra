@@ -1,91 +1,75 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import { NextIntlClientProvider } from "next-intl"
-import { beforeEach, expect, it, vi } from "vitest"
+import { expect, it, vi } from "vitest"
 import messages from "@/i18n/messages/en.json"
 import { ClientFolderConfiguration } from "./client-folder-configuration"
+import { sameConfiguration } from "@/hooks/use-client-configuration-draft"
 
-const api = vi.hoisted(() => ({
-  queryCerebroFolderConfiguration: vi.fn(),
-  listCerebroConfigurationProjects: vi.fn(),
-  listCerebroConfigurationModules: vi.fn(),
-  saveCerebroFolderConfiguration: vi.fn(),
-  getCerebroFolderCredential: vi.fn(),
-}))
-const events = vi.hoisted(() => ({
-  listener: undefined as undefined | ((value: unknown) => void),
-}))
-vi.mock("@/lib/api", () => api)
-vi.mock("@/lib/transport", () => ({
-  getTransport: () => ({
-    subscribe: async (_: string, listener: typeof events.listener) => {
-      events.listener = listener
-      return () => {}
-    },
+vi.mock("@/lib/api", () => ({
+  listCerebroConfigurationProjects: async () => ({
+    items: [{ id: "project", name: "Project", path: "owner/project" }],
+    total: 1,
   }),
+  listCerebroConfigurationModules: vi.fn(),
 }))
-vi.mock("sonner", () => ({ toast: { success: vi.fn() } }))
-const initial = {
-  runner_id: "client",
-  target_id: "folder",
-  execution_module_id: null,
-  binding_id: null,
-  mcp_module_ids: [],
-  mcp_enabled: false,
-  module_labels: {},
-  grant_id: null,
-  credential_expires_at: null,
-}
-beforeEach(() => {
-  vi.clearAllMocks()
-  events.listener = undefined
-  api.queryCerebroFolderConfiguration.mockResolvedValue({
-    configuration: initial,
-    error: null,
-  })
-  api.listCerebroConfigurationProjects.mockResolvedValue({
-    items: [],
-    total: 0,
-  })
+
+it("compares editable values as sets and restores clean state after reverting", () => {
+  const original = {
+    execution_module_id: null,
+    mcp_enabled: false,
+    mcp_module_ids: ["a", "b"],
+  }
+  expect(
+    sameConfiguration(original, {
+      ...original,
+      mcp_module_ids: ["b", "a", "a"],
+    })
+  ).toBe(true)
+  expect(
+    sameConfiguration(original, { ...original, mcp_module_ids: ["a"] })
+  ).toBe(false)
+  expect(sameConfiguration(original, { ...original, mcp_enabled: true })).toBe(
+    false
+  )
+  expect(
+    sameConfiguration(original, { ...original, execution_module_id: "a" })
+  ).toBe(false)
+  expect(sameConfiguration(original, { ...original })).toBe(true)
 })
-function mount() {
+
+it("shows unbound without selecting the first project or exposing credentials", async () => {
+  const input = {
+    execution_module_id: null,
+    mcp_enabled: false,
+    mcp_module_ids: [],
+  }
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <ClientFolderConfiguration folderId={1} />
+      <ClientFolderConfiguration
+        configuration={{
+          ...input,
+          runner_id: "client",
+          target_id: "folder",
+          binding_id: null,
+          module_labels: {},
+          grant_id: null,
+          credential_expires_at: null,
+        }}
+        input={input}
+        loading={false}
+        busy={false}
+        error={null}
+        onChange={vi.fn()}
+        onRetry={vi.fn()}
+      />
     </NextIntlClientProvider>
   )
-}
-
-it("keeps edits when the server rejects save and only clears dirty state after its acknowledgement", async () => {
-  api.saveCerebroFolderConfiguration
-    .mockRejectedValueOnce(new Error("客户端离线"))
-    .mockResolvedValueOnce({ ...initial, mcp_enabled: true })
-  mount()
-  const enabled = await screen.findByRole("checkbox")
-  fireEvent.click(enabled)
-  const save = screen.getByRole("button", { name: messages.CerebroFolder.save })
-  fireEvent.click(save)
-  expect(await screen.findByRole("alert")).toHaveTextContent("客户端离线")
-  expect(enabled).toBeChecked()
-  expect(save).toBeEnabled()
-  fireEvent.click(save)
-  await waitFor(() => expect(save).toBeDisabled())
-  expect(api.saveCerebroFolderConfiguration).toHaveBeenLastCalledWith(1, {
-    execution_module_id: null,
-    mcp_module_ids: [],
-    mcp_enabled: true,
-  })
-})
-
-it("shows service updates while preserving a user's in-progress edit", async () => {
-  mount()
-  const enabled = await screen.findByRole("checkbox")
-  await waitFor(() => expect(events.listener).toBeDefined())
-  act(() => events.listener?.({ ...initial, mcp_enabled: true }))
-  expect(enabled).toBeChecked()
-  fireEvent.click(enabled)
-  act(() => events.listener?.({ ...initial, mcp_enabled: true }))
-  expect(enabled).not.toBeChecked()
   expect(
-    screen.getByRole("button", { name: messages.CerebroFolder.save })
-  ).toBeEnabled()
+    await screen.findByRole("combobox", { name: "Execution module" })
+  ).toHaveTextContent("Not bound")
+  expect(screen.getByRole("combobox", { name: "Project" })).toHaveTextContent(
+    "Select a project"
+  )
+  expect(screen.queryByText("MCP credential")).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
 })

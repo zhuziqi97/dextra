@@ -7,7 +7,6 @@ fn main() -> Result<(), ts_rs::ExportError> {
     ClientConfiguration::export_all_to(output)?;
     ConfigurationInput::export_all_to(output)?;
     FolderConfigurationState::export_all_to(output)?;
-    FolderCredential::export_all_to(output)?;
     ProjectPage::export_all_to(output)?;
     ModuleOptions::export_all_to(output)?;
     Ok(())

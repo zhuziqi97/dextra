@@ -80,10 +80,6 @@ pub struct FolderConfigurationParams { pub folder_id: i32 }
 pub struct FolderConfigurationSaveParams { pub folder_id: i32, pub input: crate::cerebro::configuration::ConfigurationInput }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FolderCredentialParams { pub folder_id: i32, pub rotate: bool }
-
-#[derive(Deserialize)]
 pub struct ProjectsParams { pub page: u32, pub search: Option<String> }
 
 #[derive(Deserialize)]
@@ -96,10 +92,6 @@ pub async fn query_folder_configuration(axum::extract::Extension(state): axum::e
 
 pub async fn save_folder_configuration(axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>, Json(params): Json<FolderConfigurationSaveParams>) -> Result<Json<crate::cerebro::configuration::ClientConfiguration>, AppCommandError> {
     commands::cerebro_save_folder_configuration_core(&state.db, &state.emitter, params.folder_id, params.input).await.map(Json)
-}
-
-pub async fn folder_credential(Json(params): Json<FolderCredentialParams>) -> Result<Json<crate::cerebro::configuration::FolderCredential>, AppCommandError> {
-    commands::cerebro_folder_credential(params.folder_id, params.rotate).await.map(Json)
 }
 
 pub async fn configuration_projects(Json(params): Json<ProjectsParams>) -> Result<Json<crate::cerebro::configuration::ProjectPage>, AppCommandError> {

@@ -1,13 +1,10 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
-import { webPath } from "@/lib/web-mount"
+import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
-import { Copy, Eye, Loader2, RefreshCw, X } from "lucide-react"
-import { toast } from "sonner"
+import { Loader2, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Input } from "@/components/ui/input"
 import {
   Select,
   SelectContent,
@@ -17,125 +14,83 @@ import {
 } from "@/components/ui/select"
 import { SettingCard, SettingRow } from "@/components/shared/setting-card"
 import {
-  getCerebroFolderCredential,
   listCerebroConfigurationModules,
   listCerebroConfigurationProjects,
-  queryCerebroFolderConfiguration,
-  saveCerebroFolderConfiguration,
 } from "@/lib/api"
-import { toErrorMessage } from "@/lib/app-error"
-import { getTransport } from "@/lib/transport"
+import { configurationErrorMessage } from "@/hooks/use-client-configuration-draft"
 import type { ClientConfiguration } from "@/lib/generated/cerebro/ClientConfiguration"
 import type { ConfigurationInput } from "@/lib/generated/cerebro/ConfigurationInput"
-import type { FolderCredential } from "@/lib/generated/cerebro/FolderCredential"
 import type { ModuleOption } from "@/lib/generated/cerebro/ModuleOption"
 import type { ProjectOption } from "@/lib/generated/cerebro/ProjectOption"
 
-export function ClientFolderConfiguration({ folderId }: { folderId: number }) {
+interface Props {
+  configuration: ClientConfiguration | null
+  input: ConfigurationInput
+  loading: boolean
+  busy: boolean
+  error: string | null
+  onChange: (change: Partial<ConfigurationInput>) => void
+  onRetry: () => void
+}
+
+export function ClientFolderConfiguration({
+  configuration,
+  input,
+  loading,
+  busy,
+  error: configurationError,
+  onChange: edit,
+  onRetry,
+}: Props) {
   const t = useTranslations("CerebroFolder")
-  const [configuration, setConfiguration] =
-    useState<ClientConfiguration | null>(null)
-  const [input, setInput] = useState<ConfigurationInput>({
-    execution_module_id: null,
-    mcp_module_ids: [],
-    mcp_enabled: false,
-  })
   const [projects, setProjects] = useState<ProjectOption[]>([])
   const [projectId, setProjectId] = useState("")
   const [modules, setModules] = useState<ModuleOption[]>([])
-  const [labels, setLabels] = useState<Record<string, string | undefined>>({})
-  const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [dirty, setDirty] = useState(false)
-  const dirtyRef = useRef(false)
-  const [credential, setCredential] = useState<FolderCredential | null>(null)
-  const [showCredential, setShowCredential] = useState(false)
-  const showCredentialRef = useRef(false)
-  const [retry, setRetry] = useState(0)
-
-  const apply = useCallback((value: ClientConfiguration) => {
-    setConfiguration(value)
-    setLabels((previous) => ({ ...previous, ...value.module_labels }))
-    if (!dirtyRef.current)
-      setInput({
-        execution_module_id: value.execution_module_id,
-        mcp_module_ids: value.mcp_module_ids,
-        mcp_enabled: value.mcp_enabled,
-      })
-  }, [])
-
+  const [optionLabels, setLabels] = useState<
+    Record<string, string | undefined>
+  >({})
+  const [projectsError, setProjectsError] = useState<string | null>(null)
+  const [modulesError, setModulesError] = useState<string | null>(null)
+  const error = projectsError ?? modulesError
+  const labels = { ...configuration?.module_labels, ...optionLabels }
+  const targetId = configuration?.target_id
+  const [optionsRetry, setOptionsRetry] = useState(0)
+  const retry = () => {
+    setProjectsError(null)
+    setModulesError(null)
+    setOptionsRetry((value) => value + 1)
+    onRetry()
+  }
   useEffect(() => {
+    if (!targetId) return
     let active = true
-    setLoading(true)
-    setError(null)
-    queryCerebroFolderConfiguration(folderId)
-      .then(async (state) => {
+    void (async () => {
+      const choices: ProjectOption[] = []
+      for (let page = 1; active; page++) {
+        const result = await listCerebroConfigurationProjects(page)
         if (!active) return
-        if (state.configuration) apply(state.configuration)
-        setError(state.error)
-        if (!state.configuration || state.error) return
-        let page = 1
-        const choices: ProjectOption[] = []
-        do {
-          const result = await listCerebroConfigurationProjects(page++)
-          if (!active) return
-          choices.push(...result.items)
-          if (choices.length >= result.total || result.items.length === 0) break
-        } while (active)
+        choices.push(...result.items)
+        if (choices.length >= result.total || result.items.length === 0) break
+      }
+      if (active) {
         setProjects(choices)
-        setProjectId((current) => current || choices[0]?.id || "")
-      })
-      .catch((cause) => {
-        if (active) setError(toErrorMessage(cause))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+        setProjectsError(null)
+      }
+    })().catch((cause) => {
+      if (active) setProjectsError(configurationErrorMessage(cause))
+    })
     return () => {
       active = false
     }
-  }, [folderId, retry, apply])
-
-  useEffect(() => {
-    let active = true
-    let unsubscribe: (() => void) | undefined
-    getTransport()
-      .subscribe<ClientConfiguration>(
-        "cerebro://configuration-changed",
-        (value) => {
-          if (value.target_id !== configuration?.target_id) return
-          apply(value)
-          if (!value.mcp_enabled || !value.mcp_module_ids.length)
-            setCredential(null)
-          else if (showCredentialRef.current) {
-            getCerebroFolderCredential(folderId)
-              .then(setCredential)
-              .catch((cause) => setError(toErrorMessage(cause)))
-          }
-        }
-      )
-      .then((stop) => {
-        if (active) unsubscribe = stop
-        else stop()
-      })
-      .catch((cause) => {
-        if (active) setError(toErrorMessage(cause))
-      })
-    return () => {
-      active = false
-      unsubscribe?.()
-    }
-  }, [configuration?.target_id, apply, folderId])
-
+  }, [targetId, optionsRetry])
   useEffect(() => {
     if (!projectId) return
     let active = true
-    setModules([])
     listCerebroConfigurationModules(projectId)
       .then((result) => {
         if (!active) return
         setModules(result.items)
+        setModulesError(null)
         setLabels((previous) => ({
           ...previous,
           ...Object.fromEntries(
@@ -145,102 +100,61 @@ export function ClientFolderConfiguration({ folderId }: { folderId: number }) {
             ])
           ),
         }))
-        if (result.truncated) setError(t("tooManyModules"))
+        if (result.truncated) setModulesError(t("tooManyModules"))
       })
       .catch((cause) => {
-        if (active) setError(toErrorMessage(cause))
+        if (active) setModulesError(configurationErrorMessage(cause))
       })
     return () => {
       active = false
     }
-  }, [projectId, t])
+  }, [projectId, t, optionsRetry])
 
-  function edit(change: Partial<ConfigurationInput>) {
-    dirtyRef.current = true
-    setDirty(true)
-    setInput((current) => ({ ...current, ...change }))
-  }
-
-  async function save() {
-    setBusy(true)
-    setError(null)
-    try {
-      const value = await saveCerebroFolderConfiguration(folderId, input)
-      dirtyRef.current = false
-      setDirty(false)
-      apply(value)
-      setCredential(null)
-      toast.success(t("saved"))
-    } catch (cause) {
-      setError(toErrorMessage(cause))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function manageCredential(action: "view" | "copy" | "rotate") {
-    setBusy(true)
-    try {
-      const value = await getCerebroFolderCredential(
-        folderId,
-        action === "rotate"
-      )
-      setCredential(value)
-      if (action === "copy") {
-        await navigator.clipboard.writeText(value.access_token)
-        toast.success(t("copied"))
-      } else {
-        showCredentialRef.current = true
-        setShowCredential(true)
-      }
-    } catch (cause) {
-      setError(toErrorMessage(cause))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  if (loading)
+  const selectedOutsideProject =
+    input.execution_module_id &&
+    !modules.some((module) => module.id === input.execution_module_id)
+  if (loading && !configuration)
     return (
-      <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+      <div className="flex items-center gap-2 py-4 text-sm">
         <Loader2 className="size-4 animate-spin" />
         {t("loading")}
       </div>
     )
-  if (!configuration && !error)
-    return (
-      <Button asChild variant="outline">
-        <a href={webPath("/settings/cerebro")}>{t("connect")}</a>
-      </Button>
-    )
-  const selectedOutsideProject =
-    input.execution_module_id &&
-    !modules.some((module) => module.id === input.execution_module_id)
   return (
     <div className="flex flex-col gap-3">
-      {error && (
+      {(configurationError || error) && (
         <div role="alert" className="text-sm text-destructive">
-          {error}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setRetry((value) => value + 1)}
-          >
+          {configurationError || error}
+          <Button variant="ghost" size="sm" onClick={retry}>
             {t("retry")}
           </Button>
         </div>
+      )}
+      {!configuration && !configurationError && (
+        <p className="text-sm text-muted-foreground">{t("localOnly")}</p>
       )}
       <SettingCard>
         <SettingRow title={t("project")}>
           <Select
             value={projectId}
-            onValueChange={setProjectId}
-            disabled={busy}
+            onValueChange={(value) => {
+              setModules([])
+              setModulesError(null)
+              setProjectId(value)
+            }}
+            disabled={busy || !configuration}
           >
             <SelectTrigger className="w-full" aria-label={t("project")}>
               <SelectValue placeholder={t("selectProject")} />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent
+              position="popper"
+              side="bottom"
+              align="start"
+              sideOffset={4}
+              avoidCollisions={false}
+              className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
+            >
               {projects.map((project) => (
                 <SelectItem key={project.id} value={project.id}>
                   {project.display_name || project.name}（{project.path}）
@@ -260,7 +174,14 @@ export function ClientFolderConfiguration({ folderId }: { folderId: number }) {
             <SelectTrigger className="w-full" aria-label={t("executionModule")}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent
+              position="popper"
+              side="bottom"
+              align="start"
+              sideOffset={4}
+              avoidCollisions={false}
+              className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
+            >
               <SelectItem value="NONE">{t("unbound")}</SelectItem>
               {selectedOutsideProject && (
                 <SelectItem value={input.execution_module_id!}>
@@ -345,61 +266,7 @@ export function ClientFolderConfiguration({ folderId }: { folderId: number }) {
               </div>
             ))}
         </SettingRow>
-        <SettingRow
-          title={t("credential")}
-          control={
-            <div className="flex gap-1">
-              {(
-                [
-                  { action: "view", Icon: Eye },
-                  { action: "copy", Icon: Copy },
-                  { action: "rotate", Icon: RefreshCw },
-                ] as const
-              ).map(({ action, Icon }) => (
-                <Button
-                  key={action}
-                  size="icon"
-                  variant="ghost"
-                  className="size-7"
-                  title={t(action)}
-                  aria-label={t(action)}
-                  disabled={
-                    busy ||
-                    dirty ||
-                    !configuration?.mcp_enabled ||
-                    !configuration.mcp_module_ids.length
-                  }
-                  onClick={() => manageCredential(action)}
-                >
-                  <Icon className="size-3.5" />
-                </Button>
-              ))}
-            </div>
-          }
-        >
-          {credential && showCredential && (
-            <>
-              <Input
-                aria-label={t("credential")}
-                readOnly
-                value={credential.access_token}
-                className="font-mono text-xs"
-              />
-              <span className="text-xs text-muted-foreground">
-                {t("expiresAt", {
-                  time: new Date(credential.expires_at).toLocaleString(),
-                })}
-              </span>
-            </>
-          )}
-        </SettingRow>
       </SettingCard>
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={busy || !dirty || !configuration}>
-          {busy && <Loader2 className="size-4 animate-spin" />}
-          {t("save")}
-        </Button>
-      </div>
     </div>
   )
 }

@@ -21,6 +21,10 @@ const api = vi.hoisted(() => ({
   renameFolderLink: vi.fn(),
   repairFolderLink: vi.fn(),
   removeFolderLink: vi.fn(),
+  queryCerebroFolderConfiguration: vi.fn(),
+  saveCerebroFolderConfiguration: vi.fn(),
+  listCerebroConfigurationProjects: vi.fn(),
+  listCerebroConfigurationModules: vi.fn(),
 }))
 vi.mock("@/lib/api", () => api)
 
@@ -36,6 +40,7 @@ vi.mock("@/lib/platform", () => ({
 }))
 vi.mock("@/lib/transport", () => ({
   getActiveRemoteConnectionId: () => null,
+  getTransport: () => ({ subscribe: async () => () => {} }),
 }))
 
 const openFolder = vi.hoisted(() => vi.fn())
@@ -107,6 +112,18 @@ function Harness({ manage }: { manage?: FolderDetail }) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  api.queryCerebroFolderConfiguration.mockResolvedValue({
+    configuration: null,
+    error: null,
+  })
+  api.listCerebroConfigurationProjects.mockResolvedValue({
+    items: [],
+    total: 0,
+  })
+  api.listCerebroConfigurationModules.mockResolvedValue({
+    items: [],
+    truncated: false,
+  })
   platform.desktop = false
   api.getHomeDirectory.mockResolvedValue("/home/me")
   api.listDirectoryEntries.mockResolvedValue([])
@@ -184,6 +201,10 @@ describe("WorkspaceFolderDialog — manage mode", () => {
     await act(async () => {
       fireEvent.click(repair)
     })
+    expect(api.repairFolderLink).not.toHaveBeenCalled()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
+    })
     expect(api.repairFolderLink).toHaveBeenCalledWith(1)
   })
 
@@ -195,6 +216,11 @@ describe("WorkspaceFolderDialog — manage mode", () => {
 
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Remove link" }))
+    })
+    expect(api.removeFolderLink).not.toHaveBeenCalled()
+    expect(screen.getByText("Pending removal")).toBeVisible()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
     })
     expect(api.removeFolderLink).toHaveBeenCalledWith(1, true)
   })
@@ -213,7 +239,7 @@ describe("WorkspaceFolderDialog — manage mode", () => {
     fireEvent.change(input, { target: { value: "WEB" } })
 
     expect(screen.getByText("This name is already used")).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Apply name" })).toBeDisabled()
     expect(api.renameFolderLink).not.toHaveBeenCalled()
   })
 
@@ -227,6 +253,10 @@ describe("WorkspaceFolderDialog — manage mode", () => {
     fireEvent.change(screen.getByDisplayValue("api"), {
       target: { value: "backend" },
     })
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Apply name" }))
+    })
+    expect(api.renameFolderLink).not.toHaveBeenCalled()
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Save" }))
     })
@@ -259,9 +289,7 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
       "/home/me/work/api",
     ])
     expect(screen.getByDisplayValue("api")).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "Link 1 folder(s)" })
-    ).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled()
   })
 
   it("explains an auto-rename caused by an existing entry", async () => {
@@ -338,9 +366,7 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
     expect(
       screen.getByText('Cannot contain / \\ : * ? " < > |')
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "Link 1 folder(s)" })
-    ).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
   })
 
   it("creates the queued links with the edited names", async () => {
@@ -359,7 +385,7 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
       target: { value: "backend" },
     })
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Link 1 folder(s)" }))
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
     })
 
     expect(api.createFolderLinks).toHaveBeenCalledWith(
@@ -369,28 +395,50 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
     )
   })
 
-  it("warns when the backend could only link some of them", async () => {
+  it("keeps unfinished additions after partial failure and never recreates the successful link", async () => {
     api.listDirectoryEntries.mockResolvedValue([
       dir("api", "/home/me/work/api"),
       dir("web", "/home/me/work/web"),
     ])
-    api.previewFolderLinks.mockResolvedValue([
-      plan(),
-      plan({ targetPath: "/home/me/work/web", baseName: "web", name: "web" }),
-    ])
-    api.createFolderLinks.mockResolvedValue([link()])
+    api.previewFolderLinks
+      .mockResolvedValueOnce([
+        plan(),
+        plan({ targetPath: "/home/me/work/web", baseName: "web", name: "web" }),
+      ])
+      .mockResolvedValue([
+        plan({ targetPath: "/home/me/work/web", baseName: "web", name: "web" }),
+      ])
+    api.createFolderLinks
+      .mockResolvedValueOnce([link()])
+      .mockRejectedValueOnce(new Error("Disk write failed"))
+      .mockResolvedValueOnce([
+        link({ id: 2, name: "web", targetPath: "/home/me/work/web" }),
+      ])
     await goToAddView()
-
     fireEvent.click(await screen.findByRole("button", { name: /api/ }))
     fireEvent.click(screen.getByRole("button", { name: /web/ }))
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Add 2" }))
     })
+    api.listFolderLinks.mockResolvedValue([link()])
+    expect(api.createFolderLinks).not.toHaveBeenCalled()
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Link 2 folder(s)" }))
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
     })
-
-    expect(toast.warning).toHaveBeenCalled()
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Disk write failed"
+    )
+    expect(screen.getByDisplayValue("web")).toBeVisible()
+    expect(screen.queryByDisplayValue("api")).not.toBeInTheDocument()
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+    })
+    expect(
+      api.createFolderLinks.mock.calls.filter(
+        ([, items]) => items[0].path === "/home/me/work/api"
+      )
+    ).toHaveLength(1)
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
   it("keeps earlier picks when a second batch is added", async () => {
@@ -418,9 +466,7 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
 
     expect(screen.getByDisplayValue("api")).toBeInTheDocument()
     expect(screen.getByDisplayValue("web")).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "Link 2 folder(s)" })
-    ).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
   })
 
   it("flags two queued picks that resolve to the same name", async () => {
@@ -445,9 +491,7 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
       target: { value: "api" },
     })
     expect(screen.getByText("This name is already used")).toBeInTheDocument()
-    expect(
-      screen.getByRole("button", { name: "Link 2 folder(s)" })
-    ).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
   })
 
   it("discards the queue without creating anything", async () => {
@@ -461,9 +505,9 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
       fireEvent.click(screen.getByRole("button", { name: "Add" }))
     })
 
-    fireEvent.click(screen.getByRole("button", { name: "Discard" }))
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
     expect(api.createFolderLinks).not.toHaveBeenCalled()
-    expect(screen.getByText("No linked folders yet.")).toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
   it("returns to the list without adding anything on Back", async () => {
@@ -495,7 +539,7 @@ describe("WorkspaceFolderDialog — adding link targets", () => {
     const toggle = screen.getByRole("checkbox")
     fireEvent.click(toggle)
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Link 1 folder(s)" }))
+      fireEvent.click(screen.getByRole("button", { name: "Save" }))
     })
 
     expect(api.createFolderLinks).toHaveBeenCalledWith(
@@ -628,4 +672,199 @@ describe("WorkspaceFolderDialog — selection bookkeeping", () => {
 
     expect(api.previewFolderLinks).toHaveBeenCalledWith(7, ["/home/me/typed"])
   })
+})
+
+const configuration = {
+  runner_id: "client",
+  target_id: "target",
+  execution_module_id: null,
+  binding_id: null,
+  mcp_module_ids: [],
+  mcp_enabled: false,
+  module_labels: {},
+  grant_id: null,
+  credential_expires_at: null,
+}
+async function showConfiguration() {
+  fireEvent.mouseDown(
+    screen.getByRole("tab", { name: "Client configuration" }),
+    { button: 0, ctrlKey: false }
+  )
+  return screen.findByRole("checkbox", { name: "Enabled" })
+}
+
+it("keeps both pages as drafts and commits local changes once when server save is retried", async () => {
+  api.queryCerebroFolderConfiguration.mockResolvedValue({
+    configuration,
+    error: null,
+  })
+  api.listFolderLinks.mockResolvedValue([link()])
+  api.removeFolderLink.mockResolvedValue(undefined)
+  api.saveCerebroFolderConfiguration
+    .mockRejectedValueOnce({
+      code: "network_error",
+      message: "Connection timed out",
+    })
+    .mockResolvedValueOnce({ ...configuration, mcp_enabled: true })
+  render(<Harness manage={folder()} />)
+  await screen.findByText("api")
+  fireEvent.click(screen.getByRole("button", { name: "Remove link" }))
+  fireEvent.click(await showConfiguration())
+  fireEvent.mouseDown(screen.getByRole("tab", { name: "Folder links" }), {
+    button: 0,
+    ctrlKey: false,
+  })
+  expect(screen.getByText("Pending removal")).toBeVisible()
+  fireEvent.click(await showConfiguration())
+  fireEvent.click(screen.getByRole("checkbox", { name: "Enabled" }))
+  expect(screen.getByRole("checkbox", { name: "Enabled" })).toBeChecked()
+  expect(api.removeFolderLink).not.toHaveBeenCalled()
+  expect(api.saveCerebroFolderConfiguration).not.toHaveBeenCalled()
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  })
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Connection timed out"
+  )
+  expect(screen.getByRole("alert")).toHaveTextContent("not confirmed")
+  expect(api.removeFolderLink).toHaveBeenCalledTimes(1)
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }))
+  })
+  expect(api.removeFolderLink).toHaveBeenCalledTimes(1)
+  expect(api.saveCerebroFolderConfiguration).toHaveBeenCalledTimes(2)
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+})
+
+it("can revert server edits after a communication failure and finish local changes offline", async () => {
+  api.queryCerebroFolderConfiguration.mockResolvedValue({
+    configuration,
+    error: null,
+  })
+  api.listFolderLinks.mockResolvedValue([link()])
+  api.removeFolderLink.mockResolvedValue(undefined)
+  api.saveCerebroFolderConfiguration.mockRejectedValue({
+    code: "network_error",
+    message: "Offline",
+  })
+  render(<Harness manage={folder()} />)
+  await screen.findByText("api")
+  fireEvent.click(screen.getByRole("button", { name: "Remove link" }))
+  fireEvent.click(await showConfiguration())
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  })
+  await screen.findByRole("alert")
+  fireEvent.click(screen.getByRole("checkbox", { name: "Enabled" }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  })
+  expect(api.saveCerebroFolderConfiguration).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+})
+
+it("discards only server edits after a business error and does not undo the local save", async () => {
+  api.queryCerebroFolderConfiguration.mockResolvedValue({
+    configuration,
+    error: null,
+  })
+  api.listFolderLinks.mockResolvedValue([link()])
+  api.removeFolderLink.mockResolvedValue(undefined)
+  api.saveCerebroFolderConfiguration.mockRejectedValue({
+    code: "invalid_input",
+    message: "Module is occupied",
+    detail: "TARGET_OCCUPIED",
+  })
+  render(<Harness manage={folder()} />)
+  await screen.findByText("api")
+  fireEvent.click(screen.getByRole("button", { name: "Remove link" }))
+  fireEvent.click(await showConfiguration())
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  })
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Module is occupied"
+  )
+  expect(screen.getByRole("alert")).not.toHaveTextContent("not confirmed")
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard server changes and finish" })
+    )
+  })
+  expect(api.removeFolderLink).toHaveBeenCalledTimes(1)
+  expect(api.saveCerebroFolderConfiguration).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+})
+
+it("finishes local changes even when no server configuration has ever loaded", async () => {
+  api.queryCerebroFolderConfiguration.mockResolvedValue({
+    configuration: null,
+    error: "Server unavailable",
+  })
+  api.listFolderLinks.mockResolvedValue([link()])
+  api.removeFolderLink.mockResolvedValue(undefined)
+  render(<Harness manage={folder()} />)
+  await screen.findByText("api")
+  fireEvent.click(screen.getByRole("button", { name: "Remove link" }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  })
+  expect(api.saveCerebroFolderConfiguration).not.toHaveBeenCalled()
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+})
+
+it("undoes removals and repairs and drops unsaved edits on cancel", async () => {
+  api.listFolderLinks.mockResolvedValue([link({ status: "missing" })])
+  render(<Harness manage={folder()} />)
+  await screen.findByText("api")
+  fireEvent.click(screen.getByRole("button", { name: "Recreate link" }))
+  fireEvent.click(screen.getByRole("button", { name: "Undo repair" }))
+  fireEvent.click(screen.getByRole("button", { name: "Remove link" }))
+  fireEvent.click(screen.getByRole("button", { name: "Undo removal" }))
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+  fireEvent.click(screen.getByRole("button", { name: "Remove link" }))
+  fireEvent.click(screen.getByRole("button", { name: "Cancel" }))
+  expect(api.removeFolderLink).not.toHaveBeenCalled()
+  expect(api.repairFolderLink).not.toHaveBeenCalled()
+})
+
+it("returns to a clean draft after renaming back to the loaded name", async () => {
+  api.listFolderLinks.mockResolvedValue([link()])
+  render(<Harness manage={folder()} />)
+  await screen.findByText("api")
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }))
+  fireEvent.change(screen.getByDisplayValue("api"), {
+    target: { value: "backend" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Apply name" }))
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }))
+  fireEvent.change(screen.getByDisplayValue("backend"), {
+    target: { value: "api" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Apply name" }))
+  expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+  expect(api.renameFolderLink).not.toHaveBeenCalled()
+})
+
+it("does not repeat a local write whose response was lost when rereading confirms the change", async () => {
+  api.listFolderLinks
+    .mockResolvedValueOnce([link()])
+    .mockResolvedValue([link({ name: "backend" })])
+  api.renameFolderLink.mockRejectedValue(new Error("Response lost"))
+  render(<Harness manage={folder()} />)
+  await screen.findByText("api")
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }))
+  fireEvent.change(screen.getByDisplayValue("api"), {
+    target: { value: "backend" },
+  })
+  fireEvent.click(screen.getByRole("button", { name: "Apply name" }))
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  })
+  expect(await screen.findByRole("alert")).toHaveTextContent("Response lost")
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: "Save" }))
+  })
+  expect(api.renameFolderLink).toHaveBeenCalledTimes(1)
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
 })

@@ -5451,10 +5451,6 @@ export function saveCerebroFolderConfiguration(folderId: number, input: import("
   return getTransport().call("cerebro_save_folder_configuration", { folderId, input })
 }
 
-export function getCerebroFolderCredential(folderId: number, rotate = false): Promise<import("./generated/cerebro/FolderCredential").FolderCredential> {
-  return getTransport().call("cerebro_folder_credential", { folderId, rotate })
-}
-
 export function listCerebroConfigurationProjects(page = 1, search?: string): Promise<import("./generated/cerebro/ProjectPage").ProjectPage> {
   return getTransport().call("cerebro_configuration_projects", { page, search: search ?? null })
 }

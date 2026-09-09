@@ -35,7 +35,7 @@ pub struct FolderConfigurationState {
     pub error: Option<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize, ts_rs::TS)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct FolderCredential {
     pub mcp_url: String,
     pub access_token: String,
@@ -87,12 +87,6 @@ pub async fn save(conn: &DatabaseConnection, emitter: &EventEmitter, folder_id: 
     if let Err(error) = cache(conn, &configuration).await { tracing::warn!("[cerebro] 保存配置缓存失败: {error}"); }
     emit_event(emitter, CONFIGURATION_EVENT, &configuration);
     Ok(configuration)
-}
-
-pub async fn credential(folder_id: i32, rotate: bool) -> Result<FolderCredential, AppCommandError> {
-    let auth = identity::get_auth_state().await?;
-    let runner_id = auth.runner_id.ok_or_else(|| AppCommandError::configuration_missing("请先连接服务端"))?;
-    credential_for_target(&identity::RunnerIdentity::current()?, &target_projection::target_id(&runner_id, folder_id), rotate).await
 }
 
 pub async fn credential_for_target(identity: &identity::RunnerIdentity, target_id: &str, rotate: bool) -> Result<FolderCredential, AppCommandError> {

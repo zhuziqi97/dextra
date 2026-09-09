@@ -71,11 +71,6 @@ pub async fn cerebro_save_folder_configuration(app: tauri::AppHandle, db: tauri:
 }
 
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
-pub async fn cerebro_folder_credential(folder_id: i32, rotate: bool) -> Result<cerebro::configuration::FolderCredential, AppCommandError> {
-    cerebro::configuration::credential(folder_id, rotate).await
-}
-
-#[cfg_attr(feature = "tauri-runtime", tauri::command)]
 pub async fn cerebro_configuration_projects(page: u32, search: Option<String>) -> Result<cerebro::configuration::ProjectPage, AppCommandError> {
     cerebro::identity::RunnerIdentity::current()?.configuration_request("projects/list", &serde_json::json!({"page": page, "page_size": 100, "search": search})).await
 }

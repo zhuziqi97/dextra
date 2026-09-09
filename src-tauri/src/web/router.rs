@@ -627,7 +627,6 @@ pub fn build_router(
         .route("/cerebro_resolve_target", post(handlers::cerebro::resolve_target))
         .route("/cerebro_query_folder_configuration", post(handlers::cerebro::query_folder_configuration))
         .route("/cerebro_save_folder_configuration", post(handlers::cerebro::save_folder_configuration))
-        .route("/cerebro_folder_credential", post(handlers::cerebro::folder_credential))
         .route("/cerebro_configuration_projects", post(handlers::cerebro::configuration_projects))
         .route("/cerebro_configuration_modules", post(handlers::cerebro::configuration_modules))
         .route(

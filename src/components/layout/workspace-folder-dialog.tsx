@@ -52,12 +52,18 @@ import {
   removeFolderLink,
   renameFolderLink,
   repairFolderLink,
+  saveCerebroFolderConfiguration,
 } from "@/lib/api"
 import { useImeGuard } from "@/hooks/use-ime-guard"
 import { isDesktop, openFileDialog } from "@/lib/platform"
 import { parentFsPath } from "@/lib/path-utils"
 import { getActiveRemoteConnectionId } from "@/lib/transport"
-import { toErrorMessage } from "@/lib/app-error"
+import { extractAppCommandError, toErrorMessage } from "@/lib/app-error"
+import {
+  useClientConfigurationDraft,
+  configurationErrorMessage,
+  sameConfiguration,
+} from "@/hooks/use-client-configuration-draft"
 import {
   basenameOf,
   linkNameKey,
@@ -124,14 +130,28 @@ export function WorkspaceFolderDialog({
   const [pending, setPending] = useState<PendingLink[]>([])
   const [skipped, setSkipped] = useState<FolderLinkPlan[]>([])
   const [previewing, setPreviewing] = useState(false)
-  const [creating, setCreating] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const submittingRef = useRef(false)
+  const [submitError, setSubmitError] = useState<{
+    kind: "links" | "server"
+    message: string
+    uncertain?: boolean
+  } | null>(null)
+  const [renames, setRenames] = useState<Record<number, string>>({})
+  const [removals, setRemovals] = useState<Set<number>>(new Set())
+  const [repairs, setRepairs] = useState<Set<number>>(new Set())
+  const [reconcileNeeded, setReconcileNeeded] = useState(false)
+  const rootFolderId = rootFolder?.id ?? null
+  const configuration = useClientConfigurationDraft(rootFolderId, open)
+  const close = (nextOpen: boolean) => {
+    if (!submittingRef.current) onOpenChange(nextOpen)
+  }
 
   const [links, setLinks] = useState<FolderLinkDetail[]>([])
   const [loadingLinks, setLoadingLinks] = useState(false)
   const [gitExclude, setGitExclude] = useState(true)
   const [renamingId, setRenamingId] = useState<number | null>(null)
   const [renameValue, setRenameValue] = useState("")
-  const [busyLinkId, setBusyLinkId] = useState<number | null>(null)
 
   const nativePickerAvailable =
     isDesktop() && getActiveRemoteConnectionId() === null
@@ -155,27 +175,35 @@ export function WorkspaceFolderDialog({
     setSkipped([])
     setLinks([])
     setRenamingId(null)
-    setBusyLinkId(null)
     setOpeningRoot(false)
-    setCreating(false)
+    setSubmitting(false)
+    setRenames({})
+    setRemovals(new Set())
+    setRepairs(new Set())
+    setSubmitError(null)
+    setReconcileNeeded(false)
     setPreviewing(false)
   }, [open, folder])
 
-  const refreshLinks = useCallback(async (folderId: number) => {
-    setLoadingLinks(true)
-    try {
-      setLinks(await listFolderLinks(folderId))
-    } catch (err) {
-      console.error("[WorkspaceFolderDialog] failed to list links:", err)
-    } finally {
-      setLoadingLinks(false)
-    }
-  }, [])
-
   useEffect(() => {
-    if (!open || !rootFolder) return
-    void refreshLinks(rootFolder.id)
-  }, [open, rootFolder, refreshLinks])
+    if (!open || rootFolderId === null) return
+    let active = true
+    setLoadingLinks(true)
+    listFolderLinks(rootFolderId)
+      .then((value) => {
+        if (active) setLinks(value)
+      })
+      .catch((error) => {
+        if (active)
+          setSubmitError({ kind: "links", message: toErrorMessage(error) })
+      })
+      .finally(() => {
+        if (active) setLoadingLinks(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [open, rootFolderId])
 
   // ── Step 1: workspace root ────────────────────────────────────────────────
 
@@ -185,6 +213,17 @@ export function WorkspaceFolderDialog({
       try {
         const detail = await openFolder(path)
         setRootFolder(detail)
+        if (detail.id !== rootFolder?.id) {
+          setPending([])
+          setSkipped([])
+          setLinks([])
+          setRenames({})
+          setRemovals(new Set())
+          setRepairs(new Set())
+          setSubmitError(null)
+          setReconcileNeeded(false)
+          setRenamingId(null)
+        }
         onFolderOpened?.(detail)
         setView("links")
       } catch (err) {
@@ -193,7 +232,7 @@ export function WorkspaceFolderDialog({
         setOpeningRoot(false)
       }
     },
-    [openFolder, onFolderOpened, t]
+    [openFolder, onFolderOpened, rootFolder?.id, t]
   )
 
   const handleConfirmRoot = useCallback(async () => {
@@ -286,8 +325,13 @@ export function WorkspaceFolderDialog({
 
   // Names already spoken for, so an inline edit can be validated before saving.
   const takenNames = useMemo(
-    () => new Set(links.map((l) => linkNameKey(l.name))),
-    [links]
+    () =>
+      new Set(
+        links
+          .filter((link) => !removals.has(link.id))
+          .map((link) => linkNameKey(renames[link.id] ?? link.name))
+      ),
+    [links, removals, renames]
   )
 
   const pendingIssues = useMemo(() => {
@@ -301,82 +345,201 @@ export function WorkspaceFolderDialog({
     return issues
   }, [pending, takenNames])
 
-  const handleCreate = useCallback(async () => {
-    if (!rootFolder || pending.length === 0 || pendingIssues.size > 0) return
-    setCreating(true)
-    try {
-      const created = await createFolderLinks(
-        rootFolder.id,
-        pending.map((item) => ({ path: item.targetPath, name: item.name })),
-        gitExclude
-      )
-      setPending([])
-      setSkipped([])
-      await refreshLinks(rootFolder.id)
-      if (created.length < pending.length) {
-        toast.warning(t("partiallyCreated", { count: created.length }))
-      }
-    } catch (err) {
-      toast.error(t("createFailed"), { description: toErrorMessage(err) })
-    } finally {
-      setCreating(false)
-    }
-  }, [rootFolder, pending, pendingIssues, gitExclude, refreshLinks, t])
-
-  // ── Existing link actions ─────────────────────────────────────────────────
-
   const renameIssue = useMemo(() => {
     if (renamingId === null) return null
-    const others = new Set(
-      links.filter((l) => l.id !== renamingId).map((l) => linkNameKey(l.name))
-    )
+    const others = new Set([
+      ...links
+        .filter((link) => link.id !== renamingId && !removals.has(link.id))
+        .map((link) => linkNameKey(renames[link.id] ?? link.name)),
+      ...pending.map((item) => linkNameKey(item.name)),
+    ])
     return validateLinkName(renameValue, others)
-  }, [renamingId, renameValue, links])
+  }, [renamingId, renameValue, links, renames, removals, pending])
 
-  const commitRename = useCallback(async () => {
+  const commitRename = () => {
     if (renamingId === null || renameIssue) return
-    const id = renamingId
-    setBusyLinkId(id)
-    try {
-      await renameFolderLink(id, renameValue.trim())
-      setRenamingId(null)
-      if (rootFolder) await refreshLinks(rootFolder.id)
-    } catch (err) {
-      toast.error(t("renameFailed"), { description: toErrorMessage(err) })
-    } finally {
-      setBusyLinkId(null)
+    const original = links.find((link) => link.id === renamingId)
+    setRenames((current) => {
+      const next = { ...current }
+      if (original?.name === renameValue.trim()) delete next[renamingId]
+      else next[renamingId] = renameValue.trim()
+      return next
+    })
+    setRenamingId(null)
+  }
+  const toggleRemoval = (id: number) =>
+    setRemovals((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const toggleRepair = (id: number) =>
+    setRepairs((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const localDirty =
+    pending.length > 0 ||
+    Object.keys(renames).length > 0 ||
+    removals.size > 0 ||
+    repairs.size > 0
+
+  async function submit(discardServer = false) {
+    if (
+      !rootFolder ||
+      submittingRef.current ||
+      pendingIssues.size ||
+      renamingId !== null
+    )
+      return
+    submittingRef.current = true
+    setSubmitting(true)
+    setSubmitError(null)
+    if (discardServer) configuration.discard()
+    let currentLinks = [...links]
+    const names = { ...renames }
+    const removed = new Set(removals)
+    const repaired = new Set(repairs)
+    let additions = [...pending]
+    const publish = () => {
+      setLinks([...currentLinks])
+      setRenames({ ...names })
+      setRemovals(new Set(removed))
+      setRepairs(new Set(repaired))
+      setPending([...additions])
     }
-  }, [renamingId, renameIssue, renameValue, rootFolder, refreshLinks, t])
-
-  const handleRemove = useCallback(
-    async (link: FolderLinkDetail) => {
-      setBusyLinkId(link.id)
-      try {
-        await removeFolderLink(link.id, true)
-        if (rootFolder) await refreshLinks(rootFolder.id)
-      } catch (err) {
-        toast.error(t("removeFailed"), { description: toErrorMessage(err) })
-      } finally {
-        setBusyLinkId(null)
+    // 失败后按真实链接事实收敛草稿，不自动重放可能已成功的写操作。
+    const reconcile = async () => {
+      currentLinks = await listFolderLinks(rootFolder.id)
+      for (const id of removed)
+        if (!currentLinks.some((link) => link.id === id)) {
+          removed.delete(id)
+          delete names[id]
+          repaired.delete(id)
+        }
+      for (const [id, name] of Object.entries(names))
+        if (
+          currentLinks.some(
+            (link) => link.id === Number(id) && link.name === name
+          )
+        )
+          delete names[Number(id)]
+      for (const id of repaired)
+        if (currentLinks.some((link) => link.id === id && link.status === "ok"))
+          repaired.delete(id)
+      if (additions.length) {
+        const plans = await previewFolderLinks(
+          rootFolder.id,
+          additions.map((item) => item.targetPath)
+        )
+        const existing = new Set(
+          plans
+            .filter((plan) => plan.rejection === "already_linked")
+            .map((plan) => normalizeFsPath(plan.targetPath))
+        )
+        additions = additions.filter(
+          (item) => !existing.has(normalizeFsPath(item.targetPath))
+        )
       }
-    },
-    [rootFolder, refreshLinks, t]
-  )
-
-  const handleRepair = useCallback(
-    async (link: FolderLinkDetail) => {
-      setBusyLinkId(link.id)
+      publish()
+      setReconcileNeeded(false)
+    }
+    try {
       try {
-        await repairFolderLink(link.id)
-        if (rootFolder) await refreshLinks(rootFolder.id)
-      } catch (err) {
-        toast.error(t("repairFailed"), { description: toErrorMessage(err) })
-      } finally {
-        setBusyLinkId(null)
+        if (reconcileNeeded) await reconcile()
+        for (const id of [...removed]) {
+          await removeFolderLink(id, true)
+          currentLinks = currentLinks.filter((link) => link.id !== id)
+          removed.delete(id)
+          delete names[id]
+          repaired.delete(id)
+          publish()
+        }
+        // 先处理目标名称已空出的改名；不引入临时名称或批量互换路径。
+        while (Object.keys(names).length) {
+          const next = Object.entries(names).find(
+            ([id, name]) =>
+              !currentLinks.some(
+                (link) =>
+                  link.id !== Number(id) &&
+                  linkNameKey(link.name) === linkNameKey(name)
+              )
+          )
+          if (!next) throw new Error(t("nameIssue.duplicate"))
+          const [key, name] = next
+          const id = Number(key)
+          const changed = await renameFolderLink(id, name)
+          currentLinks = currentLinks.map((link) =>
+            link.id === id ? changed : link
+          )
+          delete names[id]
+          publish()
+        }
+        for (const id of [...repaired]) {
+          const changed = await repairFolderLink(id)
+          currentLinks = currentLinks.map((link) =>
+            link.id === id ? changed : link
+          )
+          repaired.delete(id)
+          publish()
+        }
+        for (const item of [...additions]) {
+          const created = await createFolderLinks(
+            rootFolder.id,
+            [{ path: item.targetPath, name: item.name }],
+            gitExclude
+          )
+          if (!created.length)
+            throw new Error(
+              tConfiguration("linkNotCreated", { path: item.targetPath })
+            )
+          currentLinks.push(...created)
+          additions = additions.filter(
+            (candidate) => candidate.targetPath !== item.targetPath
+          )
+          publish()
+        }
+      } catch (error) {
+        setReconcileNeeded(true)
+        let message = toErrorMessage(error)
+        try {
+          await reconcile()
+        } catch (readError) {
+          message += `；${toErrorMessage(readError)}`
+        }
+        setSubmitError({ kind: "links", message })
+        return
       }
-    },
-    [rootFolder, refreshLinks, t]
-  )
+      if (
+        !discardServer &&
+        configuration.baseline &&
+        !sameConfiguration(configuration.baseline, configuration.input)
+      ) {
+        try {
+          const saved = await saveCerebroFolderConfiguration(
+            rootFolder.id,
+            configuration.input
+          )
+          configuration.accept(saved)
+        } catch (error) {
+          const parsed = extractAppCommandError(error)
+          setSubmitError({
+            kind: "server",
+            message: configurationErrorMessage(error),
+            uncertain: !parsed || parsed.code === "network_error",
+          })
+          return
+        }
+      }
+      onOpenChange(false)
+    } finally {
+      submittingRef.current = false
+      setSubmitting(false)
+    }
+  }
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -390,7 +553,7 @@ export function WorkspaceFolderDialog({
           : t("title")
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={close}>
       <DialogContent className="flex max-h-[85vh] flex-col sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
@@ -408,25 +571,42 @@ export function WorkspaceFolderDialog({
         {rootFolder && (view === "links" || view === "client-config") && (
           <Tabs
             value={view}
-            onValueChange={(value) =>
-              setView(value as "links" | "client-config")
-            }
+            onValueChange={(value) => {
+              if (!submitting) setView(value as "links" | "client-config")
+            }}
           >
             <TabsList className="w-full">
-              <TabsTrigger value="links" className="flex-1">
+              <TabsTrigger
+                disabled={submitting}
+                value="links"
+                className="flex-1"
+              >
                 {tConfiguration("folderLinks")}
               </TabsTrigger>
-              <TabsTrigger value="client-config" className="flex-1">
+              <TabsTrigger
+                disabled={submitting}
+                value="client-config"
+                className="flex-1"
+              >
                 {tConfiguration("title")}
               </TabsTrigger>
             </TabsList>
           </Tabs>
         )}
-        {view === "client-config" && rootFolder && (
-          <div className="min-h-0 overflow-y-auto">
+        {open && rootFolder && (
+          <div
+            hidden={view !== "client-config"}
+            className="min-h-0 overflow-y-auto"
+          >
             <ClientFolderConfiguration
               key={rootFolder.id}
-              folderId={rootFolder.id}
+              configuration={configuration.configuration}
+              input={configuration.input}
+              loading={configuration.loading}
+              busy={submitting}
+              error={configuration.error}
+              onChange={configuration.edit}
+              onRetry={configuration.retry}
             />
           </div>
         )}
@@ -453,7 +633,7 @@ export function WorkspaceFolderDialog({
               <Button
                 variant="outline"
                 type="button"
-                onClick={() => onOpenChange(false)}
+                onClick={() => close(false)}
               >
                 {tBrowser("cancel")}
               </Button>
@@ -526,7 +706,10 @@ export function WorkspaceFolderDialog({
 
         {view === "links" ? (
           <>
-            <div className="flex min-h-0 flex-col gap-3">
+            <fieldset
+              disabled={submitting}
+              className="flex min-h-0 flex-col gap-3 overflow-y-auto"
+            >
               <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2">
                 <FolderOpen className="size-4 shrink-0 text-muted-foreground" />
                 <span
@@ -562,20 +745,22 @@ export function WorkspaceFolderDialog({
                   {links.map((link) => (
                     <LinkRow
                       key={link.id}
-                      link={link}
-                      busy={busyLinkId === link.id}
+                      link={{ ...link, name: renames[link.id] ?? link.name }}
+                      busy={submitting}
+                      removed={removals.has(link.id)}
+                      repairPending={repairs.has(link.id)}
                       editing={renamingId === link.id}
                       renameValue={renameValue}
                       renameIssue={renameIssue}
                       onRenameChange={setRenameValue}
                       onStartRename={() => {
                         setRenamingId(link.id)
-                        setRenameValue(link.name)
+                        setRenameValue(renames[link.id] ?? link.name)
                       }}
                       onCancelRename={() => setRenamingId(null)}
                       onCommitRename={commitRename}
-                      onRemove={() => handleRemove(link)}
-                      onRepair={() => handleRepair(link)}
+                      onRemove={() => toggleRemoval(link.id)}
+                      onRepair={() => toggleRepair(link.id)}
                     />
                   ))}
 
@@ -652,40 +837,61 @@ export function WorkspaceFolderDialog({
                   </label>
                 ) : null}
               </div>
-            </div>
-
-            <DialogFooter>
-              {pending.length > 0 ? (
-                <>
-                  <Button
-                    variant="outline"
-                    type="button"
-                    onClick={() => {
-                      setPending([])
-                      setSkipped([])
-                    }}
-                  >
-                    {t("discardPending")}
-                  </Button>
-                  <Button
-                    type="button"
-                    onClick={handleCreate}
-                    disabled={creating || pendingIssues.size > 0}
-                  >
-                    {creating ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : null}
-                    {t("createCount", { count: pending.length })}
-                  </Button>
-                </>
-              ) : (
-                <Button type="button" onClick={() => onOpenChange(false)}>
-                  {t("done")}
-                </Button>
-              )}
-            </DialogFooter>
+            </fieldset>
           </>
         ) : null}
+        {rootFolder && (view === "links" || view === "client-config") && (
+          <div className="shrink-0 space-y-3">
+            {submitError && (
+              <div role="alert" className="space-y-1 text-sm text-destructive">
+                <p>{submitError.message}</p>
+                {submitError.kind === "server" && submitError.uncertain && (
+                  <p>{tConfiguration("saveUnconfirmed")}</p>
+                )}
+                <p>{tConfiguration("partialSaveNotice")}</p>
+              </div>
+            )}
+            <DialogFooter className="flex-wrap">
+              <Button
+                variant="outline"
+                disabled={submitting}
+                onClick={() => close(false)}
+              >
+                {tBrowser("cancel")}
+              </Button>
+              {submitError?.kind === "server" && (
+                <Button
+                  variant="outline"
+                  disabled={submitting}
+                  onClick={() => void submit(true)}
+                >
+                  {tConfiguration("discardServerAndFinish")}
+                </Button>
+              )}
+              <Button
+                disabled={
+                  submitting ||
+                  loadingLinks ||
+                  pendingIssues.size > 0 ||
+                  renamingId !== null ||
+                  (manageMode &&
+                    !localDirty &&
+                    !configuration.dirty &&
+                    !submitError)
+                }
+                onClick={() => void submit()}
+              >
+                {submitting && <Loader2 className="size-4 animate-spin" />}
+                {submitError &&
+                (localDirty || configuration.dirty || reconcileNeeded)
+                  ? tConfiguration("retry")
+                  : manageMode
+                    ? tConfiguration("save")
+                    : t("done")}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -751,6 +957,8 @@ function statusTone(status: FolderLinkStatus) {
 function LinkRow({
   link,
   busy,
+  removed,
+  repairPending,
   editing,
   renameValue,
   renameIssue,
@@ -763,6 +971,8 @@ function LinkRow({
 }: {
   link: FolderLinkDetail
   busy: boolean
+  removed: boolean
+  repairPending: boolean
   editing: boolean
   renameValue: string
   renameIssue: LinkNameIssue | null
@@ -775,9 +985,15 @@ function LinkRow({
 }) {
   const t = useTranslations("Folder.workspaceDialog")
   const ime = useImeGuard()
+  const tConfiguration = useTranslations("CerebroFolder")
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2">
+    <div
+      className={cn(
+        "flex items-center gap-2 px-3 py-2",
+        removed && "opacity-60"
+      )}
+    >
       <Link2
         className={cn("size-4 shrink-0", statusTone(link.status))}
         aria-hidden
@@ -807,7 +1023,7 @@ function LinkRow({
               type="button"
               onClick={onCommitRename}
               disabled={!!renameIssue || busy}
-              title={t("saveName")}
+              title={tConfiguration("applyName")}
             >
               <Check className="size-3.5" />
             </Button>
@@ -837,6 +1053,12 @@ function LinkRow({
             {link.targetPath}
           </div>
         )}
+        {removed && (
+          <p className="text-xs">{tConfiguration("removalPending")}</p>
+        )}
+        {repairPending && !removed && (
+          <p className="text-xs">{tConfiguration("repairPending")}</p>
+        )}
         {link.status !== "ok" ? (
           <div className={cn("mt-0.5 text-xs", statusTone(link.status))}>
             {t(`status.${link.status}`)}
@@ -849,7 +1071,8 @@ function LinkRow({
         // own, and Radix throws without one.
         <TooltipProvider delayDuration={200}>
           <div className="flex shrink-0 items-center gap-0.5">
-            {link.status === "missing" || link.status === "broken" ? (
+            {!removed &&
+            (link.status === "missing" || link.status === "broken") ? (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -859,7 +1082,9 @@ function LinkRow({
                     type="button"
                     onClick={onRepair}
                     disabled={busy}
-                    aria-label={t("repair")}
+                    aria-label={
+                      repairPending ? tConfiguration("undoRepair") : t("repair")
+                    }
                   >
                     <RefreshCw className="size-3.5" />
                   </Button>
@@ -875,7 +1100,7 @@ function LinkRow({
                   className="size-7"
                   type="button"
                   onClick={onStartRename}
-                  disabled={busy}
+                  disabled={busy || removed}
                   aria-label={t("rename")}
                 >
                   <Pencil className="size-3.5" />
@@ -892,7 +1117,9 @@ function LinkRow({
                   type="button"
                   onClick={onRemove}
                   disabled={busy}
-                  aria-label={t("unlink")}
+                  aria-label={
+                    removed ? tConfiguration("undoRemoval") : t("unlink")
+                  }
                 >
                   {busy ? (
                     <Loader2 className="size-3.5 animate-spin" />
