@@ -446,7 +446,10 @@ export function UpdateProvider({ children }: { children: React.ReactNode }) {
             })
           )
         }
-        console.error("[Update] check failed:", err)
+        // 离线或更新服务不可达是可恢复状态，页面已经通过 checkError 和
+        // 手动检查时的 toast 呈现；console.error 会让 Next.js 开发遮罩
+        // 覆盖整个客户端，反而阻断用户继续工作。
+        console.warn("[Update] check failed:", err)
       } finally {
         if (mountedRef.current) setChecking(false)
       }

@@ -721,6 +721,18 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `codex_initial_agent_mode` (commands/acp.rs) can no longer
             // promise to preserve one — see its doc comment.
             //
+            // 1.8.0–1.11.0 move the bundled Codex from ^0.152.0 to ^0.153.4.
+            // 0.153.4 is the first bundled release in this adapter line that
+            // accepts Codex's current nested context-management and multi-agent
+            // feature configuration; 0.152.x rejects those tables before
+            // `session/new` with "invalid type: map, expected a boolean".
+            // The later ACP additions remain capability-scoped: codeg does not
+            // advertise session forks, native subagent sessions, AIR async
+            // tasks, or recommended-value reports. Auth status is an extension
+            // notification and unknown extensions remain inert. AI title
+            // updates, MCP OAuth fixes, usage reporting, history pagination,
+            // and simplified model labels use surfaces codeg already accepts.
+            //
             // NOT adopted: native ACP subagent sessions (the draft subagent
             // RFD). The gate is bilateral — `clientCapabilities.subagents: {}`
             // or AIR `nativeSubagentSessions` — and codeg advertises neither,
@@ -744,8 +756,8 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // stays None), and there is still no `engines.node`, so the 20.0.0
             // floor is retained.
             distribution: AgentDistribution::Npx {
-                version: "1.7.0",
-                package: "@agentclientprotocol/codex-acp@1.7.0",
+                version: "1.11.0",
+                package: "@agentclientprotocol/codex-acp@1.11.0",
                 cmd: "codex-acp",
                 args: &[],
                 env: &[],
@@ -1616,8 +1628,8 @@ mod tests {
         );
         assert_npx_version(
             AgentType::Codex,
-            "1.7.0",
-            "@agentclientprotocol/codex-acp@1.7.0",
+            "1.11.0",
+            "@agentclientprotocol/codex-acp@1.11.0",
             Some("20.0.0"),
         );
         assert_npx_version(AgentType::Pi, "0.0.33", "pi-acp@0.0.33", Some("22.0.0"));
