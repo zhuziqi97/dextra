@@ -136,16 +136,16 @@ export function ClientFolderConfiguration({
       <SettingCard>
         <SettingRow title={t("project")}>
           <Select
-            value={projectId}
+            value={projectId || "NONE"}
             onValueChange={(value) => {
               setModules([])
               setModulesError(null)
-              setProjectId(value)
+              setProjectId(value === "NONE" ? "" : value)
             }}
             disabled={busy || !configuration}
           >
             <SelectTrigger className="w-full" aria-label={t("project")}>
-              <SelectValue placeholder={t("selectProject")} />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent
               position="popper"
@@ -155,6 +155,7 @@ export function ClientFolderConfiguration({
               avoidCollisions={false}
               className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
             >
+              <SelectItem value="NONE">{t("unbound")}</SelectItem>
               {projects.map((project) => (
                 <SelectItem key={project.id} value={project.id}>
                   {project.display_name || project.name}（{project.path}）
