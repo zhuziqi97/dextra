@@ -1,0 +1,451 @@
+.dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: min(880px, calc(100vw - 48px));
+  max-width: 880px;
+  max-height: calc(100dvh - 48px);
+  padding: 0;
+  overflow: hidden;
+  border-radius: 20px;
+}
+.header {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 24px 28px 22px;
+  border-bottom: 1px solid var(--border);
+}
+.headerIcon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--muted);
+}
+.title {
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+}
+.subtitle {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.browser {
+  display: grid;
+  grid-template-columns: 228px minmax(0, 1fr);
+  min-height: 210px;
+  height: 280px;
+  flex: 1 1 280px;
+  overflow: hidden;
+}
+.projects {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 12px 12px;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 45%, var(--background));
+}
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+.projects > .sectionLabel {
+  padding: 0 10px 12px;
+}
+.search {
+  position: relative;
+  margin: 0 4px 12px;
+}
+.search > svg {
+  position: absolute;
+  left: 10px;
+  top: 11px;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.search input {
+  height: 36px;
+  padding-left: 32px;
+  font-size: 12px;
+  border-radius: 8px;
+  background: var(--background);
+}
+.projectList {
+  min-height: 0;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.project {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  text-align: start;
+  width: 100%;
+  min-height: 60px;
+  flex: none;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  cursor: pointer;
+  transition:
+    background 0.12s,
+    border-color 0.12s;
+}
+.project:hover {
+  background: var(--muted);
+}
+.project[aria-pressed="true"] {
+  background: var(--background);
+  border-color: var(--border);
+  box-shadow: 0 1px 3px #00000005;
+}
+.project > svg {
+  color: var(--muted-foreground);
+  flex: none;
+}
+.project[aria-pressed="true"] > svg {
+  color: var(--foreground);
+}
+.projectCopy,
+.moduleCopy {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.projectCopy strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+.projectCopy > span,
+.moduleCopy > span {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.count {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 8px 4px 0;
+  font-size: 11px;
+  color: var(--muted-foreground);
+}
+.modules {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 20px 24px;
+}
+.moduleHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 18px;
+}
+.moduleHeader h3 {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.readHint {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+}
+.moduleList {
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.module {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+.module:hover {
+  background: color-mix(in srgb, var(--muted) 40%, transparent);
+}
+.module[data-selected="true"] {
+  border-color: color-mix(in srgb, var(--foreground) 35%, var(--border));
+  background: color-mix(in srgb, var(--muted) 55%, var(--background));
+}
+.moduleChoice {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+}
+.moduleChoice > button {
+  flex: none;
+}
+.moduleIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+.moduleCopy strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+.unselected {
+  font-size: 11px;
+  color: var(--muted-foreground);
+  flex: none;
+}
+.modulePermission {
+  flex: none;
+}
+.permissionSelect {
+  width: 94px;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 9px;
+  font-size: 11px;
+  border-radius: 7px;
+  background: var(--background);
+  box-shadow: none;
+}
+.selection {
+  padding: 17px 24px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 22%, var(--background));
+  flex: 0 0 auto;
+  min-height: 85px;
+  overflow: hidden;
+}
+.selectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.selectionScroll {
+  max-height: 155px;
+  overflow-y: auto;
+}
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.emptySelection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  padding: 5px 0;
+}
+.selectedGroup {
+  min-width: 0;
+}
+.groupTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+.groupTitle > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selectedGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+}
+.selectedItem {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--background);
+}
+.selectedName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.selectedCheck {
+  color: var(--muted-foreground);
+  flex: none;
+}
+.remove {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  cursor: pointer;
+  color: var(--muted-foreground);
+}
+.remove:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+.footer {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+}
+.footer > button {
+  min-width: 76px;
+  height: 34px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+.footerHint {
+  flex: 1;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.loading {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.moduleEmpty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.error {
+  padding: 8px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--destructive);
+  font-size: 12px;
+}
+.project:focus-visible,
+.remove:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (max-width: 650px) {
+  .dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+  .header {
+    padding: 20px;
+  }
+  .browser {
+    grid-template-columns: 170px minmax(0, 1fr);
+  }
+  .modules {
+    padding: 18px 12px;
+  }
+  .module {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+  }
+  .modulePermission {
+    margin-left: auto;
+  }
+  .moduleIcon,
+  .readHint,
+  .unselected {
+    display: none;
+  }
+  .selection,
+  .footer {
+    padding: 14px 18px;
+  }
+}
+.header,
+.footer,
+.selectionHeader {
+  flex-shrink: 0;
+}
+.selection {
+  display: flex;
+  flex-direction: column;
+}
+.selectionScroll {
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.projectCopy strong,
+.moduleCopy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-height: 600px) {
+  .browser {
+    min-height: 140px;
+  }
+}

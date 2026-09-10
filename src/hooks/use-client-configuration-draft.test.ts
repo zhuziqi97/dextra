@@ -19,10 +19,13 @@ const original = {
   target_id: "target",
   execution_module_id: null,
   mcp_enabled: false,
-  mcp_module_ids: [],
+  mcp_scope_modules: [],
+  mcp_capabilities: { gitnexus_enabled: false },
+  execution_project: null,
   binding_id: null,
   grant_id: null,
   credential_expires_at: null,
+  mcp_scope_details: [],
   module_labels: {},
 }
 beforeEach(() => {
@@ -66,15 +69,33 @@ it("keeps cached configuration on a failed read and discards back to the same ba
 
 it("starts a fresh baseline when switching folders instead of carrying the old draft", async () => {
   let loaded: (value: unknown) => void = () => {}
-  fixture.query.mockResolvedValueOnce({ configuration: original, error: null })
-    .mockImplementationOnce(() => new Promise((resolve) => { loaded = resolve }))
-  const { result, rerender } = renderHook(({ id }) => useClientConfigurationDraft(id, true), { initialProps: { id: 1 } })
+  fixture.query
+    .mockResolvedValueOnce({ configuration: original, error: null })
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          loaded = resolve
+        })
+    )
+  const { result, rerender } = renderHook(
+    ({ id }) => useClientConfigurationDraft(id, true),
+    { initialProps: { id: 1 } }
+  )
   await waitFor(() => expect(result.current.baseline).not.toBeNull())
   act(() => result.current.edit({ mcp_enabled: true }))
   rerender({ id: 2 })
   expect(result.current.baseline).toBeNull()
   expect(result.current.input.mcp_enabled).toBe(false)
-  await act(async () => { loaded({ configuration: { ...original, target_id: "second", execution_module_id: "module-b" }, error: null }) })
+  await act(async () => {
+    loaded({
+      configuration: {
+        ...original,
+        target_id: "second",
+        execution_module_id: "module-b",
+      },
+      error: null,
+    })
+  })
   expect(result.current.input.execution_module_id).toBe("module-b")
   expect(result.current.dirty).toBe(false)
 })

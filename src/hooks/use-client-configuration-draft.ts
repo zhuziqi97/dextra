@@ -11,7 +11,12 @@ export function configurationInput(
   return {
     execution_module_id: value?.execution_module_id ?? null,
     mcp_enabled: value?.mcp_enabled ?? false,
-    mcp_module_ids: [...new Set(value?.mcp_module_ids ?? [])],
+    mcp_scope_modules: (value?.mcp_scope_modules ?? []).map(
+      ({ module_id, permission }) => ({ module_id, permission })
+    ),
+    mcp_capabilities: {
+      gitnexus_enabled: value?.mcp_capabilities.gitnexus_enabled ?? false,
+    },
   }
 }
 
@@ -20,13 +25,19 @@ export function sameConfiguration(
   left: ConfigurationInput,
   right: ConfigurationInput
 ): boolean {
-  const modules = new Set(left.mcp_module_ids)
+  const modules = new Map(
+    left.mcp_scope_modules.map((item) => [item.module_id, item.permission])
+  )
   return (
     (left.execution_module_id ?? null) ===
       (right.execution_module_id ?? null) &&
     left.mcp_enabled === right.mcp_enabled &&
-    modules.size === new Set(right.mcp_module_ids).size &&
-    right.mcp_module_ids.every((id) => modules.has(id))
+    left.mcp_capabilities.gitnexus_enabled ===
+      right.mcp_capabilities.gitnexus_enabled &&
+    modules.size === right.mcp_scope_modules.length &&
+    right.mcp_scope_modules.every(
+      (item) => modules.get(item.module_id) === item.permission
+    )
   )
 }
 

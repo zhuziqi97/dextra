@@ -10,13 +10,37 @@ use super::{identity, target_projection};
 pub const CONFIGURATION_EVENT: &str = "cerebro://configuration-changed";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+pub enum MCPPermission { READ, WRITE }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+pub struct MCPScopeItem {
+    pub module_id: String,
+    pub permission: MCPPermission,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+pub struct MCPCapabilities { #[serde(default)] pub gitnexus_enabled: bool }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
+pub struct MCPScopeDetail {
+    pub module_id: String,
+    pub module_name: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub can_write: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 pub struct ClientConfiguration {
     pub runner_id: String,
     pub target_id: String,
     pub execution_module_id: Option<String>,
+    pub execution_project: Option<ProjectOption>,
     pub binding_id: Option<String>,
-    pub mcp_module_ids: Vec<String>,
+    pub mcp_scope_modules: Vec<MCPScopeItem>,
+    pub mcp_capabilities: MCPCapabilities,
     pub mcp_enabled: bool,
+    pub mcp_scope_details: Vec<MCPScopeDetail>,
     pub module_labels: std::collections::BTreeMap<String, String>,
     pub grant_id: Option<String>,
     pub credential_expires_at: Option<String>,
@@ -25,7 +49,8 @@ pub struct ClientConfiguration {
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
 pub struct ConfigurationInput {
     pub execution_module_id: Option<String>,
-    pub mcp_module_ids: Vec<String>,
+    pub mcp_scope_modules: Vec<MCPScopeItem>,
+    pub mcp_capabilities: MCPCapabilities,
     pub mcp_enabled: bool,
 }
 
@@ -81,7 +106,7 @@ pub async fn save(conn: &DatabaseConnection, emitter: &EventEmitter, folder_id: 
     let target_id = target_projection::target_id(&runner_id, folder_id);
     let configuration: ClientConfiguration = identity::RunnerIdentity::current()?.configuration_request("save", &serde_json::json!({
         "target_id": target_id, "execution_module_id": input.execution_module_id,
-        "mcp_module_ids": input.mcp_module_ids, "mcp_enabled": input.mcp_enabled,
+        "mcp_scope_modules": input.mcp_scope_modules, "mcp_capabilities": input.mcp_capabilities, "mcp_enabled": input.mcp_enabled,
     })).await?;
     // 服务端已提交；缓存写入故障不能把成功保存变成失败。
     if let Err(error) = cache(conn, &configuration).await { tracing::warn!("[cerebro] 保存配置缓存失败: {error}"); }
@@ -100,7 +125,7 @@ pub async fn refresh_and_emit(conn: &DatabaseConnection, emitter: &EventEmitter,
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 pub struct ProjectOption {
     pub id: String,
     pub name: String,
@@ -112,6 +137,7 @@ pub struct ProjectOption {
 pub struct ProjectPage {
     pub items: Vec<ProjectOption>,
     pub total: u32,
+    pub total_pages: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ts_rs::TS)]

@@ -461,6 +461,12 @@
             ],
             "title": "Execution Module Id"
           },
+          "execution_project": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/ClientExecutionProject" },
+              { "type": "null" }
+            ]
+          },
           "grant_id": {
             "anyOf": [
               { "format": "uuid", "type": "string" },
@@ -468,10 +474,18 @@
             ],
             "title": "Grant Id"
           },
+          "mcp_capabilities": {
+            "$ref": "#/components/schemas/TokenMCPCapabilities"
+          },
           "mcp_enabled": { "title": "Mcp Enabled", "type": "boolean" },
-          "mcp_module_ids": {
-            "items": { "format": "uuid", "type": "string" },
-            "title": "Mcp Module Ids",
+          "mcp_scope_details": {
+            "items": { "$ref": "#/components/schemas/ClientScopeModuleDetail" },
+            "title": "Mcp Scope Details",
+            "type": "array"
+          },
+          "mcp_scope_modules": {
+            "items": { "$ref": "#/components/schemas/TokenScopeItem" },
+            "title": "Mcp Scope Modules",
             "type": "array"
           },
           "module_labels": {
@@ -490,10 +504,13 @@
           "runner_id",
           "target_id",
           "execution_module_id",
+          "execution_project",
           "binding_id",
-          "mcp_module_ids",
+          "mcp_scope_modules",
+          "mcp_capabilities",
           "mcp_enabled",
           "module_labels",
+          "mcp_scope_details",
           "grant_id",
           "credential_expires_at"
         ],
@@ -511,11 +528,14 @@
             ],
             "title": "Execution Module Id"
           },
+          "mcp_capabilities": {
+            "$ref": "#/components/schemas/TokenMCPCapabilities"
+          },
           "mcp_enabled": { "title": "Mcp Enabled", "type": "boolean" },
-          "mcp_module_ids": {
-            "items": { "format": "uuid", "type": "string" },
+          "mcp_scope_modules": {
+            "items": { "$ref": "#/components/schemas/TokenScopeItem" },
             "maxItems": 100,
-            "title": "Mcp Module Ids",
+            "title": "Mcp Scope Modules",
             "type": "array"
           },
           "target_id": {
@@ -528,7 +548,8 @@
         "required": [
           "target_id",
           "execution_module_id",
-          "mcp_module_ids",
+          "mcp_scope_modules",
+          "mcp_capabilities",
           "mcp_enabled"
         ],
         "title": "ClientConfigurationSaveRequest",
@@ -560,6 +581,42 @@
         },
         "required": ["mcp_url", "access_token", "expires_at"],
         "title": "ClientCredentialResponse",
+        "type": "object"
+      },
+      "ClientExecutionProject": {
+        "additionalProperties": false,
+        "description": "执行模块所属项目的只读展示信息。",
+        "properties": {
+          "display_name": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Display Name"
+          },
+          "id": { "title": "Id", "type": "string" },
+          "name": { "title": "Name", "type": "string" },
+          "path": { "title": "Path", "type": "string" }
+        },
+        "required": ["id", "name", "display_name", "path"],
+        "title": "ClientExecutionProject",
+        "type": "object"
+      },
+      "ClientScopeModuleDetail": {
+        "additionalProperties": false,
+        "description": "已选模块的当前展示信息和可授予权限。",
+        "properties": {
+          "can_write": { "title": "Can Write", "type": "boolean" },
+          "module_id": { "title": "Module Id", "type": "string" },
+          "module_name": { "title": "Module Name", "type": "string" },
+          "project_id": { "title": "Project Id", "type": "string" },
+          "project_name": { "title": "Project Name", "type": "string" }
+        },
+        "required": [
+          "module_id",
+          "module_name",
+          "project_id",
+          "project_name",
+          "can_write"
+        ],
+        "title": "ClientScopeModuleDetail",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -1170,6 +1227,40 @@
         "title": "SuccessResponse[RunnerTokenResponse]",
         "type": "object"
       },
+      "TokenMCPCapabilities": {
+        "additionalProperties": false,
+        "description": "Token MCP 能力开关。",
+        "properties": {
+          "gitnexus_enabled": {
+            "default": false,
+            "description": "是否暴露 GitNexus 资源与工具",
+            "title": "Gitnexus Enabled",
+            "type": "boolean"
+          }
+        },
+        "title": "TokenMCPCapabilities",
+        "type": "object"
+      },
+      "TokenScopeItem": {
+        "additionalProperties": false,
+        "description": "Token 权限范围项",
+        "properties": {
+          "module_id": {
+            "description": "模块 ID",
+            "title": "Module Id",
+            "type": "string"
+          },
+          "permission": {
+            "description": "权限类型（READ/WRITE）",
+            "enum": ["READ", "WRITE"],
+            "title": "Permission",
+            "type": "string"
+          }
+        },
+        "required": ["module_id", "permission"],
+        "title": "TokenScopeItem",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": { "title": "Context", "type": "object" },
@@ -1259,9 +1350,27 @@
           "binding_id": "00000000-0000-4000-8000-000000000000",
           "credential_expires_at": "string",
           "execution_module_id": "00000000-0000-4000-8000-000000000000",
+          "execution_project": {
+            "display_name": "string",
+            "id": "string",
+            "name": "string",
+            "path": "string"
+          },
           "grant_id": "00000000-0000-4000-8000-000000000000",
+          "mcp_capabilities": {},
           "mcp_enabled": false,
-          "mcp_module_ids": ["00000000-0000-4000-8000-000000000000"],
+          "mcp_scope_details": [
+            {
+              "can_write": false,
+              "module_id": "string",
+              "module_name": "string",
+              "project_id": "string",
+              "project_name": "string"
+            }
+          ],
+          "mcp_scope_modules": [
+            { "module_id": "string", "permission": "READ" }
+          ],
           "module_labels": {},
           "runner_id": "00000000-0000-4000-8000-000000000000",
           "target_id": "string"
@@ -1272,8 +1381,9 @@
     "/api/v1/execution-runner-configurations/save": {
       "request": {
         "execution_module_id": "00000000-0000-4000-8000-000000000000",
+        "mcp_capabilities": {},
         "mcp_enabled": false,
-        "mcp_module_ids": ["00000000-0000-4000-8000-000000000000"],
+        "mcp_scope_modules": [{ "module_id": "string", "permission": "READ" }],
         "target_id": "string"
       },
       "response": {
@@ -1281,9 +1391,27 @@
           "binding_id": "00000000-0000-4000-8000-000000000000",
           "credential_expires_at": "string",
           "execution_module_id": "00000000-0000-4000-8000-000000000000",
+          "execution_project": {
+            "display_name": "string",
+            "id": "string",
+            "name": "string",
+            "path": "string"
+          },
           "grant_id": "00000000-0000-4000-8000-000000000000",
+          "mcp_capabilities": {},
           "mcp_enabled": false,
-          "mcp_module_ids": ["00000000-0000-4000-8000-000000000000"],
+          "mcp_scope_details": [
+            {
+              "can_write": false,
+              "module_id": "string",
+              "module_name": "string",
+              "project_id": "string",
+              "project_name": "string"
+            }
+          ],
+          "mcp_scope_modules": [
+            { "module_id": "string", "permission": "READ" }
+          ],
           "module_labels": {},
           "runner_id": "00000000-0000-4000-8000-000000000000",
           "target_id": "string"

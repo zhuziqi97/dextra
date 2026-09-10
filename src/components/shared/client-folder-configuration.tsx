@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
-import { Loader2, X } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import {
@@ -22,6 +22,11 @@ import type { ClientConfiguration } from "@/lib/generated/cerebro/ClientConfigur
 import type { ConfigurationInput } from "@/lib/generated/cerebro/ConfigurationInput"
 import type { ModuleOption } from "@/lib/generated/cerebro/ModuleOption"
 import type { ProjectOption } from "@/lib/generated/cerebro/ProjectOption"
+
+import { ClientMCPScope } from "./client-mcp-scope"
+
+const EMPTY_SCOPE_DETAILS: import("@/lib/generated/cerebro/MCPScopeDetail").MCPScopeDetail[] =
+  []
 
 interface Props {
   configuration: ClientConfiguration | null
@@ -44,7 +49,9 @@ export function ClientFolderConfiguration({
 }: Props) {
   const t = useTranslations("CerebroFolder")
   const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [projectId, setProjectId] = useState("")
+  const [projectId, setProjectId] = useState(
+    configuration?.execution_project?.id ?? ""
+  )
   const [modules, setModules] = useState<ModuleOption[]>([])
   const [optionLabels, setLabels] = useState<
     Record<string, string | undefined>
@@ -54,6 +61,26 @@ export function ClientFolderConfiguration({
   const error = projectsError ?? modulesError
   const labels = { ...configuration?.module_labels, ...optionLabels }
   const targetId = configuration?.target_id
+  const [bindingSource, setBindingSource] = useState({
+    targetId,
+    moduleId: configuration?.execution_module_id,
+  })
+  // 只在目录或已保存的执行绑定变化时恢复项目；普通刷新不打断当前筛选。
+  if (
+    bindingSource.targetId !== targetId ||
+    bindingSource.moduleId !== configuration?.execution_module_id
+  ) {
+    setBindingSource({ targetId, moduleId: configuration?.execution_module_id })
+    setProjectId(configuration?.execution_project?.id ?? "")
+    setModules([])
+    setModulesError(null)
+  }
+  const executionProject = configuration?.execution_project
+  const projectOptions =
+    executionProject &&
+    !projects.some((project) => project.id === executionProject.id)
+      ? [executionProject, ...projects]
+      : projects
   const [optionsRetry, setOptionsRetry] = useState(0)
   const retry = () => {
     setProjectsError(null)
@@ -134,7 +161,10 @@ export function ClientFolderConfiguration({
         <p className="text-sm text-muted-foreground">{t("localOnly")}</p>
       )}
       <SettingCard>
-        <SettingRow title={t("project")}>
+        <SettingRow
+          title={t("projectFilter")}
+          description={t("projectFilterHint")}
+        >
           <Select
             value={projectId || "NONE"}
             onValueChange={(value) => {
@@ -144,7 +174,7 @@ export function ClientFolderConfiguration({
             }}
             disabled={busy || !configuration}
           >
-            <SelectTrigger className="w-full" aria-label={t("project")}>
+            <SelectTrigger className="w-full" aria-label={t("projectFilter")}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent
@@ -155,8 +185,8 @@ export function ClientFolderConfiguration({
               avoidCollisions={false}
               className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
             >
-              <SelectItem value="NONE">{t("unbound")}</SelectItem>
-              {projects.map((project) => (
+              <SelectItem value="NONE">{t("noProjectFilter")}</SelectItem>
+              {projectOptions.map((project) => (
                 <SelectItem key={project.id} value={project.id}>
                   {project.display_name || project.name}（{project.path}）
                 </SelectItem>
@@ -222,51 +252,28 @@ export function ClientFolderConfiguration({
             </label>
           }
         >
-          <div className="max-h-36 space-y-2 overflow-y-auto">
-            {modules.map((module) => (
-              <label key={module.id} className="flex items-start gap-2 text-sm">
-                <Checkbox
-                  className="mt-0.5"
-                  checked={input.mcp_module_ids.includes(module.id)}
-                  disabled={busy || !configuration}
-                  onCheckedChange={(checked) =>
-                    edit({
-                      mcp_module_ids: checked
-                        ? [...input.mcp_module_ids, module.id]
-                        : input.mcp_module_ids.filter((id) => id !== module.id),
-                    })
-                  }
-                />
-                <span className="break-all">{labels[module.id]}</span>
-              </label>
-            ))}
-          </div>
-          {input.mcp_module_ids
-            .filter((id) => !modules.some((module) => module.id === id))
-            .map((id) => (
-              <div
-                key={id}
-                className="flex items-center justify-between gap-2 text-xs"
-              >
-                <span className="break-all">{labels[id] ?? id}</span>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="size-6 shrink-0"
-                  aria-label={t("removeModule")}
-                  onClick={() =>
-                    edit({
-                      mcp_module_ids: input.mcp_module_ids.filter(
-                        (value) => value !== id
-                      ),
-                    })
-                  }
-                >
-                  <X className="size-3" />
-                </Button>
-              </div>
-            ))}
+          <ClientMCPScope
+            selected={input.mcp_scope_modules}
+            details={configuration?.mcp_scope_details ?? EMPTY_SCOPE_DETAILS}
+            disabled={busy || !configuration}
+            onChange={(items) => edit({ mcp_scope_modules: items })}
+          />
         </SettingRow>
+        <SettingRow
+          title={t("codeGraph")}
+          control={
+            <Checkbox
+              aria-label={t("codeGraph")}
+              checked={input.mcp_capabilities.gitnexus_enabled}
+              disabled={busy || !configuration}
+              onCheckedChange={(checked) =>
+                edit({
+                  mcp_capabilities: { gitnexus_enabled: checked === true },
+                })
+              }
+            />
+          }
+        />
       </SettingCard>
     </div>
   )
