@@ -252,6 +252,7 @@ pub struct CreateConversationParams {
     pub folder_id: i32,
     pub agent_type: AgentType,
     pub title: Option<String>,
+    pub client_request_id: Option<String>,
 }
 
 pub async fn create_conversation(
@@ -259,13 +260,24 @@ pub async fn create_conversation(
     Json(params): Json<CreateConversationParams>,
 ) -> Result<Json<i32>, AppCommandError> {
     let db = &state.db;
-    let result = conv_commands::create_conversation_core(
-        &db.conn,
-        params.folder_id,
-        params.agent_type,
-        params.title,
-    )
-    .await?;
+    let result = if let Some(request_id) = params.client_request_id {
+        conv_commands::create_conversation_idempotent_core(
+            &db.conn,
+            params.folder_id,
+            params.agent_type,
+            params.title,
+            request_id,
+        )
+        .await?
+    } else {
+        conv_commands::create_conversation_core(
+            &db.conn,
+            params.folder_id,
+            params.agent_type,
+            params.title,
+        )
+        .await?
+    };
     conv_commands::emit_conversation_upsert(&state.emitter, &db.conn, result).await;
     Ok(Json(result))
 }

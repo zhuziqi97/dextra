@@ -1879,6 +1879,35 @@ pub async fn create_conversation_core(
     Ok(model.id)
 }
 
+/// 带调用方命令 ID 的创建入口；响应丢失后重试返回同一原生会话。
+pub async fn create_conversation_idempotent_core(
+    conn: &sea_orm::DatabaseConnection,
+    folder_id: i32,
+    agent_type: AgentType,
+    title: Option<String>,
+    request_id: String,
+) -> Result<i32, AppCommandError> {
+    let git_branch = if let Some(folder) = folder_service::get_folder_by_id(conn, folder_id)
+        .await
+        .map_err(AppCommandError::from)?
+    {
+        detect_git_branch(&folder.path).await
+    } else {
+        None
+    };
+    let model = conversation_service::create_idempotent(
+        conn,
+        folder_id,
+        agent_type,
+        title,
+        git_branch,
+        request_id,
+    )
+    .await
+    .map_err(AppCommandError::from)?;
+    Ok(model.id)
+}
+
 #[cfg(feature = "tauri-runtime")]
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
 pub async fn create_conversation(

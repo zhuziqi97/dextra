@@ -1,4 +1,5 @@
 mod m20260910_000002_refresh_execution_project_cache;
+mod m20260910_000003_conversation_creation_request;
 mod m20260910_000001_clear_folder_configuration_cache;
 use sea_orm_migration::prelude::*;
 
@@ -98,6 +99,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260908_000001_remove_conversation_module_selection::Migration),
             Box::new(m20260910_000001_clear_folder_configuration_cache::Migration),
             Box::new(m20260910_000002_refresh_execution_project_cache::Migration),
+            Box::new(m20260910_000003_conversation_creation_request::Migration),
         ]
     }
 }

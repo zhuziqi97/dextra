@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::OnceLock;
 
 use chrono::Utc;
 use sea_orm::{
@@ -24,8 +25,7 @@ pub async fn create(
         agent_type,
         title,
         git_branch,
-        None,
-        ConversationKind::Regular,
+        CreateOptions::regular(),
     )
     .await
 }
@@ -47,8 +47,10 @@ pub async fn create_chat(
         agent_type,
         title,
         git_branch,
-        None,
-        ConversationKind::Chat,
+        CreateOptions {
+            kind: ConversationKind::Chat,
+            ..CreateOptions::regular()
+        },
     )
     .await
 }
@@ -73,9 +75,34 @@ pub async fn create_with_delegation(
         ConversationKind::Regular
     };
     create_inner(
-        conn, folder_id, agent_type, title, git_branch, delegation, kind,
+        conn,
+        folder_id,
+        agent_type,
+        title,
+        git_branch,
+        CreateOptions {
+            delegation,
+            kind,
+            creation_request_id: None,
+        },
     )
     .await
+}
+
+struct CreateOptions {
+    delegation: Option<crate::acp::delegation::spawner::DelegationLink>,
+    kind: ConversationKind,
+    creation_request_id: Option<String>,
+}
+
+impl CreateOptions {
+    fn regular() -> Self {
+        Self {
+            delegation: None,
+            kind: ConversationKind::Regular,
+            creation_request_id: None,
+        }
+    }
 }
 
 async fn create_inner(
@@ -84,15 +111,14 @@ async fn create_inner(
     agent_type: AgentType,
     title: Option<String>,
     git_branch: Option<String>,
-    delegation: Option<crate::acp::delegation::spawner::DelegationLink>,
-    kind: ConversationKind,
+    options: CreateOptions,
 ) -> Result<conversation::Model, DbError> {
     let at_str = serde_json::to_value(agent_type)
         .ok()
         .and_then(|v| v.as_str().map(String::from))
         .unwrap_or_default();
     let now = Utc::now();
-    let (parent_id, parent_tool_use_id, delegation_call_id) = match delegation {
+    let (parent_id, parent_tool_use_id, delegation_call_id) = match options.delegation {
         Some(link) => (
             Some(link.parent_conversation_id),
             Some(link.parent_tool_use_id),
@@ -107,7 +133,7 @@ async fn create_inner(
         title_locked: Set(false),
         agent_type: Set(at_str),
         status: Set(conversation::ConversationStatus::InProgress),
-        kind: Set(kind),
+        kind: Set(options.kind),
         model: Set(None),
         git_branch: Set(git_branch),
         external_id: Set(None),
@@ -120,8 +146,55 @@ async fn create_inner(
         deleted_at: Set(None),
         pinned_at: Set(None),
         origin_cwd: Set(None),
+        creation_request_id: Set(options.creation_request_id),
     };
     Ok(model.insert(conn).await?)
+}
+
+pub async fn create_idempotent(
+    conn: &DatabaseConnection,
+    folder_id: i32,
+    agent_type: AgentType,
+    title: Option<String>,
+    git_branch: Option<String>,
+    request_id: String,
+) -> Result<conversation::Model, DbError> {
+    // 同一 Dextra 进程只有一个本地数据库；串行化首次查询与插入，避免并发重复创建。
+    static CREATE_LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
+    let request_id = request_id.trim().to_string();
+    if request_id.is_empty() || request_id.len() > 128 {
+        return Err(DbError::Migration("会话创建请求 ID 无效".to_string()));
+    }
+    let _guard = CREATE_LOCK
+        .get_or_init(|| tokio::sync::Mutex::new(()))
+        .lock()
+        .await;
+    if let Some(existing) = conversation::Entity::find()
+        .filter(conversation::Column::CreationRequestId.eq(&request_id))
+        .one(conn)
+        .await?
+    {
+        let expected_agent = agent_type.as_wire();
+        if existing.folder_id != folder_id || existing.agent_type != expected_agent {
+            return Err(DbError::Migration(
+                "会话创建请求 ID 已用于另一目录或 Agent".to_string(),
+            ));
+        }
+        return Ok(existing);
+    }
+    create_inner(
+        conn,
+        folder_id,
+        agent_type,
+        title,
+        git_branch,
+        CreateOptions {
+            delegation: None,
+            kind: ConversationKind::Regular,
+            creation_request_id: Some(request_id),
+        },
+    )
+    .await
 }
 
 pub async fn update_status(
@@ -968,6 +1041,7 @@ impl CarriedOverRow {
             // not to the history.
             pinned_at: Set(None),
             origin_cwd: Set(self.origin_cwd),
+            creation_request_id: Set(None),
         }
     }
 }
@@ -1714,6 +1788,45 @@ mod tests {
         let summary = get_by_id(&db.conn, row.id).await.expect("get");
         assert_eq!(summary.title.as_deref(), Some("My name"));
         assert!(summary.title_locked, "manual rename must lock the title");
+    }
+
+    #[tokio::test]
+    async fn idempotent_create_returns_same_row_and_rejects_other_target() {
+        let db = fresh_in_memory_db().await;
+        let folder = seed_folder(&db, "/tmp/codeg-idempotent-create").await;
+        let request_id = "convene-session-1".to_string();
+        let first = create_idempotent(
+            &db.conn,
+            folder,
+            AgentType::Codex,
+            None,
+            None,
+            request_id.clone(),
+        )
+        .await
+        .expect("first create");
+        let repeated = create_idempotent(
+            &db.conn,
+            folder,
+            AgentType::Codex,
+            None,
+            None,
+            request_id.clone(),
+        )
+        .await
+        .expect("repeat create");
+        assert_eq!(first.id, repeated.id);
+        let conflict = create_idempotent(
+            &db.conn,
+            folder,
+            AgentType::OpenCode,
+            None,
+            None,
+            request_id,
+        )
+        .await
+        .expect_err("same request cannot change agent");
+        assert!(conflict.to_string().contains("另一目录或 Agent"));
     }
 
     /// Read a row straight from the table — `get_by_id` returns a summary and
