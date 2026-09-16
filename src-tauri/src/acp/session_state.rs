@@ -488,9 +488,7 @@ pub struct SessionState {
     /// `TurnComplete`. The detail endpoint uses it to tell the in-flight prompt
     /// — persisted at/after this instant by the agent CLI, a local subprocess
     /// sharing this machine's clock — apart from a prior identical prompt
-    /// persisted during an earlier turn (see `apply_in_flight_message_id`). Not
-    /// serialized: backend-internal, like `turn_in_flight`. `None` outside an
-    /// active turn.
+    /// persisted during an earlier turn (see `apply_in_flight_message_id`). 不序列化，仅供后端使用；活动轮次之外为空。
     pub pending_user_message_started_at: Option<DateTime<Utc>>,
 
     /// True between a prompt being accepted (enqueued to the connection loop)
@@ -500,8 +498,8 @@ pub struct SessionState {
     /// `AcpError::TurnInProgress` while this is set — otherwise the second
     /// `Prompt` would queue behind the active turn and be silently dropped by
     /// the loop's in-turn command handler (`_ => {}`), with the caller still
-    /// seeing success. Not serialized: it is a connection-loop liveness flag,
-    /// not part of the client-visible snapshot.
+    /// seeing success.
+    /// 同时投影到 snapshot，供调用方判断已接受的轮次是否真正结束。
     pub turn_in_flight: bool,
 
     /// Whether the most recently completed turn ended via a stop reason other
@@ -515,7 +513,7 @@ pub struct SessionState {
     /// held sub-agent's real completion), so `current_turn_launched_ids`
     /// must release immediately instead of waiting for the next turn — that
     /// content has nowhere else to render. Not serialized: backend-internal,
-    /// like `turn_in_flight`.
+    /// 仅供后端使用。
     pub last_turn_ended_abnormally: bool,
 
     /// True when the agent's effective settings changed after this connection
@@ -1604,6 +1602,7 @@ impl SessionState {
             conversation_id: self.conversation_id,
             folder_id: self.folder_id,
             status: self.status.clone(),
+            turn_in_flight: self.turn_in_flight,
             external_id: self.external_id.clone(),
             live_message: self.live_message.clone(),
             last_assistant_text: self.last_assistant_text.clone(),
@@ -1655,6 +1654,8 @@ pub(crate) fn background_keepalive_max_age() -> chrono::Duration {
 /// `to_snapshot()` 的输出——前端可消费的 wire shape。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LiveSessionSnapshot {
+    /// 已接受且尚未结束的原生轮次，包含命令排队和连接初始化阶段。
+    pub turn_in_flight: bool,
     pub connection_id: String,
     pub conversation_id: Option<i32>,
     pub folder_id: Option<i32>,
@@ -1867,6 +1868,21 @@ mod tests {
             "win-test".to_string(),
             None,
         )
+    }
+
+    #[test]
+    fn snapshot_reports_accepted_turn_before_pending_message_exists() {
+        let mut state = fresh_state();
+        state.turn_in_flight = true;
+        let snapshot = state.to_snapshot();
+        assert!(snapshot.turn_in_flight);
+        assert!(snapshot.pending_user_message.is_none());
+        state.apply_event(&AcpEvent::TurnComplete {
+            session_id: "sid".into(),
+            stop_reason: "end_turn".into(),
+            agent_type: "codex".into(),
+        });
+        assert!(!state.to_snapshot().turn_in_flight);
     }
 
     /// `ConversationLinked` must forget the live-title skip-cache.
