@@ -264,13 +264,26 @@ export function ClientFolderConfiguration({
           control={
             <Checkbox
               aria-label={t("codeGraph")}
-              checked={input.mcp_capabilities.gitnexus_enabled}
+              checked={input.mcp_capabilities.code_graph_enabled}
               disabled={busy || !configuration}
               onCheckedChange={(checked) =>
                 edit({
-                  mcp_capabilities: { gitnexus_enabled: checked === true },
+                  mcp_capabilities: { ...input.mcp_capabilities, code_graph_enabled: checked === true },
                 })
               }
+            />
+          }
+        />
+        <SettingRow
+          title="Forge"
+          control={
+            <Checkbox
+              aria-label="Forge"
+              checked={input.mcp_capabilities.forge_enabled}
+              disabled={busy || !configuration}
+              onCheckedChange={(checked) => edit({
+                mcp_capabilities: { ...input.mcp_capabilities, forge_enabled: checked === true },
+              })}
             />
           }
         />

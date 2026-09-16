@@ -20,7 +20,7 @@ const original = {
   execution_module_id: null,
   mcp_enabled: false,
   mcp_scope_modules: [],
-  mcp_capabilities: { gitnexus_enabled: false },
+  mcp_capabilities: { code_graph_enabled: false, forge_enabled: false },
   execution_project: null,
   binding_id: null,
   grant_id: null,

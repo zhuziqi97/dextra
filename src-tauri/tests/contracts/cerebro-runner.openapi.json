@@ -3,7 +3,7 @@
   "info": {
     "description": "Collaborative Vibe MCP Platform API",
     "title": "convene",
-    "version": "5.9.1"
+    "version": "5.11.2"
   },
   "paths": {
     "/api/v1/execution-runner-configurations/credential": {
@@ -475,7 +475,7 @@
             "title": "Grant Id"
           },
           "mcp_capabilities": {
-            "$ref": "#/components/schemas/TokenMCPCapabilities"
+            "$ref": "#/components/schemas/TokenMCPCapabilitiesResponse"
           },
           "mcp_enabled": { "title": "Mcp Enabled", "type": "boolean" },
           "mcp_scope_details": {
@@ -529,7 +529,7 @@
             "title": "Execution Module Id"
           },
           "mcp_capabilities": {
-            "$ref": "#/components/schemas/TokenMCPCapabilities"
+            "$ref": "#/components/schemas/TokenMCPCapabilitiesResponse"
           },
           "mcp_enabled": { "title": "Mcp Enabled", "type": "boolean" },
           "mcp_scope_modules": {
@@ -1227,18 +1227,24 @@
         "title": "SuccessResponse[RunnerTokenResponse]",
         "type": "object"
       },
-      "TokenMCPCapabilities": {
+      "TokenMCPCapabilitiesResponse": {
         "additionalProperties": false,
-        "description": "Token MCP 能力开关。",
+        "description": "Token 已持久化的确定能力状态。",
         "properties": {
-          "gitnexus_enabled": {
+          "code_graph_enabled": {
             "default": false,
-            "description": "是否暴露 GitNexus 资源与工具",
-            "title": "Gitnexus Enabled",
+            "description": "是否暴露代码图谱资源与工具",
+            "title": "Code Graph Enabled",
+            "type": "boolean"
+          },
+          "forge_enabled": {
+            "default": false,
+            "description": "是否暴露代码仓库只读工具",
+            "title": "Forge Enabled",
             "type": "boolean"
           }
         },
-        "title": "TokenMCPCapabilities",
+        "title": "TokenMCPCapabilitiesResponse",
         "type": "object"
       },
       "TokenScopeItem": {

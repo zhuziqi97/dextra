@@ -681,7 +681,7 @@ const configuration = {
   execution_project: null,
   binding_id: null,
   mcp_scope_modules: [],
-  mcp_capabilities: { gitnexus_enabled: false },
+  mcp_capabilities: { code_graph_enabled: false, forge_enabled: false },
   mcp_enabled: false,
   mcp_scope_details: [],
   module_labels: {},

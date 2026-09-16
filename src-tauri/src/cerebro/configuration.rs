@@ -19,7 +19,13 @@ pub struct MCPScopeItem {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
-pub struct MCPCapabilities { #[serde(default)] pub gitnexus_enabled: bool }
+pub struct MCPCapabilities {
+    // 公共 schema 规定省略新能力开关时为 false。
+    #[serde(default)]
+    pub code_graph_enabled: bool,
+    #[serde(default)]
+    pub forge_enabled: bool,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 pub struct MCPScopeDetail {

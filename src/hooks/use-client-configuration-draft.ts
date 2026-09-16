@@ -15,7 +15,8 @@ export function configurationInput(
       ({ module_id, permission }) => ({ module_id, permission })
     ),
     mcp_capabilities: {
-      gitnexus_enabled: value?.mcp_capabilities.gitnexus_enabled ?? false,
+      code_graph_enabled: value?.mcp_capabilities.code_graph_enabled ?? false,
+      forge_enabled: value?.mcp_capabilities.forge_enabled ?? false,
     },
   }
 }
@@ -32,8 +33,9 @@ export function sameConfiguration(
     (left.execution_module_id ?? null) ===
       (right.execution_module_id ?? null) &&
     left.mcp_enabled === right.mcp_enabled &&
-    left.mcp_capabilities.gitnexus_enabled ===
-      right.mcp_capabilities.gitnexus_enabled &&
+    left.mcp_capabilities.forge_enabled === right.mcp_capabilities.forge_enabled &&
+    left.mcp_capabilities.code_graph_enabled ===
+      right.mcp_capabilities.code_graph_enabled &&
     modules.size === right.mcp_scope_modules.length &&
     right.mcp_scope_modules.every(
       (item) => modules.get(item.module_id) === item.permission
