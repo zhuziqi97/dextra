@@ -76,10 +76,18 @@ pub struct WorkTaskInfo {
     /// Source snapshot (URL, title, account id …), parsed from the row's JSON.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_meta: Option<serde_json::Value>,
-    /// Latest `agent_progress` milestone (filled by `list` for live tasks only
-    /// — the card's realtime progress line).
+    /// Latest `agent_progress` milestone OF THIS GENERATION (filled by `list`
+    /// for live tasks only — the card's realtime progress line). Scoped by
+    /// `run_seq`: a retry, a follow-up and a merge each start a new one, and
+    /// the previous round's last milestone is not this round's news.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_progress: Option<String>,
+    /// This generation is parked on its pre-prompt context compaction — the
+    /// agent is working, but on shrinking the session rather than on the task.
+    /// Filled by `list` alongside `latest_progress`, and the only thing that
+    /// explains a card sitting in `preparing`/`merging` for minutes.
+    #[serde(default)]
+    pub compacting: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub started_at: Option<DateTime<Utc>>,
@@ -174,6 +182,18 @@ pub struct WorkTaskConfig {
     /// config written by a newer build must still launch here.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deliverable: Option<String>,
+    /// The branch this task is FOR: its worktree branches from that branch's
+    /// tip, and the merge lands back onto it. `None` — every task created
+    /// before this existed included — keeps the original behaviour: whatever
+    /// the project folder is checked out on when the task is claimed. A
+    /// pull-request task ignores it; its base comes from the pull request.
+    ///
+    /// Only the request lives here. The branch actually used is recorded on
+    /// `work_task.base_branch` when the worktree is created, and everything
+    /// downstream (merge, delivery, diff baseline) reads that column — so
+    /// editing this afterwards cannot re-base a task that already ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_branch: Option<String>,
 }
 
 /// The one recognized [`WorkTaskConfig::deliverable`] value.
@@ -231,6 +251,21 @@ pub struct WorkTaskFolderSettings {
     /// starts (deps install, env seeding). Not re-run on reused worktrees.
     #[serde(default)]
     pub init_command: Option<String>,
+    /// Context-window occupancy (percent, 0–100) at or above which a launch
+    /// that RESUMES the task's session compacts before it prompts: the engine
+    /// sends [`Self::compact_command`], waits for that turn to finish, and only
+    /// then sends the round's own message. `0` (the default) disables the whole
+    /// check — nothing is measured and no extra turn is ever sent.
+    ///
+    /// Only resumed launches (retry / follow-up / merge) are eligible: a fresh
+    /// session starts empty, so there is nothing to compact.
+    #[serde(default)]
+    pub auto_compact_percent: i32,
+    /// The command sent to compact, verbatim (e.g. `/compact`). Blank/`None`
+    /// resolves per agent — see `work_task::compact::resolve_compact_command`
+    /// — which is why this is an override rather than a required setting.
+    #[serde(default)]
+    pub compact_command: Option<String>,
     /// User-authored instructions appended *after* the built-in prompt of a
     /// launch stage — project conventions or personal preferences the standard
     /// wording can't cover. Keys are the stage identifiers the engine already
@@ -257,6 +292,8 @@ impl Default for WorkTaskFolderSettings {
             preflight_command_id: None,
             preflight_command: None,
             init_command: None,
+            auto_compact_percent: 0,
+            compact_command: None,
             stage_prompts: Default::default(),
         }
     }

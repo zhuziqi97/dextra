@@ -82,7 +82,9 @@ export function isRemoteDesktopMode(): boolean {
 /// the local origin only as a harmless fallback.
 export function getServerBaseUrl(): string {
   if (_remoteConfig) return _remoteConfig.baseUrl.replace(/\/+$/, "")
-  return typeof window !== "undefined" ? window.location.origin + getWebMountPath() : ""
+  return typeof window !== "undefined"
+    ? window.location.origin + getWebMountPath()
+    : ""
 }
 
 /// Surface a remote-server 401 to the same UI the transport uses for its

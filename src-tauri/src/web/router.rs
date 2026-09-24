@@ -66,6 +66,18 @@ pub fn build_router(
             post(handlers::delegation::set_delegation_settings),
         )
         .route(
+            "/get_codeg_mcp_service_status",
+            post(handlers::mcp_service::get_codeg_mcp_service_status),
+        )
+        .route(
+            "/start_codeg_mcp_service",
+            post(handlers::mcp_service::start_codeg_mcp_service),
+        )
+        .route(
+            "/set_codeg_mcp_tool_group",
+            post(handlers::mcp_service::set_codeg_mcp_tool_group),
+        )
+        .route(
             "/get_feedback_settings",
             post(handlers::feedback::get_feedback_settings),
         )
@@ -92,6 +104,14 @@ pub fn build_router(
         .route(
             "/set_session_info_settings",
             post(handlers::session_info::set_session_info_settings),
+        )
+        .route(
+            "/get_browser_tools_settings",
+            post(handlers::browser_tools::get_browser_tools_settings),
+        )
+        .route(
+            "/set_browser_tools_settings",
+            post(handlers::browser_tools::set_browser_tools_settings),
         )
         .route(
             "/get_chat_authoring_settings",
@@ -203,7 +223,30 @@ pub fn build_router(
             "/remove_folder_from_workspace",
             post(handlers::folders::remove_folder_from_workspace),
         )
-        .route("/reorder_folders", post(handlers::folders::reorder_folders))
+        .route(
+            "/list_folder_groups",
+            post(handlers::folders::list_folder_groups),
+        )
+        .route(
+            "/create_folder_group",
+            post(handlers::folders::create_folder_group),
+        )
+        .route(
+            "/update_folder_group",
+            post(handlers::folders::update_folder_group),
+        )
+        .route(
+            "/delete_folder_group",
+            post(handlers::folders::delete_folder_group),
+        )
+        .route(
+            "/apply_sidebar_layout",
+            post(handlers::folders::apply_sidebar_layout),
+        )
+        .route(
+            "/set_folder_group",
+            post(handlers::folders::set_folder_group),
+        )
         .route(
             "/update_folder_color",
             post(handlers::folders::update_folder_color),
@@ -239,6 +282,39 @@ pub fn build_router(
         .route(
             "/remove_folder_link",
             post(handlers::folder_links::remove_folder_link),
+        )
+        // ─── Canvas ───
+        .route(
+            "/canvas_list_nodes",
+            post(handlers::canvas::canvas_list_nodes),
+        )
+        .route(
+            "/canvas_create_node",
+            post(handlers::canvas::canvas_create_node),
+        )
+        .route(
+            "/canvas_group_into_region",
+            post(handlers::canvas::canvas_group_into_region),
+        )
+        .route(
+            "/canvas_update_node",
+            post(handlers::canvas::canvas_update_node),
+        )
+        .route(
+            "/canvas_move_nodes",
+            post(handlers::canvas::canvas_move_nodes),
+        )
+        .route(
+            "/canvas_detach_member",
+            post(handlers::canvas::canvas_detach_member),
+        )
+        .route(
+            "/canvas_delete_node",
+            post(handlers::canvas::canvas_delete_node),
+        )
+        .route(
+            "/canvas_delete_nodes",
+            post(handlers::canvas::canvas_delete_nodes),
         )
         .route(
             "/add_folder_to_history",
@@ -328,6 +404,10 @@ pub fn build_router(
             post(handlers::git::git_commit_branches),
         )
         .route("/git_show_file", post(handlers::git::git_show_file))
+        .route(
+            "/git_show_file_base64",
+            post(handlers::git::git_show_file_base64),
+        )
         .route("/git_diff", post(handlers::git::git_diff))
         .route(
             "/git_diff_with_branch",
@@ -487,7 +567,14 @@ pub fn build_router(
             "/backup_upload",
             post(handlers::backup::backup_upload).layer(DefaultBodyLimit::disable()),
         )
-        .route("/backup_inspect", post(handlers::backup::backup_inspect))
+        .route(
+            "/backup_prepare_source",
+            post(handlers::backup::backup_prepare_source),
+        )
+        .route(
+            "/backup_release_source",
+            post(handlers::backup::backup_release_source),
+        )
         .route(
             "/backup_scan_external_conflicts",
             post(handlers::backup::backup_scan_external_conflicts),
@@ -497,6 +584,73 @@ pub fn build_router(
             post(handlers::backup::backup_restore_stage),
         )
         .route("/backup_cancel", post(handlers::backup::backup_cancel))
+        .route(
+            "/backup_list_safety_snapshots",
+            post(handlers::backup::backup_list_safety_snapshots),
+        )
+        .route("/backup_rollback", post(handlers::backup::backup_rollback))
+        .route(
+            "/backup_active_agents",
+            post(handlers::backup::backup_active_agents),
+        )
+        .route(
+            "/backup_discard_pending",
+            post(handlers::backup::backup_discard_pending),
+        )
+        // ─── Configuration sync ───
+        //
+        // The WebDAV half is runtime-agnostic. Local file transfer is the
+        // by-content pair: a browser has no path to name, and the payload is
+        // tens of KB, so it travels in the JSON body rather than through the
+        // upload-staging machinery above.
+        .route(
+            "/config_sync_get_settings",
+            post(handlers::config_sync::config_sync_get_settings),
+        )
+        .route(
+            "/config_sync_update_settings",
+            post(handlers::config_sync::config_sync_update_settings),
+        )
+        .route(
+            "/config_sync_get_state",
+            post(handlers::config_sync::config_sync_get_state),
+        )
+        .route(
+            "/config_sync_test_connection",
+            post(handlers::config_sync::config_sync_test_connection),
+        )
+        .route(
+            "/config_sync_upload_now",
+            post(handlers::config_sync::config_sync_upload_now),
+        )
+        .route(
+            "/config_sync_peek_remote",
+            post(handlers::config_sync::config_sync_peek_remote),
+        )
+        .route(
+            "/config_sync_download_apply",
+            post(handlers::config_sync::config_sync_download_apply),
+        )
+        .route(
+            "/config_sync_export_content",
+            post(handlers::config_sync::config_sync_export_content),
+        )
+        .route(
+            "/config_sync_peek_content",
+            post(handlers::config_sync::config_sync_peek_content),
+        )
+        .route(
+            "/config_sync_import_content",
+            post(handlers::config_sync::config_sync_import_content),
+        )
+        .route(
+            "/config_sync_list_rollbacks",
+            post(handlers::config_sync::config_sync_list_rollbacks),
+        )
+        .route(
+            "/config_sync_apply_rollback",
+            post(handlers::config_sync::config_sync_apply_rollback),
+        )
         .route(
             "/download_workspace_file",
             post(handlers::workspace_files::download_workspace_file),
@@ -586,6 +740,10 @@ pub fn build_router(
         .route(
             "/validate_gitlab_token",
             post(handlers::version_control::validate_gitlab_token),
+        )
+        .route(
+            "/validate_gitea_token",
+            post(handlers::version_control::validate_gitea_token),
         )
         .route(
             "/save_account_token",
@@ -707,6 +865,10 @@ pub fn build_router(
         .route("/acp_cancel", post(handlers::acp::acp_cancel))
         .route("/acp_fork", post(handlers::acp::acp_fork))
         .route(
+            "/acp_stop_async_task",
+            post(handlers::acp::acp_stop_async_task),
+        )
+        .route(
             "/acp_respond_permission",
             post(handlers::acp::acp_respond_permission),
         )
@@ -737,6 +899,14 @@ pub fn build_router(
         .route(
             "/acp_clear_binary_cache",
             post(handlers::acp::acp_clear_binary_cache),
+        )
+        .route(
+            "/acp_scan_leaked_temp",
+            post(handlers::acp::acp_scan_leaked_temp),
+        )
+        .route(
+            "/acp_reclaim_leaked_temp",
+            post(handlers::acp::acp_reclaim_leaked_temp),
         )
         .route(
             "/acp_update_agent_preferences",
@@ -783,6 +953,14 @@ pub fn build_router(
             post(handlers::acp::acp_load_pi_config),
         )
         .route(
+            "/acp_load_deepseek_model_catalog",
+            post(handlers::acp::acp_load_deepseek_model_catalog),
+        )
+        .route(
+            "/acp_update_deepseek_model_catalog",
+            post(handlers::acp::acp_update_deepseek_model_catalog),
+        )
+        .route(
             "/acp_validate_pi_command",
             post(handlers::acp::acp_validate_pi_command),
         )
@@ -801,6 +979,10 @@ pub fn build_router(
         .route(
             "/acp_antigravity_login_cancel",
             post(handlers::acp::acp_antigravity_login_cancel),
+        )
+        .route(
+            "/acp_antigravity_sign_out",
+            post(handlers::acp::acp_antigravity_sign_out),
         )
         .route(
             "/acp_pi_project_trust_state",
@@ -1017,6 +1199,19 @@ pub fn build_router(
             post(handlers::custom_skills::custom_delete_skills),
         )
         // ─── Office tools ───
+        // ─── Web-mode port bridge (dev servers on the host, shown in an iframe) ───
+        .route(
+            "/browser_bridge_status",
+            post(handlers::browser_bridge::browser_bridge_status),
+        )
+        .route(
+            "/browser_bridge_open",
+            post(handlers::browser_bridge::browser_bridge_open),
+        )
+        .route(
+            "/browser_bridge_close",
+            post(handlers::browser_bridge::browser_bridge_close),
+        )
         .route(
             "/officecli_detect",
             post(handlers::office_tools::officecli_detect),
@@ -1523,6 +1718,18 @@ pub fn build_router(
             "/background_clear",
             post(handlers::background::background_clear),
         )
+        .route(
+            "/background_market_search",
+            post(handlers::background::background_market_search),
+        )
+        .route(
+            "/background_market_asset",
+            post(handlers::background::background_market_asset),
+        )
+        .route(
+            "/background_market_download",
+            post(handlers::background::background_market_download),
+        )
         // ─── Pet ───
         .route("/pet_list", post(handlers::pet::pet_list))
         .route("/pet_get", post(handlers::pet::pet_get))
@@ -1579,6 +1786,10 @@ pub fn build_router(
         .route(
             "/terminal_resize",
             post(handlers::terminal::terminal_resize),
+        )
+        .route(
+            "/terminal_snapshot",
+            post(handlers::terminal::terminal_snapshot),
         )
         .route("/terminal_kill", post(handlers::terminal::terminal_kill))
         .route("/terminal_list", post(handlers::terminal::terminal_list))
@@ -1695,11 +1906,20 @@ pub fn build_router(
         .layer(cors)
         .layer(Extension(state))
         .layer(Extension(shutdown_signal))
-        // Outermost: compress API JSON and static text assets. Allowlist
-        // predicate — binary downloads keep their exact Content-Length (the
-        // remote proxy's progress source) and SSE stays unbuffered; see
+        // Compress API JSON and static text assets. Allowlist predicate —
+        // binary downloads keep their exact Content-Length (the remote
+        // proxy's progress source) and SSE stays unbuffered; see
         // `web::compression`.
         .layer(crate::web::compression::compression_layer())
+        // Outermost, and outside everything above on purpose: a request
+        // addressed to a bridge hostname is a dev server's, not codeg's, and
+        // is answered by the bridge exactly as a listener of its own would —
+        // no CORS, no compression, no body limit, no static fallback. Only
+        // when `CODEG_BRIDGE_HOST_PATTERN` is set; every other request goes
+        // straight through. See `web::browser_bridge`.
+        .layer(middleware::from_fn(
+            crate::web::browser_bridge::route_by_host,
+        ))
 }
 
 async fn health_check() -> impl IntoResponse {

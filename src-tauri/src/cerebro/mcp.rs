@@ -8,7 +8,7 @@ use crate::acp::{
 };
 use crate::app_error::{AppCommandError, AppErrorCode};
 use async_trait::async_trait;
-use sacp::schema::{McpServer, McpServerStdio};
+use agent_client_protocol::schema::v1::{McpServer, McpServerStdio};
 use std::{path::PathBuf, sync::Arc};
 
 struct PrincipalScope {

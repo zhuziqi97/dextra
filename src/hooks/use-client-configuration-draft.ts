@@ -34,8 +34,10 @@ export function sameConfiguration(
     (left.execution_module_id ?? null) ===
       (right.execution_module_id ?? null) &&
     left.mcp_enabled === right.mcp_enabled &&
-    left.mcp_capabilities.forge_enabled === right.mcp_capabilities.forge_enabled &&
-    left.mcp_capabilities.issue_enabled === right.mcp_capabilities.issue_enabled &&
+    left.mcp_capabilities.forge_enabled ===
+      right.mcp_capabilities.forge_enabled &&
+    left.mcp_capabilities.issue_enabled ===
+      right.mcp_capabilities.issue_enabled &&
     left.mcp_capabilities.code_graph_enabled ===
       right.mcp_capabilities.code_graph_enabled &&
     modules.size === right.mcp_scope_modules.length &&

@@ -9,6 +9,7 @@ import { registerBackendScopedStoreReset } from "@/stores/backend-scoped-store-r
 import type {
   AgentExecutionStats,
   AgentTranscriptEntry,
+  ContentBlock,
   ConversationTurnsPage,
   DbConversationDetail,
   MessageTurn,
@@ -250,6 +251,17 @@ export interface ConversationRuntimeSession {
   // row and the single-flight guard).
   loadingOlderTurns: boolean
 
+  // The wire carried turn content while this session was NOT prompting, and
+  // nothing rendered it. `applyStreamingAction`'s out-of-turn guard drops such
+  // content because the `background_activity` overlay is supposed to own that
+  // render path — but that overlay only has a producer for Claude Code (see
+  // `hasTranscriptOverlay`), so for every other agent the content is simply
+  // lost until the transcript is re-read. It IS on disk and the agent's parser
+  // renders it correctly, so the fix is a re-read; this flag drives the pill
+  // that offers one. Cleared by FETCH_DETAIL_SUCCESS — any successful load has
+  // just re-parsed the transcript, so whatever was missing is now covered.
+  pendingOutOfTurnContent: boolean
+
   // Monotonic counter bumped on every SUCCESSFUL older-page prepend. The
   // virtualized thread derives virtua's `shift` flag from this explicit
   // signal instead of guessing from item keys: a window starting mid-way
@@ -297,6 +309,26 @@ type Action =
        * it, and a late-resolving partial could momentarily replace it).
        */
       preserveLive?: boolean
+      /**
+       * Live turns this response supersedes, by id. Set only by a fork: it
+       * re-points the row at a session whose history stops at the chosen turn,
+       * so the turns THIS session streamed on the old session are stale — but
+       * only the ones that existed when the fork was requested. Anything the
+       * user started in the meantime (a queued auto-flush, a send racing the
+       * fork RPC, another client's turn) is not in the list and survives.
+       *
+       * Riding on the detail dispatch rather than clearing separately is what
+       * makes the three failure modes impossible instead of merely unlikely:
+       * one dispatch means no frame renders the new history beside the old
+       * turns, a failed fetch dispatches `FETCH_DETAIL_ERROR` and so drops
+       * nothing, and a response that lands late still only removes what the
+       * fork actually invalidated.
+       */
+      dropLiveTurnIds?: string[]
+    }
+  | {
+      type: "MARK_OUT_OF_TURN_CONTENT"
+      conversationId: number
     }
   | {
       type: "LOAD_OLDER_TURNS_START"
@@ -438,13 +470,7 @@ type Action =
   | {
       type: "PATCH_TURN_METADATA"
       conversationId: number
-      turnPatches: Array<{
-        index: number
-        usage?: TurnUsage | null
-        duration_ms?: number | null
-        model?: string | null
-        completed_at?: string | null
-      }>
+      turnPatches: TurnMetadataPatch[]
       sessionStats?: SessionStats | null
     }
   | {
@@ -482,6 +508,7 @@ function createEmptySession(
     batchBoundaryPrefixHash: null,
     loadingOlderTurns: false,
     olderTurnsPrependEpoch: 0,
+    pendingOutOfTurnContent: false,
     pendingCleanup: false,
   }
 }
@@ -594,6 +621,21 @@ function batchStartCapture(
 interface BuiltStreamingTurns {
   turns: MessageTurn[]
   inProgressToolCallIds: Set<string>
+}
+
+/** One turn under construction inside a live message. Assistant groups are the
+ *  reply's rounds; a `user` group is a message the user sent mid-turn. */
+interface StreamingGroup {
+  role: "assistant" | "user"
+  blocks: MessageTurn["blocks"]
+  /**
+   * Overrides the live message's start for this group. Only a `user` group sets
+   * it, to the instant the message was actually sent (the note's `created_at`)
+   * rather than the moment the reply it interrupted began. Display only —
+   * `suppressPersistedSteeredPrompts` reads that instant off the block itself,
+   * so an unreadable stamp falling back here can never widen its bound.
+   */
+  timestamp?: string
 }
 
 // Cache joined chunk output keyed by chunks-array identity. The ACP reducer
@@ -971,6 +1013,21 @@ function mainProseContinuations(
   return continues
 }
 
+/** Prefix of every turn id minted from a live message below. */
+const LIVE_TURN_ID_PREFIX = "live-"
+
+/**
+ * True for a turn this client streamed itself, which therefore has no name in
+ * the agent's transcript yet. The backend cannot resolve such an id against its
+ * own parse — `fork_session` degrades an unresolvable fork point to a TAIL fork
+ * rather than refusing the click — so anything that sends a turn id to the
+ * backend must prefer the parser's name (`MessageTurn.source_turn_id`, filled
+ * in by the post-turn reparse) and treat this as "not namable yet".
+ */
+export function isLiveTurnId(id: string): boolean {
+  return id.startsWith(LIVE_TURN_ID_PREFIX)
+}
+
 export function buildStreamingTurnsFromLiveMessage(
   conversationId: number,
   liveMessage: LiveMessage,
@@ -1166,7 +1223,11 @@ export function buildStreamingTurnsFromLiveMessage(
   // pattern: each "round" (text/thinking + tool calls + tool results) is a
   // separate turn. A new turn starts when a text/thinking/plan block appears
   // after completed tool calls in the current group.
-  const groups: MessageTurn["blocks"][] = [[]]
+  // Each group becomes one turn. Assistant groups are the reply, split into
+  // rounds as before; a `user` group is a message the user sent mid-turn
+  // (native steering), which both ends the round before it and keeps the reply
+  // to it in a round of its own.
+  const groups: StreamingGroup[] = [{ role: "assistant", blocks: [] }]
   let currentGroupHasCompletedTool = false
   const inProgressToolCallIds = new Set<string>()
   // Which main-thread prose blocks are a continuation of the previous one
@@ -1189,17 +1250,45 @@ export function buildStreamingTurnsFromLiveMessage(
       continue
     }
 
+    // A mid-turn user message is a hard turn boundary in both directions: it
+    // closes whatever the agent had said so far and opens a fresh assistant
+    // group for the reply to it, so the two replies can never render as one
+    // run-on bubble. Unconditional — unlike a content block, it splits even
+    // when the current group has no completed tool call.
+    if (block.type === "steering") {
+      groups.push({
+        role: "user",
+        // `blocks` is what the user actually sent and wins whenever it is
+        // there; `text` is the composer's display form, which collapses
+        // attachments into words, so falling back to it for a draft that had
+        // an image would print a sentence about the image instead of the
+        // image. Absent for a text-only steer, which is the historical shape.
+        blocks: block.blocks?.length
+          ? block.blocks
+          : [{ type: "text", text: block.text }],
+        // Display only; an unreadable stamp falls back to the turn's start.
+        // The persisted-copy match reads the stamp itself, not this, so it is
+        // never fooled by that fallback.
+        timestamp: Number.isFinite(Date.parse(block.createdAt))
+          ? new Date(block.createdAt).toISOString()
+          : undefined,
+      })
+      groups.push({ role: "assistant", blocks: [] })
+      currentGroupHasCompletedTool = false
+      continue
+    }
+
     const isContentBlock =
       block.type === "text" ||
       block.type === "thinking" ||
       block.type === "plan"
 
     if (isContentBlock && currentGroupHasCompletedTool) {
-      groups.push([])
+      groups.push({ role: "assistant", blocks: [] })
       currentGroupHasCompletedTool = false
     }
 
-    const currentBlocks = groups[groups.length - 1]
+    const currentBlocks = groups[groups.length - 1].blocks
 
     switch (block.type) {
       case "text":
@@ -1431,15 +1520,15 @@ export function buildStreamingTurnsFromLiveMessage(
 
   const timestamp = new Date(liveMessage.startedAt).toISOString()
   const turns = groups
-    .filter((blocks) => blocks.length > 0)
-    .map((blocks, i) => ({
+    .filter((group) => group.blocks.length > 0)
+    .map((group, i) => ({
       id:
         i === 0
-          ? `live-${conversationId}-${liveMessage.id}`
-          : `live-${conversationId}-${liveMessage.id}-${i}`,
-      role: "assistant" as const,
-      blocks,
-      timestamp,
+          ? `${LIVE_TURN_ID_PREFIX}${conversationId}-${liveMessage.id}`
+          : `${LIVE_TURN_ID_PREFIX}${conversationId}-${liveMessage.id}-${i}`,
+      role: group.role,
+      blocks: group.blocks,
+      timestamp: group.timestamp ?? timestamp,
     }))
 
   return { turns, inProgressToolCallIds }
@@ -1452,6 +1541,12 @@ export interface TurnMetadataPatch {
   duration_ms?: number | null
   model?: string | null
   completed_at?: string | null
+  /** The id the PARSER gave this turn (`turn-3`). A turn produced in this
+   *  session is named `live-<conversationId>-<liveMessageId>` and the backend
+   *  has never heard of that id, so anything asking the backend to act on "this
+   *  turn" — "fork from here" is the one today — has to send the parser's name
+   *  instead. See `MessageTurn.source_turn_id`. */
+  source_turn_id?: string | null
 }
 
 /**
@@ -1491,6 +1586,14 @@ export function computeTurnMetadataPatches(params: {
   localAssistantIndices: number[]
   parsedAssistantTurns: MessageTurn[]
   persistedAssistantCount: number
+  /**
+   * Whether the LAST turn of the parse (any role) is an assistant turn — i.e.
+   * the reply that just completed has reached disk. Agents append the user
+   * prompt before the reply, so a trailing USER turn is the transcript telling
+   * us it is still behind. Only `source_turn_id` consults this; the stats keep
+   * their existing best-effort alignment.
+   */
+  parseEndsWithAssistant: boolean
 }): TurnMetadataPatch[] {
   const { localAssistantIndices, parsedAssistantTurns } = params
   // Drop the persisted history at the front of the parse; only this session's
@@ -1522,6 +1625,44 @@ export function computeTurnMetadataPatches(params: {
     // rolled-in parsed turns precede it in time, so we don't aggregate
     // completion timestamps.
     let completedAtToApply: string | null | undefined
+    // The parser's name for this turn. Deliberately the MATCHED sub-turn and
+    // not the first of a rolled-in group: the stats above are summed across the
+    // group, but a fork point is a position, and "keep everything up to and
+    // including this reply" means the last sub-turn of it.
+    //
+    // Naming a turn is a POSITION claim, and counts alone can never establish
+    // one: `offset` conflates a parser sub-turn split (surplus) with a
+    // transcript that hasn't flushed the newest reply yet (deficit), and the
+    // two can cancel to any value including zero. Get identity from the
+    // transcript's shape instead, in two steps.
+    //
+    // 1. `parseEndsWithAssistant` says the reply that just completed is on
+    //    disk. Agents write the user prompt before the reply, so a trailing
+    //    USER turn means the parse is behind and NOTHING here can be placed —
+    //    locals [A,B] against parsed [A1,A2,A3] (A split three ways, B not
+    //    flushed) would otherwise call B the tail and name it "A3", forking at
+    //    A. The sync retries, so refusing costs a round, not the feature.
+    // 2. `offset === 0` — the parse holds exactly as many assistant turns as
+    //    this session streamed — is then the only shape where each position is
+    //    provably the same reply. A surplus is NOT necessarily a sub-turn
+    //    split the roll-in can attribute to local[0]: it is equally a turn
+    //    this client never streamed (a Claude async sub-agent's out-of-turn
+    //    reply, a co-controlling client's prompt), and nothing here can tell
+    //    the two apart. Allowing the tail through on a surplus looked safe and
+    //    is not — locals [B] against parsed [B,C] names B with C's id.
+    //
+    // Unnamed simply means "fork from here" on that turn degrades to a tail
+    // fork, the feature's documented fallback. Turns are normally named by the
+    // sync that runs right after they complete, when the parse is 1:1; they go
+    // unnamed when that sync was cancelled by the next reply landing inside
+    // its 1.5s delay, or when a split/out-of-turn record leaves a surplus
+    // standing for the rest of the session. That is the accepted price: a fork
+    // one message off is worse than a fork at the tail, because only one of
+    // them is visible to the person who clicked. Stats deliberately keep the
+    // old whole-batch alignment — a summed number in the wrong row is
+    // cosmetic.
+    let sourceTurnIdToApply: string | null | undefined
+    const idIsPlaceable = params.parseEndsWithAssistant && offset === 0
 
     if (parsedIdx >= 0 && parsedIdx < sessionParsedTurns.length) {
       const pt = sessionParsedTurns[parsedIdx]
@@ -1529,6 +1670,7 @@ export function computeTurnMetadataPatches(params: {
       durationToApply = pt.duration_ms
       modelToApply = pt.model
       completedAtToApply = pt.completed_at
+      if (idIsPlaceable) sourceTurnIdToApply = pt.id
     }
 
     // When the parser splits the response into more sub-turns than the live
@@ -1566,11 +1708,16 @@ export function computeTurnMetadataPatches(params: {
       }
     }
 
+    // `source_turn_id` counts as something worth emitting on its own: a turn
+    // the parser recorded with no stats at all (a plain codex reply carries no
+    // per-turn usage) still needs its name, or "fork from here" on it silently
+    // degrades to a tail fork.
     if (
       !usageToApply &&
       !durationToApply &&
       !modelToApply &&
-      !completedAtToApply
+      !completedAtToApply &&
+      !sourceTurnIdToApply
     )
       continue
     patches.push({
@@ -1579,6 +1726,7 @@ export function computeTurnMetadataPatches(params: {
       duration_ms: durationToApply,
       model: modelToApply,
       completed_at: completedAtToApply,
+      source_turn_id: sourceTurnIdToApply,
     })
   }
 
@@ -1643,6 +1791,29 @@ function userTurnContentKey(turn: MessageTurn): string {
       }
     })
   )
+}
+
+/**
+ * The same key for a mid-turn steered message, whose persisted copy is a user
+ * turn carrying exactly what was sent (see `suppressPersistedSteeredPrompts`).
+ *
+ * Keyed on `blocks` whenever the steer carried them, because that is what the
+ * agent wrote to its transcript: keying an image-bearing steer on its text
+ * alone could never match the persisted copy (whose key folds in the full image
+ * data), so the suppression would silently stop working for exactly the
+ * messages it was added to handle. `text` remains the key for a text-only
+ * steer, which is the shape that has always come through here.
+ */
+function steeredContentKey(
+  text: string,
+  blocks?: ContentBlock[] | null
+): string {
+  return userTurnContentKey({
+    id: "",
+    role: "user",
+    blocks: blocks?.length ? blocks : [{ type: "text", text }],
+    timestamp: "",
+  })
 }
 
 /**
@@ -1737,6 +1908,9 @@ function reducer(
         detailIsInFlight
       const keepAllLiveBuffers =
         action.preserveLive === true || detailIsInFlight
+      const dropIds = action.dropLiveTurnIds?.length
+        ? new Set(action.dropLiveTurnIds)
+        : null
 
       // Retire overlay turns the refetched detail now covers: both sides
       // measure byte offsets of the SAME transcript, so `entry.watermark <=
@@ -1767,6 +1941,12 @@ function reducer(
         detail: action.detail,
         detailLoading: false,
         detailError: null,
+        // This response re-parsed the transcript, so any out-of-turn content
+        // the wire dropped is either in `detail.turns` now or never persisted.
+        // Either way the pill has nothing left to offer. Deliberately NOT
+        // cleared on FETCH_DETAIL_ERROR: a failed load covered nothing, and
+        // the pill is the only way back to that content.
+        pendingOutOfTurnContent: false,
         externalId: nextExternalId ?? current.externalId,
         sessionStats: action.detail.session_stats ?? current.sessionStats,
         backgroundTurns: nextBackgroundTurns,
@@ -1775,6 +1955,17 @@ function reducer(
             ? {}
             : { localTurns: [] }
           : { localTurns: [], optimisticTurns: [], liveMessage: null }),
+        // Applied AFTER the blanket rules above so a fork's targeted removal
+        // survives `preserveLive` (which is what a fork asks for: keep
+        // everything except the turns it just invalidated).
+        ...(dropIds
+          ? {
+              localTurns: current.localTurns.filter((t) => !dropIds.has(t.id)),
+              optimisticTurns: current.optimisticTurns.filter(
+                (t) => !dropIds.has(t.id)
+              ),
+            }
+          : {}),
       }
 
       const nextByConversationId = new Map(state.byConversationId)
@@ -1798,6 +1989,18 @@ function reducer(
         detailLoading: false,
         detailError: action.error,
       }))
+
+    // Session-existence guarded for the same reason as the LOAD_OLDER cases
+    // below: an event for a conversation whose tab already closed must not
+    // resurrect a ghost session just to hang a pill on it.
+    case "MARK_OUT_OF_TURN_CONTENT": {
+      const current = state.byConversationId.get(action.conversationId)
+      if (!current || current.pendingOutOfTurnContent) return state
+      return updateSessionInState(state, action.conversationId, (session) => ({
+        ...session,
+        pendingOutOfTurnContent: true,
+      }))
+    }
 
     // The three LOAD_OLDER/PREPEND cases guard on session existence instead
     // of using the create-if-missing update helper: a page response landing
@@ -2361,6 +2564,12 @@ function reducer(
         batchBoundaryIndex: from.batchBoundaryIndex ?? to.batchBoundaryIndex,
         batchBoundaryPrefixHash:
           from.batchBoundaryPrefixHash ?? to.batchBoundaryPrefixHash,
+        // OR, like the other "something is still outstanding" flags above: the
+        // draft key is the one the panel arms, but neither side's unrendered
+        // content stops being unrendered because the row got a real id, and
+        // the plain spread would silently drop the target's.
+        pendingOutOfTurnContent:
+          from.pendingOutOfTurnContent || to.pendingOutOfTurnContent,
       }
 
       const nextByConversationId = new Map(state.byConversationId)
@@ -2396,11 +2605,13 @@ function reducer(
         const newDuration = turn.duration_ms ?? patch.duration_ms
         const newModel = turn.model ?? patch.model
         const newCompletedAt = turn.completed_at ?? patch.completed_at
+        const newSourceTurnId = turn.source_turn_id ?? patch.source_turn_id
         if (
           newUsage !== turn.usage ||
           newDuration !== turn.duration_ms ||
           newModel !== turn.model ||
-          newCompletedAt !== turn.completed_at
+          newCompletedAt !== turn.completed_at ||
+          newSourceTurnId !== turn.source_turn_id
         ) {
           patchedTurns[patch.index] = {
             ...turn,
@@ -2408,6 +2619,7 @@ function reducer(
             duration_ms: newDuration,
             model: newModel,
             completed_at: newCompletedAt,
+            source_turn_id: newSourceTurnId,
           }
           changed = true
         }
@@ -2492,7 +2704,7 @@ export interface RuntimeActions {
   fetchDetail: (conversationId: number) => void
   refetchDetail: (
     conversationId: number,
-    options?: { preserveLive?: boolean }
+    options?: { preserveLive?: boolean; dropLiveTurnIds?: string[] }
   ) => void
   /**
    * Load one page of older history above the current window and prepend it
@@ -2500,6 +2712,12 @@ export interface RuntimeActions {
    * with `turns_offset > 0`; single-flight per session.
    */
   loadOlderTurns: (conversationId: number) => void
+  /**
+   * Record that turn content reached the wire while this session was not
+   * prompting and was dropped unrendered (see `pendingOutOfTurnContent`).
+   * Idempotent and O(1) once set — it is called per streamed token.
+   */
+  markOutOfTurnContent: (conversationId: number) => void
   /**
    * Poll a passively-viewed conversation's persisted detail into sync after its
    * turn completed on another client. No-op unless the session is open and this
@@ -2608,8 +2826,12 @@ interface TimelinePrefixDeps {
   optimisticTurns: MessageTurn[]
   liveOwnsActiveTurn: boolean
   delegationKickoffText: string | null
-  hasLiveMessage: boolean
+  liveShowsReply: boolean
   liveStartedAt: number | null
+  /** The steered-copy set, flattened for the `===` comparison below. `""` in
+   *  an ordinary turn — see `computeTimelinePrefix`. */
+  steeredCopyKey: string
+  liveStreamedRoundStart: boolean
 }
 interface TimelinePrefixEntry {
   deps: TimelinePrefixDeps
@@ -2665,6 +2887,23 @@ function isLatestGeneration(
 // trailing USER turn (Claude/Codex append the assistant reply to the JSONL only
 // on completion, so a trailing user turn means the reply is still mid-flush).
 const VIEWER_DETAIL_SYNC_DELAYS_MS = [0, 300, 700, 1500, 2500] as const
+
+// ─── Post-turn metadata reparse ──────────────────────────────────────────
+// Backoff for `syncTurnMetadata`, which re-reads the agent's transcript after
+// a reply settles. It races the same flush the viewer sync above does — the
+// ACP turn-end arrives off the wire's stop-reason, while the agent's CLI
+// writes its own log afterwards, in batches (deepseek compresses one zstd
+// frame per batch, so a reply's `turn/end` — the record carrying its usage AND
+// its completion clock — can stay unreadable for several seconds; a longer
+// session makes the wait longer still). This used to be two attempts, 1.5s
+// then 3s: past 4.5s the reply's footer simply stayed empty (no model, no
+// tokens, no time) and every earlier reply of the session stayed unnameable —
+// `source_turn_id` is only placeable while the parse is 1:1 with what this
+// client streamed, so a parse that is still behind greys out their "fork from
+// here" as "not ready yet" for good. Both only recovered by reopening the
+// conversation, which re-renders straight from a fresh parse. So the poll now
+// backs off across ~30s and stops as soon as the transcript has caught up.
+const TURN_METADATA_SYNC_DELAYS_MS = [1500, 3000, 5000, 8000, 13000] as const
 
 // Active viewer-sync polls, keyed by conversationId, so a fresh nudge supersedes
 // an in-flight poll (never stacks) and `removeConversation` / store reset can
@@ -2857,8 +3096,10 @@ function timelinePrefixDepsEqual(
     a.optimisticTurns === b.optimisticTurns &&
     a.liveOwnsActiveTurn === b.liveOwnsActiveTurn &&
     a.delegationKickoffText === b.delegationKickoffText &&
-    a.hasLiveMessage === b.hasLiveMessage &&
-    a.liveStartedAt === b.liveStartedAt
+    a.liveShowsReply === b.liveShowsReply &&
+    a.liveStartedAt === b.liveStartedAt &&
+    a.steeredCopyKey === b.steeredCopyKey &&
+    a.liveStreamedRoundStart === b.liveStreamedRoundStart
   )
 }
 
@@ -2906,9 +3147,40 @@ function collectInFlightPersistedToolCalls(
   return out
 }
 
+/**
+ * @param liveShowsReply whether the live message this session holds actually
+ * produced an assistant turn — see [`computeTimeline`], which derives it from
+ * the same build the streaming tail is made of. Both suppressions below hide a
+ * persisted assistant turn *because the live stream is showing that reply*, so
+ * they must key off what the live message RENDERS, never off the existence of a
+ * live message object. Those two differ: a live message with nothing renderable
+ * in it is an ordinary state (`STATUS_CHANGED` → `prompting` installs
+ * `content: []` at the start of every turn, and the runtime mirror never writes
+ * a null back over it), and keying off the object hid a reply with nothing put
+ * in its place — a blank agent turn.
+ * @param steeredCopyIds the detail's own copies of this turn's mid-turn
+ * messages (see `collectSteeredPersistedCopyIds`). A steered message is a USER
+ * turn that the agent writes into the MIDDLE of a round, so both round anchors
+ * below — the viewer's persisted-tail strip and the in-flight partial
+ * suppression — have to look straight through it. Anchored on it instead, they
+ * read the round as having ended at the interruption and leave the reply's
+ * already-persisted first half beside the live copy of the same text, which
+ * `mergeConsecutiveAssistantTurns` then glues into one run-on bubble.
+ * @param liveStreamedRoundStart whether this session's live message carries the
+ * reply from BEFORE the first mid-turn message, i.e. it holds the whole round
+ * and can stand in for every persisted turn of it. Both anchor adjustments are
+ * gated on it: they hide persisted assistant turns, so they may only run where
+ * the live stream is provably re-showing them. False for a session that first
+ * saw this turn from a snapshot (which carries no steering block at all, so no
+ * copies are identified either) and for one whose live message opens on the
+ * interruption itself.
+ */
 function computeTimelinePrefix(
   session: ConversationRuntimeSession,
-  conversationId: number
+  conversationId: number,
+  liveShowsReply: boolean,
+  steeredCopyIds: ReadonlySet<string> | null,
+  liveStreamedRoundStart: boolean
 ): TimelinePrefixEntry {
   const detail = session.detail
   // Everything Phases 1–3 read, snapshotted for the `===` validity check.
@@ -2922,8 +3194,12 @@ function computeTimelinePrefix(
     optimisticTurns: session.optimisticTurns,
     liveOwnsActiveTurn: session.liveOwnsActiveTurn,
     delegationKickoffText: session.delegationKickoffText,
-    hasLiveMessage: session.liveMessage !== null,
+    liveShowsReply,
     liveStartedAt: session.liveMessage?.startedAt ?? null,
+    // Content, not identity: the set is rebuilt on every streaming batch, and
+    // an ordinary turn's `""` keeps the cache hitting exactly as before.
+    steeredCopyKey: steeredCopyIds ? [...steeredCopyIds].join("\x00") : "",
+    liveStreamedRoundStart,
   }
   if (detail) {
     const cached = timelinePrefixCache.get(detail)
@@ -2947,14 +3223,24 @@ function computeTimelinePrefix(
   // anchor, so fall back to the first assistant turn: the only assistant
   // content that can exist is the reply being streamed.
   const rawPersistedTurns = session.detail?.turns ?? []
+  // A persisted copy of a message the user sent mid-turn is NOT a round
+  // boundary: it sits inside the round it interrupted, so the anchors below
+  // step over it. Only while the live stream provably holds the round from
+  // before that interruption — stepping over one hides the persisted turns
+  // between it and the real prompt, which is only sound where the live copy is
+  // showing them.
+  const roundAnchorSkipIds =
+    liveStreamedRoundStart && steeredCopyIds ? steeredCopyIds : null
+  const isRoundBoundaryUserTurn = (turn: MessageTurn): boolean =>
+    turn.role === "user" && !roundAnchorSkipIds?.has(turn.id)
   const hasLiveOrLocalReply =
     session.liveOwnsActiveTurn &&
-    (session.liveMessage !== null || session.localTurns.length > 0)
+    (liveShowsReply || session.localTurns.length > 0)
   let stripFrom = -1
   if (hasLiveOrLocalReply) {
     let lastUserIdx = -1
     for (let i = rawPersistedTurns.length - 1; i >= 0; i--) {
-      if (rawPersistedTurns[i]!.role === "user") {
+      if (isRoundBoundaryUserTurn(rawPersistedTurns[i]!)) {
         lastUserIdx = i
         break
       }
@@ -2964,8 +3250,16 @@ function computeTimelinePrefix(
         ? rawPersistedTurns.findIndex((t) => t.role === "assistant")
         : lastUserIdx + 1
   }
+  // System turns survive the strip. What the strip removes is the persisted
+  // copy of the reply being streamed — content the live stream re-shows. A
+  // `system` turn is not part of any reply and has no live counterpart: Claude
+  // writes the post-compaction continuation summary as one, and an AUTOMATIC
+  // compaction lands it mid-turn, so stripping it hid the summary for the whole
+  // rest of the turn and then made it appear out of nowhere on reopen.
   const persistedTurns =
-    stripFrom !== -1 ? rawPersistedTurns.slice(0, stripFrom) : rawPersistedTurns
+    stripFrom !== -1
+      ? rawPersistedTurns.filter((t, i) => i < stripFrom || t.role === "system")
+      : rawPersistedTurns
 
   // Suppress the persisted PARTIAL in-flight reply for a non-delegation
   // cross-client viewer. While a reply is streaming, some agents (OpenCode,
@@ -2973,13 +3267,12 @@ function computeTimelinePrefix(
   // into `detail` it sits beside the live reply (a separate assistant turn
   // under a `live-…` id), and `mergeConsecutiveAssistantTurns` concatenates
   // the two — so the already-persisted head (e.g. the first reasoning block)
-  // renders twice. Hide that persisted partial, but ONLY while `liveMessage`
-  // is in hand: the live stream carries the full reply (the attach snapshot is
-  // built atomically and includes it), so this only ever hides from render
-  // what the live stream is concurrently showing — never dropping a reply we
-  // can't re-show. The moment the turn ends, `liveMessage` clears and the
-  // persisted copy (now complete) renders normally; the brief promote→refetch
-  // grace window can show a transient visible duplicate, never a hidden turn.
+  // renders twice. Hide that persisted partial, but ONLY while the live message
+  // is actually SHOWING a reply (`liveShowsReply`): that is what makes this a
+  // choice between two renderings of one reply rather than a deletion. The
+  // moment the turn ends, `liveMessage` clears and the persisted copy (now
+  // complete) renders normally; the brief promote→refetch grace window can show
+  // a transient visible duplicate, never a hidden turn.
   //
   // The in-flight prompt is identified authoritatively by the backend, which
   // reports the id of the persisted user turn it stamped as the in-flight one
@@ -2989,15 +3282,47 @@ function computeTimelinePrefix(
   // client clock on the streaming path — neither can locate the prompt across
   // machines. When the new prompt isn't persisted yet the backend reports no
   // id, so an earlier completed round's reply is never mistaken for a partial.
+  //
+  // A mid-turn message used to take that id away, and the fallback below is
+  // what is left of that. `apply_in_flight_message_id` matched the transcript
+  // TAIL, so once the agent had written a steered message the tail was that
+  // message, whose content is not the prompt's, and nothing was stamped — in
+  // the middle of the round the suppression exists for. That is fixed at the
+  // source now: the backend walks back over the turns of the running turn and
+  // stamps the earliest copy of the prompt, which is the only reading that also
+  // repairs `detailIsInFlight` (a mid-turn refetch clearing the live buffers)
+  // and `collectInFlightPersistedToolCalls` (unfinished tool calls painting as
+  // completed) — neither of which this file can reach.
+  //
+  // Kept as a BACKSTOP, and for grok as the only thing there is: `grok.rs`
+  // parses its per-line `timestamp` as whole UNIX SECONDS, so a prompt the
+  // agent persisted a few hundred milliseconds into the turn floors to an
+  // instant BEFORE the (millisecond-precision) turn start and the backend's
+  // recency gate refuses it. The stamp is therefore unreachable there however
+  // the backend locates the prompt, and this is grok's round anchor. Fall back
+  // to the
+  // last persisted turn this client can still prove opened the round: the
+  // newest user turn that is not one of those copies. Reachable only once a
+  // copy is actually in `detail.turns`, and only while the live stream holds
+  // the round from before the interruption.
   const inFlightPromptId = session.detail?.in_flight_user_turn_id ?? null
-  const inFlightPromptIdx =
-    !hasLiveOrLocalReply &&
-    session.liveMessage !== null &&
-    inFlightPromptId !== null
-      ? persistedTurns.findIndex(
-          (t) => t.role === "user" && t.id === inFlightPromptId
-        )
-      : -1
+  // `liveShowsReply`, not `liveMessage !== null`: this hides a persisted
+  // assistant turn because the live stream is showing that reply, so a live
+  // message rendering nothing may not stand in for it.
+  const canSuppressInFlightPartial = !hasLiveOrLocalReply && liveShowsReply
+  let inFlightPromptIdx = -1
+  if (canSuppressInFlightPartial && inFlightPromptId !== null) {
+    inFlightPromptIdx = persistedTurns.findIndex(
+      (t) => t.role === "user" && t.id === inFlightPromptId
+    )
+  } else if (canSuppressInFlightPartial && roundAnchorSkipIds) {
+    for (let i = persistedTurns.length - 1; i >= 0; i--) {
+      if (isRoundBoundaryUserTurn(persistedTurns[i]!)) {
+        inFlightPromptIdx = i
+        break
+      }
+    }
+  }
   const visiblePersistedTurns =
     inFlightPromptIdx === -1
       ? persistedTurns
@@ -3137,6 +3462,141 @@ function computeTimelinePrefix(
   return entry
 }
 
+/**
+ * Ids of the DETAIL's own copies of the messages the user sent mid-turn, i.e.
+ * the persisted user turns that the live stream is already showing as steered
+ * messages. `null` when this turn steered nothing (the overwhelmingly common
+ * case), so every caller below is free in an ordinary turn.
+ *
+ * The agent writes a steered message into its own transcript, so a detail
+ * fetch that lands DURING the turn brings it back as an ordinary user turn —
+ * under a parser id, which no id-keyed dedup can match to the live copy. Three
+ * separate rules need to know which persisted turns those are:
+ * `suppressPersistedSteeredPrompts` hides them, and the two round anchors in
+ * `computeTimelinePrefix` must not mistake one for the start of a new round.
+ *
+ * Matched on CONTENT, the same way `APPEND_VIEWER_USER_TURN` reconciles the two
+ * id namespaces of one prompt — but content ALONE cannot say which message it
+ * matched. Steered text is short and repeatable ("continue", "stop", "not
+ * done"), so a bare content match reaches back and finds the identical prompt
+ * the user sent three rounds ago. Suppressing a user turn is the one failure
+ * that hides a message rather than duplicating it, so the match is bounded by
+ * WHEN:
+ *
+ *   - each `steering` block carries the note's `created_at`, taken on the
+ *     agent's machine BEFORE the backend handed it the text (an invariant of
+ *     `submit_feedback_native`);
+ *   - the agent's copy is therefore written after it, so a persisted turn
+ *     older than that instant is by construction a different message —
+ *     including this round's own prompt, which the agent wrote before the user
+ *     steered.
+ *
+ * Candidates are limited to turns the DETAIL projected, so every timestamp
+ * compared comes from the agent's own clock; a promoted `localTurns` copy
+ * (client clock, and kept across a mid-turn refetch by `preserveLive`) is never
+ * a candidate. Anything unreadable — no parseable instant on either side —
+ * matches nothing, leaving the two copies to coexist: a visible duplicate,
+ * never a hidden message.
+ */
+function collectSteeredPersistedCopyIds(
+  session: ConversationRuntimeSession
+): Set<string> | null {
+  // Content key → the earliest instant a copy of it could have been written.
+  // Read from the blocks rather than from the built turns: a block with no
+  // readable stamp shows under the turn's start time, and treating THAT as the
+  // bound would put this round's own prompt in range.
+  let steeredAt: Map<string, number> | null = null
+  let earliestSteerAt = Number.POSITIVE_INFINITY
+  for (const block of session.liveMessage?.content ?? []) {
+    if (block.type !== "steering") continue
+    const at = Date.parse(block.createdAt)
+    if (!Number.isFinite(at)) continue
+    const key = steeredContentKey(block.text, block.blocks)
+    steeredAt ??= new Map<string, number>()
+    const known = steeredAt.get(key)
+    if (known === undefined || at < known) steeredAt.set(key, at)
+    if (at < earliestSteerAt) earliestSteerAt = at
+  }
+  if (!steeredAt) return null
+  const detailTurns = session.detail?.turns
+  if (!detailTurns) return null
+  let ids: Set<string> | null = null
+  for (const turn of detailTurns) {
+    if (turn.role !== "user") continue
+    // Cheap gate first: everything written before the earliest steer is out,
+    // so history never reaches the content key (which serializes full text and
+    // full image data, and this runs whenever the prefix is rebuilt).
+    const at = Date.parse(turn.timestamp)
+    if (!Number.isFinite(at) || at < earliestSteerAt) continue
+    const steered = steeredAt.get(userTurnContentKey(turn))
+    if (steered === undefined || at < steered) continue
+    ids ??= new Set<string>()
+    ids.add(turn.id)
+  }
+  return ids
+}
+
+/**
+ * Whether this session's live message opens on the reply rather than on the
+ * interruption: it holds at least one block from BEFORE the first mid-turn
+ * message, so it is showing the round from its start and can stand in for
+ * every persisted turn of it.
+ *
+ * The gate on moving a round anchor past a steered copy, because doing that
+ * hides the persisted turns between the copy and the real prompt. A live
+ * message that begins at the interruption is not evidence for them: a session
+ * that adopts a snapshot mid-turn starts from the backend's live message, which
+ * carries no `steering` block at all (see `snapshot-denormalize`), so a steer
+ * arriving afterwards can be the first thing this client ever saw of the turn.
+ * Hiding the reply's persisted first half there would put it nowhere.
+ */
+function liveMessageOpensBeforeFirstSteer(
+  liveMessage: LiveMessage | null
+): boolean {
+  for (const block of liveMessage?.content ?? []) {
+    if (block.type === "steering") return false
+    // Parented subagent output never reaches the main thread (see
+    // `buildStreamingTurnsFromLiveMessage`), so it is not evidence that this
+    // client holds the reply either.
+    if (
+      (block.type === "text" || block.type === "thinking") &&
+      block.parentToolUseId
+    ) {
+      continue
+    }
+    return true
+  }
+  return false
+}
+
+/**
+ * Hide the persisted copies of the messages the user sent mid-turn, since the
+ * live stream is already showing them.
+ *
+ * The live copy is the one to keep: it sits between the two halves of the
+ * reply, where the message was actually sent, while the persisted copy is
+ * appended after the in-flight prompt with the reply's first half suppressed
+ * around it (see `visiblePersistedTurns`), which would put the interruption
+ * before the text it interrupted.
+ *
+ * Ids are unique across the timeline's phases (a same-id copy in another phase
+ * is the same turn — see `dedupeTimeline`), so id membership alone tells a
+ * detail-projected turn from a locally promoted one.
+ */
+function suppressPersistedSteeredPrompts(
+  prefix: ConversationTimelineTurn[],
+  steeredCopyIds: ReadonlySet<string> | null
+): ConversationTimelineTurn[] {
+  if (!steeredCopyIds) return prefix
+  const filtered = prefix.filter(
+    (item) =>
+      item.phase !== "persisted" ||
+      item.turn.role !== "user" ||
+      !steeredCopyIds.has(item.turn.id)
+  )
+  return filtered.length === prefix.length ? prefix : filtered
+}
+
 function computeTimeline(
   state: ConversationRuntimeState,
   conversationId: number
@@ -3147,14 +3607,40 @@ function computeTimeline(
   const cached = timelineCache.get(session)
   if (cached) return cached
 
-  // Phases 1–3 (already deduped), reused across streaming batches.
-  const { prefix, prefixKeys } = computeTimelinePrefix(session, conversationId)
-
-  // Phase 4: Streaming turns (live agent response, split into rounds)
+  // Phase 4 first: Phases 1–3 hide the persisted copy of the reply this build
+  // is showing, so they need its verdict, and deriving that from the same build
+  // is what keeps the two from disagreeing. A live message can hold nothing
+  // renderable — `content: []` from the turn's own `prompting` transition, or
+  // only blocks this build drops — and a check for the message OBJECT then hid
+  // a persisted reply that nothing replaced.
   const streamingMessage = session.liveMessage
   const built = streamingMessage
     ? buildStreamingTurnsFromLiveMessage(conversationId, streamingMessage)
     : null
+  // A `user` turn here is a message the user sent mid-turn (native steering),
+  // not a rendering of the reply — a live message that produced only those is
+  // showing no reply and must suppress nothing.
+  const liveShowsReply =
+    built?.turns.some((turn) => turn.role === "assistant") ?? false
+
+  // The detail's own copies of this turn's mid-turn messages, and whether the
+  // live stream can stand in for the round they interrupted. Derived once and
+  // shared: the prefix's two round anchors and the suppression below must
+  // agree on which persisted user turns are steered copies, or one of them
+  // hides a turn another is still anchoring on.
+  const steeredCopyIds = collectSteeredPersistedCopyIds(session)
+  const liveStreamedRoundStart = steeredCopyIds
+    ? liveMessageOpensBeforeFirstSteer(session.liveMessage)
+    : false
+
+  // Phases 1–3 (already deduped), reused across streaming batches.
+  const { prefix, prefixKeys } = computeTimelinePrefix(
+    session,
+    conversationId,
+    liveShowsReply,
+    steeredCopyIds,
+    liveStreamedRoundStart
+  )
 
   let deduped: ConversationTimelineTurn[]
   if (!built || built.turns.length === 0) {
@@ -3185,9 +3671,8 @@ function computeTimeline(
       }
       seenTailKeys?.add(key)
     }
-    deduped = collides
-      ? dedupeTimeline(prefix.concat(tail))
-      : prefix.concat(tail)
+    const head = suppressPersistedSteeredPrompts(prefix, steeredCopyIds)
+    deduped = collides ? dedupeTimeline(head.concat(tail)) : head.concat(tail)
   }
 
   timelineCache.set(session, deduped)
@@ -3271,7 +3756,7 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
 
   const refetchDetail = (
     conversationId: number,
-    options?: { preserveLive?: boolean }
+    options?: { preserveLive?: boolean; dropLiveTurnIds?: string[] }
   ): void => {
     // The session key is not always a fetchable DB id: a conversation started
     // as a new-chat draft keeps its virtual (negative) key for the tab's whole
@@ -3293,6 +3778,7 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
           conversationId,
           detail,
           preserveLive: options?.preserveLive ?? false,
+          dropLiveTurnIds: options?.dropLiveTurnIds,
         })
       })
       .catch((error: unknown) => {
@@ -3498,14 +3984,45 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
     const runtimeId = runtimeConversationId ?? dbConversationId
     let cancelled = false
     let timerId: ReturnType<typeof setTimeout> | null = null
+    // Highest attempt whose timer has been armed. Keeps the schedule a single
+    // chain: only the newest timer is held in `timerId`, so a second call for
+    // the same attempt (a throwing `then` handler reaching the `catch` after
+    // it already scheduled) would strand an uncancellable one.
+    let armed = -1
+    // Rounds spent waiting on a reply whose record IS on disk but whose usage
+    // is not (see the retry decision below). Counted separately from `armed`
+    // so the allowance is the same wherever in the schedule that state first
+    // shows up.
+    let usageOnlyRounds = 0
+
+    // Advance the backoff, unless this sync was cancelled, already moved on,
+    // or has run out of attempts. Hoisted so the attempt below can call it;
+    // `trySync` is initialized before the first timer is ever armed.
+    function scheduleNext(attempt: number): void {
+      if (cancelled) return
+      const next = attempt + 1
+      if (next >= TURN_METADATA_SYNC_DELAYS_MS.length) return
+      if (next <= armed) return
+      trySync(next)
+    }
 
     const trySync = (attempt: number) => {
-      const delay = attempt === 0 ? 1500 : 3000
+      armed = attempt
       timerId = setTimeout(() => {
         if (cancelled) return
         const session = get().byConversationId.get(runtimeId)
         if (!session || session.localTurns.length === 0) return
-        if (session.syncState === "awaiting_persist") return
+        // A prompt is in flight again — the user typed ahead inside our
+        // backoff, or the queue auto-flushed the moment the reply settled.
+        // Patching is unsafe mid-turn, but ABANDONING the schedule is worse:
+        // the reply that just finished may still be unflushed, and this poll
+        // is the only thing that would ever fill in its stats. Skip the
+        // roundtrip, keep the schedule. (A completion cancels this sync and
+        // starts a fresh one, so nothing double-runs.)
+        if (session.syncState === "awaiting_persist") {
+          scheduleNext(attempt)
+          return
+        }
 
         // Windowed fetch anchored at the batch boundary: the response then
         // holds exactly this batch's turns (plus anything appended after),
@@ -3521,7 +4038,10 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
             if (cancelled) return
             const cur = get().byConversationId.get(runtimeId)
             if (!cur || cur.localTurns.length === 0) return
-            if (cur.syncState === "awaiting_persist") return
+            if (cur.syncState === "awaiting_persist") {
+              scheduleNext(attempt)
+              return
+            }
 
             const localAssistantIndices: number[] = []
             for (let i = 0; i < cur.localTurns.length; i++) {
@@ -3569,7 +4089,22 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
                     localAssistantIndices,
                     parsedAssistantTurns,
                     persistedAssistantCount,
+                    parseEndsWithAssistant:
+                      parsed.turns[parsed.turns.length - 1]?.role ===
+                      "assistant",
                   })
+            // An unverified window is worth another look ONLY when the
+            // transcript is behind: `fromIndex` clamps to the total, so an
+            // offset SHORT of the boundary means the batch has not reached
+            // disk yet and a later round can verify. Every other mismatch is
+            // permanent for this batch — the boundary hash is absent (captured
+            // under a legacy detail) or the prefix was rewritten at the same
+            // offset (compaction) — and patches stay `[]` however long we
+            // poll, so five reparses would buy nothing.
+            const windowUnverifiableForGood =
+              responseWindowed &&
+              !windowVerified &&
+              !(boundaryIndex != null && parsed.turns_offset < boundaryIndex)
 
             if (patches.length > 0 || parsed.session_stats) {
               dispatch({
@@ -3580,29 +4115,56 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
               })
             }
 
-            // Retry once if the MOST RECENT local assistant turn still lacks
-            // usage — its transcript may not have flushed yet. Keying on the
-            // last EMITTED patch is wrong when the latest local turn is the
-            // unflushed one: an earlier reply's patch (with usage) would
-            // suppress the retry the latest turn needs.
+            // How far behind the transcript still is, judged on the NEWEST
+            // local reply — read from the STORE, not from this round's
+            // patches, so a value an earlier round already pinned counts as
+            // covered (first-write-wins).
+            //
+            // NOTHING at all (no usage, no completion time): the parse either
+            // does not hold that reply yet, or holds it UNFINALIZED — deepseek
+            // attaches both from the single `turn/end` record, which can land
+            // several frames after the reply's text. That is also the state
+            // that withholds `source_turn_id` from EVERY reply of the batch
+            // (see `idIsPlaceable`), i.e. what leaves the earlier replies'
+            // "fork from here" greyed out as "not ready yet" — so it gets the
+            // whole schedule.
+            //
+            // Usage ALONE missing is a much shorter wait: the reply's own
+            // record is on disk (it carried the completion time) and only a
+            // trailing metering record is outstanding — codex writes
+            // `token_count` as the line after the agent message. One extra
+            // look covers that, and capping it there keeps an agent that never
+            // reports usage at all (Cursor) from polling out the full schedule
+            // on every single turn.
+            //
+            // A SURPLUS — the parser split the reply, or an out-of-turn record
+            // landed — is deliberately not a retry signal: it leaves turns
+            // unnamed for the rest of the session however long we poll, and it
+            // patches the newest reply, so it stops here.
+            const after = get().byConversationId.get(runtimeId)
             const lastLocalAssistantIndex =
               localAssistantIndices[localAssistantIndices.length - 1]
-            const latestCoverage =
+            const newest =
               lastLocalAssistantIndex === undefined
                 ? undefined
-                : patches.find((p) => p.index === lastLocalAssistantIndex)
-            if (
-              lastLocalAssistantIndex !== undefined &&
-              !latestCoverage?.usage &&
-              attempt < 1
-            ) {
-              trySync(attempt + 1)
+                : after?.localTurns[lastLocalAssistantIndex]
+            if (newest != null && newest.usage == null) {
+              if (newest.completed_at == null) {
+                if (!windowUnverifiableForGood) scheduleNext(attempt)
+              } else if (usageOnlyRounds < 1) {
+                usageOnlyRounds += 1
+                scheduleNext(attempt)
+              }
             }
           })
           .catch(() => {
-            // Silent — localTurns content remains visible
+            // A failed read is transient (the transcript may be mid-write, or
+            // the window fetch raced a compaction): stay on the schedule
+            // rather than dropping the reply's metadata for good. Never
+            // surfaces an error — localTurns content remains visible.
+            scheduleNext(attempt)
           })
-      }, delay)
+      }, TURN_METADATA_SYNC_DELAYS_MS[attempt])
     }
 
     trySync(0)
@@ -3613,10 +4175,15 @@ export const useConversationRuntimeStore = create<ConversationRuntimeStore>()((
     }
   }
 
+  const markOutOfTurnContent = (conversationId: number): void => {
+    dispatch({ type: "MARK_OUT_OF_TURN_CONTENT", conversationId })
+  }
+
   const actions: RuntimeActions = {
     fetchDetail,
     refetchDetail,
     loadOlderTurns,
+    markOutOfTurnContent,
     syncViewerDetail,
     syncTurnMetadata,
     completeTurn: (conversationId, liveMessage) => {

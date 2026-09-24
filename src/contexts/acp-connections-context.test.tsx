@@ -1,12 +1,18 @@
 import { useEffect } from "react"
-import { act, render } from "@testing-library/react"
+import { act, cleanup, render } from "@testing-library/react"
 import { useTranslations } from "next-intl"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   AcpConnectionsProvider,
+  STREAM_FLUSH_FRAME_MS,
+  STREAM_FLUSH_MAX_MS,
   useAcpActions,
   useConnectionStore,
 } from "@/contexts/acp-connections-context"
+import {
+  CONNECTION_IDLE_TIMEOUT_MS,
+  IDLE_SWEEP_INTERVAL_MS,
+} from "@/lib/constants"
 import { parsePermissionToolCall } from "@/lib/permission-request"
 import { subscribe } from "@/lib/platform"
 import { saveConfigPreference } from "@/lib/selector-prefs-storage"
@@ -15,6 +21,7 @@ import type {
   EventEnvelope,
   LiveSessionSnapshot,
   SessionConfigOptionInfo,
+  UserMessageBlock,
 } from "@/lib/types"
 
 // Shared spies + a stub EventStream. `vi.hoisted` runs before the mock
@@ -47,8 +54,10 @@ const h = vi.hoisted(() => {
     // Stable across renders so tests can assert on what the error handler
     // routes to the status-bar alert vs. to the OS notification.
     pushAlert: vi.fn(),
-    sendSystemNotification: vi.fn(async () => undefined),
+    notifyDesktop: vi.fn(async () => true),
     toastWarning: vi.fn(),
+    toastError: vi.fn(),
+    toastInfo: vi.fn(),
     // Every `t(key, values)` this render made. The mock below still returns
     // the bare key (what most assertions compare against), so interpolated
     // values would otherwise be unobservable — this is how a test checks the
@@ -81,12 +90,19 @@ vi.mock("@/contexts/active-folder-context", () => ({
   useActiveFolder: () => ({ activeFolder: { path: "/tmp/x", name: "x" } }),
 }))
 
-vi.mock("@/lib/notification", () => ({
-  sendSystemNotification: h.sendSystemNotification,
+vi.mock("@/lib/desktop-notification", () => ({
+  notifyDesktop: h.notifyDesktop,
+  // Snapshot replay wraps its dispatch in this; the real one only sets a
+  // depth counter, so running the body straight through is faithful.
+  withDesktopNotificationsSuppressed: (fn: () => unknown) => fn(),
 }))
 
 vi.mock("sonner", () => ({
-  toast: { warning: h.toastWarning },
+  toast: {
+    warning: h.toastWarning,
+    error: h.toastError,
+    info: h.toastInfo,
+  },
 }))
 
 vi.mock("@/lib/selector-prefs-storage", () => ({
@@ -274,6 +290,60 @@ describe("AcpConnectionsProvider cross-client viewer lifecycle", () => {
     )
   })
 
+  it("a SECOND local surface joins the connection this client owns instead of spawning another agent", async () => {
+    // The canvas expands a conversation that is already open in a workspace
+    // tab. Two surfaces, two contextKeys, ONE agent process: the second must
+    // take the viewer path exactly like a second browser client does.
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+    expect(h.acpConnect).toHaveBeenCalledTimes(1)
+
+    // Discovery now finds the connection THIS client owns under `TAB`.
+    h.acpFindConnectionForConversation.mockResolvedValue({
+      connection_id: "spawned-conn",
+      event_seq: 3,
+    })
+    await act(async () => {
+      await h.actions!.connect(
+        "canvas-node-7",
+        "claude_code",
+        "/tmp/x",
+        "sess-1",
+        42
+      )
+    })
+
+    // No second spawn, and the new surface is a non-owning viewer — so its
+    // teardown detaches instead of killing the tab's agent.
+    expect(h.acpConnect).toHaveBeenCalledTimes(1)
+    expect(h.store!.getConnection("canvas-node-7")?.isViewer).toBe(true)
+    expect(h.store!.getConnection(TAB)?.isViewer).toBe(false)
+  })
+
+  it("never demotes a surface to a viewer of its OWN connection", async () => {
+    // The guard this narrowing had to preserve: re-connecting the same key
+    // must not turn its owner entry into a viewer, or nothing would ever
+    // `acpDisconnect` and the agent process would leak.
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+
+    h.acpFindConnectionForConversation.mockResolvedValue({
+      connection_id: "spawned-conn",
+      event_seq: 3,
+    })
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-2", 42)
+    })
+
+    expect(h.store!.getConnection(TAB)?.isViewer).toBe(false)
+  })
+
   it("skips discovery entirely when no persisted conversationId is given", async () => {
     await mountProvider()
 
@@ -399,11 +469,14 @@ describe("AcpConnectionsProvider preview-tab release (disconnectIfIdle)", () => 
     h.pushAlert.mockClear()
     await mountProvider()
     await act(async () => {
-      await expect(h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42))
-        .rejects.toEqual(denial)
+      await expect(
+        h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+      ).rejects.toEqual(denial)
     })
     expect(h.pushAlert).toHaveBeenCalledWith(
-      "error", expect.any(String), denial.message
+      "error",
+      expect.any(String),
+      denial.message
     )
   })
 
@@ -743,6 +816,124 @@ describe("AcpConnectionsProvider AIR session-failure lifecycle", () => {
       stop_reason: "end_turn",
     })
     expect(failuresNow()).toMatchObject({ notice: true, err: false })
+  })
+})
+
+// AIR async tasks: Claude's background shells / workflows / monitors. The wire
+// carries PARTIAL deltas keyed by task id, so the reducer owns a merge that has
+// to match `SessionState::apply_event` — including its refusal to invent a row
+// for a task it never saw announced.
+describe("AcpConnectionsProvider AIR async tasks", () => {
+  async function connectOwner(): Promise<AttachHandlers> {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+    return latestAttachHandlers()
+  }
+
+  it("merges partial deltas into one row and refuses to create from a progress tick", async () => {
+    const handlers = await connectOwner()
+    // Progress for an unannounced task: its identity frame was missed, so a
+    // placeholder row would be worse than none.
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "async_task",
+      delta: { task_id: "ghost", spawned: false, state: "running" },
+    })
+    expect(h.store!.getConnection(TAB)?.asyncTasks).toHaveLength(0)
+
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "async_task",
+      delta: {
+        task_id: "t1",
+        spawned: true,
+        name: "pnpm test",
+        task_type: "shell",
+        description: "pnpm test --watch",
+        show_in_transcript: true,
+        can_stop: true,
+      },
+    })
+    // Absent fields must leave the announced identity alone.
+    emitAcpEvent(handlers, {
+      seq: 3,
+      connection_id: "spawned-conn",
+      type: "async_task",
+      delta: {
+        task_id: "t1",
+        spawned: false,
+        last_tool_name: "Bash",
+        output_file_path: "/tmp/tasks/t1.output",
+      },
+    })
+
+    const tasks = h.store!.getConnection(TAB)?.asyncTasks ?? []
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({
+      task_id: "t1",
+      name: "pnpm test",
+      task_type: "shell",
+      state: "running",
+      last_tool_name: "Bash",
+      output_file_path: "/tmp/tasks/t1.output",
+    })
+
+    // Settled rows are RETAINED — the adapter revises a finished task (a late
+    // output path, or correcting a best-effort `stopped` into the real
+    // outcome), and an evicted row would come back nameless.
+    emitAcpEvent(handlers, {
+      seq: 4,
+      connection_id: "spawned-conn",
+      type: "async_task",
+      delta: { task_id: "t1", spawned: false, state: "completed" },
+    })
+    const settled = h.store!.getConnection(TAB)?.asyncTasks ?? []
+    expect(settled).toHaveLength(1)
+    expect(settled[0]).toMatchObject({ state: "completed", name: "pnpm test" })
+  })
+
+  // A fork attaches to a NEW session id. The old session's tasks can never
+  // settle again — the adapter publishes their terminal frames on the id the
+  // connection has left — so the backend drops its table and this reducer has
+  // to follow. It can't wait for a snapshot to do it: an empty snapshot table
+  // reads as "nothing to say", not "clear yours".
+  it("drops task rows when the session id changes, but not on a replay", async () => {
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_started",
+      session_id: "s1",
+    })
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "async_task",
+      delta: { task_id: "t1", spawned: true, name: "watch", can_stop: true },
+    })
+    expect(h.store!.getConnection(TAB)?.asyncTasks).toHaveLength(1)
+
+    // Re-announcing the SAME id is a replay, not a fork.
+    emitAcpEvent(handlers, {
+      seq: 3,
+      connection_id: "spawned-conn",
+      type: "session_started",
+      session_id: "s1",
+    })
+    expect(h.store!.getConnection(TAB)?.asyncTasks).toHaveLength(1)
+
+    emitAcpEvent(handlers, {
+      seq: 4,
+      connection_id: "spawned-conn",
+      type: "session_started",
+      session_id: "s2",
+    })
+    expect(h.store!.getConnection(TAB)?.asyncTasks).toHaveLength(0)
   })
 })
 
@@ -1857,8 +2048,8 @@ describe("out-of-turn wire guard + background activity", () => {
   it("background_activity mirrors outstanding, applies overlay turns, and notifies settled tasks", async () => {
     const { useConversationRuntimeStore, resetConversationRuntimeStore } =
       await import("@/stores/conversation-runtime-store")
-    const { sendSystemNotification } = await import("@/lib/notification")
-    const notify = vi.mocked(sendSystemNotification)
+    const { notifyDesktop } = await import("@/lib/desktop-notification")
+    const notify = vi.mocked(notifyDesktop)
     notify.mockClear()
     const { getFolderConversation } = await import("@/lib/api")
     vi.mocked(getFolderConversation).mockClear()
@@ -1919,9 +2110,16 @@ describe("out-of-turn wire guard + background activity", () => {
       turn: { id: "bg-100-0" },
     })
 
-    // 3. one OS notification per settled task, carrying its summary.
+    // 3. ONE OS notification for the batch. A single settled task still
+    //    carries its summary; the redacted variant never does.
     expect(notify).toHaveBeenCalledTimes(1)
-    expect(notify.mock.calls[0][1]).toContain('Agent "Run pnpm build" finished')
+    expect(notify.mock.calls[0][0]).toBe("background_task")
+    expect(notify.mock.calls[0][1].body).toContain(
+      'Agent "Run pnpm build" finished'
+    )
+    expect(notify.mock.calls[0][1].redactedBody).not.toContain(
+      'Agent "Run pnpm build" finished'
+    )
 
     // 4. the settlement flips the launch card IN-MEMORY (no detail refetch):
     //    with no promoted card yet (it's mid-stream), it's queued under the
@@ -1955,6 +2153,605 @@ describe("out-of-turn wire guard + background activity", () => {
     expect(notify).toHaveBeenCalledTimes(1)
 
     resetConversationRuntimeStore()
+  })
+})
+
+describe("streaming flush window widens with the run it re-renders", () => {
+  async function mountStreamingOwner() {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+    const handlers = latestAttachHandlers()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    return handlers
+  }
+
+  function liveTextFor(key: string): string {
+    const content = h.store!.getConnection(key)?.liveMessage?.content ?? []
+    return content
+      .map((block) => (block.type === "text" ? block.text : ""))
+      .join("")
+  }
+
+  function liveText(): string {
+    return liveTextFor(TAB)
+  }
+
+  /** A second conversation streaming at the same time, on its own connection. */
+  const OTHER_TAB = "conv-2-claude_code-43"
+
+  async function mountTwoStreamingOwners() {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    h.acpConnect.mockReset()
+    h.acpConnect
+      .mockResolvedValueOnce("conn-a")
+      .mockResolvedValueOnce("conn-b")
+      .mockResolvedValue("conn-extra")
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/a", "sess-a", 42)
+    })
+    const a = latestAttachHandlers()
+    await act(async () => {
+      await h.actions!.connect(OTHER_TAB, "claude_code", "/tmp/b", "sess-b", 43)
+    })
+    const b = latestAttachHandlers()
+    for (const [handlers, id] of [
+      [a, "conn-a"],
+      [b, "conn-b"],
+    ] as const) {
+      emitAcpEvent(handlers, {
+        seq: 1,
+        connection_id: id,
+        type: "status_changed",
+        status: "prompting",
+      })
+    }
+    return { a, b }
+  }
+
+  it("holds a long run for more frames, and delivers exactly what arrived", async () => {
+    const handlers = await mountStreamingOwner()
+    // Mount and connect on real timers (they await the transport); only the
+    // flush window below is driven by hand.
+    vi.useFakeTimers()
+    try {
+      // First delta of the turn: the live message is empty, so the window is
+      // the single frame it has always been.
+      const head = "a".repeat(9000)
+      emitAcpEvent(handlers, {
+        seq: 2,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: head,
+      })
+      expect(liveText()).toBe("")
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(head)
+
+      // The next delta is armed against a 9000-character run, which is past
+      // the first step: one frame is no longer enough to release it.
+      emitAcpEvent(handlers, {
+        seq: 3,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "b",
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(head)
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(`${head}b`)
+
+      // Whatever the window, every chunk lands once and in order.
+      let expected = `${head}b`
+      for (let i = 0; i < 40; i++) {
+        const text = `-${i}-`
+        expected += text
+        emitAcpEvent(handlers, {
+          seq: 4 + i,
+          connection_id: "spawned-conn",
+          type: "content_delta",
+          text,
+        })
+        act(() => {
+          vi.advanceTimersByTime(STREAM_FLUSH_MAX_MS)
+        })
+      }
+      expect(liveText()).toBe(expected)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // The window is sized by the RUN the batch appends to, not by how much the
+  // turn has said in total: a reply that has already written 9 KB and then ran
+  // a tool is back to rendering a short block, and must not keep paying for
+  // the prose above it.
+  it("returns to a single frame when a new run starts", async () => {
+    const handlers = await mountStreamingOwner()
+    vi.useFakeTimers()
+    try {
+      emitAcpEvent(handlers, {
+        seq: 2,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "a".repeat(9000),
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+
+      // A tool call closes the prose run (and flushes the queue itself), so
+      // the reply that resumes after it starts short again.
+      emitAcpEvent(handlers, {
+        seq: 3,
+        connection_id: "spawned-conn",
+        type: "tool_call",
+        tool_call_id: "toolu_1",
+        title: "Read",
+        kind: "read",
+        status: "in_progress",
+        content: null,
+        raw_input: null,
+        raw_output: null,
+      })
+      emitAcpEvent(handlers, {
+        seq: 4,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "after",
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(`${"a".repeat(9000)}after`)
+
+      // And it stays there while the new run is short, even though the turn
+      // now holds more than 9 KB in total.
+      emitAcpEvent(handlers, {
+        seq: 5,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: " more",
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(`${"a".repeat(9000)}after more`)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // An event that flushes the queue mid-window must CANCEL that window, not
+  // just forget it. A forgotten timer still fires, releases whatever the next
+  // window had queued, and takes the ref down with it — so the window after it
+  // is forgotten too. One such event per turn is enough to halve the cadence,
+  // and a long turn has many (`usage_update`, `tool_call_update`, …), so the
+  // widening decays back to a flat 16 ms over exactly the turns it is for.
+  it("cancels the pending window when an event flushes the queue early", async () => {
+    const handlers = await mountStreamingOwner()
+    vi.useFakeTimers()
+    try {
+      const head = "a".repeat(9000)
+      emitAcpEvent(handlers, {
+        seq: 2,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: head,
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(head)
+
+      // Arms a two-frame window against the 9 KB run.
+      emitAcpEvent(handlers, {
+        seq: 3,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "b",
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(head)
+
+      // One frame in, a non-streaming event flushes the queue itself.
+      emitAcpEvent(handlers, {
+        seq: 4,
+        connection_id: "spawned-conn",
+        type: "usage_update",
+        used: 1_000,
+        size: 200_000,
+      })
+      expect(liveText()).toBe(`${head}b`)
+
+      // The next delta arms its own two-frame window from here. The window the
+      // flush pre-empted must not fire inside it and cut it short.
+      emitAcpEvent(handlers, {
+        seq: 5,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "c",
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(`${head}b`)
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveText()).toBe(`${head}bc`)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Codeg runs several agents at once by design. A window sized from what one
+  // conversation is re-rendering must not be charged to another — least of all
+  // to a background one that costs nothing to flush and gains nothing by
+  // waiting.
+  it("never makes one conversation wait on another's long reply", async () => {
+    const { a, b } = await mountTwoStreamingOwners()
+    vi.useFakeTimers()
+    try {
+      const head = "a".repeat(9000)
+      emitAcpEvent(a, {
+        seq: 2,
+        connection_id: "conn-a",
+        type: "content_delta",
+        text: head,
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveTextFor(TAB)).toBe(head)
+
+      // A's next delta is armed against its 9 KB run — two frames. B has said
+      // nothing, so B's is one, and B must get it.
+      emitAcpEvent(a, {
+        seq: 3,
+        connection_id: "conn-a",
+        type: "content_delta",
+        text: "A",
+      })
+      emitAcpEvent(b, {
+        seq: 2,
+        connection_id: "conn-b",
+        type: "content_delta",
+        text: "B",
+      })
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveTextFor(OTHER_TAB)).toBe("B")
+      expect(liveTextFor(TAB)).toBe(head)
+
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveTextFor(TAB)).toBe(`${head}A`)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // The other half of the same rule: flushing one conversation out of turn
+  // must not release another's window early either.
+  it("does not let one conversation's event flush another's queue", async () => {
+    const { a, b } = await mountTwoStreamingOwners()
+    vi.useFakeTimers()
+    try {
+      emitAcpEvent(a, {
+        seq: 2,
+        connection_id: "conn-a",
+        type: "content_delta",
+        text: "A",
+      })
+      emitAcpEvent(b, {
+        seq: 2,
+        connection_id: "conn-b",
+        type: "content_delta",
+        text: "B",
+      })
+      // B's tool call flushes B's queue, and only B's.
+      emitAcpEvent(b, {
+        seq: 3,
+        connection_id: "conn-b",
+        type: "tool_call",
+        tool_call_id: "toolu_1",
+        title: "Read",
+        kind: "read",
+        status: "in_progress",
+        content: null,
+        raw_input: null,
+        raw_output: null,
+      })
+      // Positive half: the out-of-turn flush really did fire, so A's empty
+      // reading below is scoping, not a flush that silently does nothing.
+      expect(liveTextFor(OTHER_TAB)).toBe("B")
+      expect(liveTextFor(TAB)).toBe("")
+
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_FRAME_MS)
+      })
+      expect(liveTextFor(TAB)).toBe("A")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // A snapshot REPLACES the live message wholesale. Deltas still coalescing
+  // when one lands would append to the message it installed — which already
+  // contains them, because the snapshot is generated at a higher seq — and
+  // the reply shows the same prose twice. The attach stream re-emits a
+  // snapshot on RECONNECT, mid-turn, so this is what a dropped WebSocket does
+  // to a streaming reply, not a corner case.
+  it("lands coalesced deltas before a mid-turn snapshot replaces the message", async () => {
+    const handlers = await mountStreamingOwner()
+    vi.useFakeTimers()
+    try {
+      emitAcpEvent(handlers, {
+        seq: 2,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "hello ",
+      })
+      expect(liveText()).toBe("")
+
+      // The reconnect snapshot was generated after that delta reached the
+      // backend, so it already carries the text sitting in our window. Still
+      // `prompting`: the turn did not stop because the socket did.
+      h.denormalizeSnapshot.mockReturnValue({
+        connectionId: "spawned-conn",
+        status: "prompting",
+        sessionId: null,
+        modes: null,
+        configOptions: null,
+        availableCommands: null,
+        usage: null,
+        liveMessage: {
+          id: "live-1",
+          role: "assistant",
+          content: [{ type: "text", text: "hello " }],
+          startedAt: 0,
+        },
+        pendingPermission: null,
+        pendingAskQuestion: null,
+        pendingUserMessage: null,
+        promptCapabilities: null,
+        selectorsReady: false,
+        supportsFork: false,
+        configStale: false,
+        configStaleKind: null,
+        lastError: null,
+        eventSeq: 9,
+        activeDelegations: [],
+      })
+      hydrateSnapshot(handlers, {
+        event_seq: 9,
+      } as unknown as LiveSessionSnapshot)
+
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_MAX_MS)
+      })
+      expect(liveText()).toBe("hello ")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // …and FLUSH is why that is a flush and not a discard. A snapshot behind
+  // our cursor takes the stale branch, which merges selector fields and
+  // leaves `liveMessage` alone — so it never redelivers the queued prose, and
+  // dropping the queue there would lose it outright. Which branch a snapshot
+  // takes isn't knowable at the call site, so the safe move is the one that
+  // is correct on both.
+  it("keeps coalesced deltas a stale snapshot will not redeliver", async () => {
+    const handlers = await mountStreamingOwner()
+    vi.useFakeTimers()
+    try {
+      emitAcpEvent(handlers, {
+        seq: 4,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "hello ",
+      })
+      expect(liveText()).toBe("")
+
+      // eventSeq 2 is behind the cursor the delta above advanced to 4, so
+      // this hydrate takes the stale branch. Note it carries no live message
+      // of its own — the stale branch would ignore one anyway.
+      h.denormalizeSnapshot.mockReturnValue({
+        connectionId: "spawned-conn",
+        status: "connected",
+        sessionId: null,
+        modes: null,
+        configOptions: null,
+        availableCommands: null,
+        usage: null,
+        liveMessage: null,
+        pendingPermission: null,
+        pendingAskQuestion: null,
+        pendingUserMessage: null,
+        promptCapabilities: null,
+        selectorsReady: true,
+        supportsFork: false,
+        configStale: false,
+        configStaleKind: null,
+        lastError: null,
+        eventSeq: 2,
+        activeDelegations: [],
+      })
+      hydrateSnapshot(handlers, {
+        event_seq: 2,
+      } as unknown as LiveSessionSnapshot)
+
+      // The stale branch merged its latched field and left the turn alone…
+      expect(h.store!.getConnection(TAB)?.selectorsReady).toBe(true)
+      expect(h.store!.getConnection(TAB)?.status).toBe("prompting")
+      // …and the prose that was mid-window is on screen, not dropped.
+      expect(liveText()).toBe("hello ")
+
+      act(() => {
+        vi.advanceTimersByTime(STREAM_FLUSH_MAX_MS)
+      })
+      expect(liveText()).toBe("hello ")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Removing the entry disarms its window: "no connection, no queue".
+  //
+  // Asserted on the timer rather than on rendered text, because the text is
+  // already defended twice over — `status_changed` flushes before it applies
+  // `prompting`, and the out-of-turn guard drops a batch for a connection
+  // that isn't prompting — so a leak would have to thread between both to
+  // show up on screen. The invariant is the thing worth pinning: context keys
+  // are REUSED (close a tab mid-turn and reopen it and the next connection is
+  // handed the same `conv-<id>-<agent>-<folder>` string), and a window that
+  // outlives its connection is a dispatch aimed at whoever holds the key up
+  // to STREAM_FLUSH_MAX_MS later. Cheap to keep impossible; unpleasant to
+  // rediscover from a duplicated paragraph in someone's reply.
+  it("disarms a removed connection's flush window", async () => {
+    const handlers = await mountStreamingOwner()
+    vi.useFakeTimers()
+    try {
+      const idle = vi.getTimerCount()
+      emitAcpEvent(handlers, {
+        seq: 2,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "from the turn that was closed",
+      })
+      expect(liveText()).toBe("")
+      expect(vi.getTimerCount()).toBe(idle + 1)
+
+      await act(async () => {
+        await h.actions!.disconnect(TAB)
+      })
+      expect(h.store!.getConnection(TAB)).toBeUndefined()
+      expect(vi.getTimerCount()).toBe(idle)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // Settling a connection the backend has forgotten is the one turn-ending
+  // path that dispatches STATUS_CHANGED directly instead of going through the
+  // event handler, so nothing else drains the queue — and the moment the
+  // entry reads `disconnected` the out-of-turn guard drops the batch. The
+  // last thing the agent managed to say should still be on screen.
+  it("lands what was mid-window when a connection is settled as gone", async () => {
+    const handlers = await mountStreamingOwner()
+    vi.useFakeTimers()
+    try {
+      emitAcpEvent(handlers, {
+        seq: 2,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "last words",
+      })
+      expect(liveText()).toBe("")
+
+      // Pressing Stop on a connection the backend no longer holds.
+      h.acpCancel.mockRejectedValueOnce(new Error("Connection not found"))
+      await act(async () => {
+        await h.actions!.cancel(TAB)
+      })
+
+      expect(h.store!.getConnection(TAB)?.status).toBe("disconnected")
+      expect(liveText()).toBe("last words")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // The same rule on a different removal. `DELEGATION_CHILD_DETACH` drops an
+  // entry too, and it is why the discard is derived from the reducer's result
+  // rather than from a list of action types: closing the work-task transcript
+  // dialog on a streaming sub-agent must not leave a window armed either, and
+  // nobody should have to remember to extend a list to get that.
+  it("disarms a detached delegation child's flush window", async () => {
+    const CHILD = "task-conn-1"
+    await mountProvider()
+    act(() => {
+      h.actions!.attachDelegationChild({
+        connectionId: CHILD,
+        parentConnectionId: CHILD,
+        parentToolUseId: "work-task-9",
+        agentType: "claude_code",
+        hydrate: false,
+      })
+    })
+    const child = latestAttachHandlers()
+    emitAcpEvent(child, {
+      seq: 1,
+      connection_id: CHILD,
+      type: "status_changed",
+      status: "prompting",
+    })
+
+    vi.useFakeTimers()
+    try {
+      const idle = vi.getTimerCount()
+      emitAcpEvent(child, {
+        seq: 2,
+        connection_id: CHILD,
+        type: "content_delta",
+        text: "sub-agent, mid-sentence",
+      })
+      expect(vi.getTimerCount()).toBe(idle + 1)
+
+      act(() => {
+        h.actions!.detachDelegationChild(CHILD)
+      })
+      expect(h.store!.getConnection(CHILD)).toBeUndefined()
+      expect(vi.getTimerCount()).toBe(idle)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // …and the same on unmount. This suite runs the attach transport, which is
+  // the one whose windows used to survive: the legacy `acp://event` listener
+  // effect owned the cleanup, and it returns early — before registering any —
+  // for exactly the transports that stream through attach subscriptions.
+  it("drops every armed window when the provider unmounts", async () => {
+    const handlers = await mountStreamingOwner()
+    vi.useFakeTimers()
+    try {
+      const idle = vi.getTimerCount()
+      emitAcpEvent(handlers, {
+        seq: 2,
+        connection_id: "spawned-conn",
+        type: "content_delta",
+        text: "mid-sentence",
+      })
+      expect(vi.getTimerCount()).toBe(idle + 1)
+
+      // RTL's `cleanup` unmounts inside its own `act`, and clears its
+      // registry afterwards — so the suite's auto-cleanup is a no-op here.
+      cleanup()
+      expect(vi.getTimerCount()).toBe(idle)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -2116,6 +2913,8 @@ describe("AcpConnectionsProvider Grok cross-agent-type model switch", () => {
       option_name: "Model",
       requested: "Composer 2.5",
       actual: "Grok 4.5",
+      requested_value: "composer-2.5",
+      actual_value: "grok-4.5",
     })
     emitAcpEvent(handlers, {
       seq: 3,
@@ -2127,6 +2926,72 @@ describe("AcpConnectionsProvider Grok cross-agent-type model switch", () => {
     expect(h.toastWarning).toHaveBeenCalledTimes(1)
     // The useTranslations mock echoes the key, so the message itself is the key.
     expect(h.toastWarning).toHaveBeenCalledWith("configOptionAdjusted")
+  })
+
+  it("raises a notice as a toast and mirrors only the graded levels to the banner", async () => {
+    // Advertising `session.notices` makes both adapters route their ADVISORY
+    // records here instead of the AIR lane, so the banner has to keep its rows
+    // or the upgrade is a net loss. Text is adapter-authored and shown
+    // verbatim — unlike the localized `configOptionAdjusted` above.
+    const handlers = await connectGrokOwner()
+    h.toastWarning.mockClear()
+    h.toastError.mockClear()
+    h.toastInfo.mockClear()
+
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_notice",
+      notice: {
+        severity: "info",
+        title: "Model rerouted",
+        description: "Switched from gpt-6-astra to gpt-5.6-sol (capacity).",
+      },
+    })
+    expect(h.toastInfo).toHaveBeenCalledWith(
+      "Model rerouted — Switched from gpt-6-astra to gpt-5.6-sol (capacity)."
+    )
+    // `info` is toast-only: a reroute does not deserve a persistent row.
+    expect(h.store!.getConnection(TAB)?.sessionFailures ?? []).toHaveLength(0)
+
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "session_notice",
+      notice: { severity: "warning", title: "Fast mode turned off" },
+    })
+    expect(h.toastWarning).toHaveBeenCalledWith("Fast mode turned off")
+    const table = h.store!.getConnection(TAB)?.sessionFailures ?? []
+    expect(table).toHaveLength(1)
+    expect(table[0]).toMatchObject({
+      severity: "warning",
+      title: "Fast mode turned off",
+    })
+
+    // A repeat revises the one row rather than stacking a second — the bug a
+    // fixed revision would cause is the banner freezing on the first text.
+    emitAcpEvent(handlers, {
+      seq: 3,
+      connection_id: "spawned-conn",
+      type: "session_notice",
+      notice: {
+        severity: "warning",
+        title: "Fast mode turned off",
+        description: "The selected model does not support it.",
+      },
+    })
+    const revised = h.store!.getConnection(TAB)?.sessionFailures ?? []
+    expect(revised).toHaveLength(1)
+    expect(revised[0].details).toBe("The selected model does not support it.")
+
+    emitAcpEvent(handlers, {
+      seq: 4,
+      connection_id: "spawned-conn",
+      type: "session_notice",
+      notice: { severity: "error", title: "Provider degraded" },
+    })
+    expect(h.toastError).toHaveBeenCalledWith("Provider degraded")
+    expect(h.store!.getConnection(TAB)?.sessionFailures ?? []).toHaveLength(2)
   })
 
   it("stays silent for option snapshots nobody asked for", async () => {
@@ -2197,6 +3062,153 @@ describe("AcpConnectionsProvider Grok cross-agent-type model switch", () => {
   })
 })
 
+// Cline 3.x is the first agent to ship a `boolean` config option
+// ("Auto-approve tools"). Verified against cline 3.0.62 over stdio: it accepts
+// `session/set_config_option` with the flattened `{type:"boolean",value:true}`
+// payload, answers with the full option list carrying the new `currentValue`,
+// AND pushes the same list again as a `config_option_update`. So every wire leg
+// works — the toggle was dead entirely inside this reducer (#709).
+describe("AcpConnectionsProvider boolean config option (cline auto-approve)", () => {
+  function clineOptions(autoApprove: boolean): SessionConfigOptionInfo[] {
+    return [
+      {
+        id: "mode",
+        name: "Session Mode",
+        category: "mode",
+        kind: {
+          type: "select",
+          current_value: "act",
+          options: [
+            { value: "plan", name: "Plan" },
+            { value: "act", name: "Act" },
+          ],
+          groups: [],
+        },
+      },
+      {
+        id: "auto_approve",
+        name: "Auto-approve tools",
+        description: "Automatically approve all tool calls",
+        kind: { type: "boolean", current_value: autoApprove },
+      },
+    ]
+  }
+
+  function autoApproveValue(): boolean | string | undefined {
+    const option = h
+      .store!.getConnection(TAB)!
+      .configOptions?.find((o) => o.id === "auto_approve")
+    return option?.kind.current_value
+  }
+
+  async function connectClineOwner(): Promise<AttachHandlers> {
+    h.acpGetAgentStatus.mockResolvedValue({
+      agent_type: "cline",
+      enabled: true,
+      available: true,
+      installed_version: "3.0.62",
+      host_tools_agent_mode: false,
+      is_acp_adapter: false,
+    })
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "cline", "/tmp/x", "sess-1")
+    })
+    return latestAttachHandlers()
+  }
+
+  it("flips the toggle optimistically when the user clicks it", async () => {
+    const handlers = await connectClineOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: clineOptions(false),
+    })
+    expect(autoApproveValue()).toBe(false)
+
+    await act(async () => {
+      await h.actions!.setConfigOption(TAB, "auto_approve", "true")
+    })
+
+    expect(autoApproveValue()).toBe(true)
+    expect(saveConfigPreference).toHaveBeenCalledWith(
+      "cline",
+      "auto_approve",
+      "true"
+    )
+  })
+
+  it("applies the agent's own flip of a boolean option", async () => {
+    // The authoritative leg, independent of the optimistic one: cline answers
+    // every `set_config_option` with a fresh list and pushes a
+    // `config_option_update` besides. A value-blind equality check swallows
+    // both, which is what left the chip stuck even after a successful set.
+    const handlers = await connectClineOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: clineOptions(false),
+    })
+    expect(autoApproveValue()).toBe(false)
+
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: clineOptions(true),
+    })
+
+    expect(autoApproveValue()).toBe(true)
+  })
+
+  it("snaps back when the agent settles the toggle the other way", async () => {
+    // Optimism without reconciliation is worse than no optimism: the chip would
+    // claim tools are auto-approved while the agent still asks for permission.
+    const handlers = await connectClineOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: clineOptions(false),
+    })
+
+    await act(async () => {
+      await h.actions!.setConfigOption(TAB, "auto_approve", "true")
+    })
+    expect(autoApproveValue()).toBe(true)
+
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: clineOptions(false),
+    })
+
+    expect(autoApproveValue()).toBe(false)
+  })
+
+  it("ignores a value that is neither on nor off", async () => {
+    // The optimistic hop is the one place a value is interpreted without the
+    // agent; anything but the two the toggle emits is a caller bug, and
+    // guessing "off" would be a silent lie about what tools may run.
+    const handlers = await connectClineOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "session_config_options",
+      config_options: clineOptions(true),
+    })
+
+    await act(async () => {
+      await h.actions!.setConfigOption(TAB, "auto_approve", "act")
+    })
+
+    expect(autoApproveValue()).toBe(true)
+  })
+})
+
 describe("empty-turn error diagnostics", () => {
   async function connectOwner(): Promise<AttachHandlers> {
     await mountProvider()
@@ -2229,13 +3241,34 @@ describe("empty-turn error diagnostics", () => {
     })
   })
 
+  // claude-agent-acp 0.74.0 rejects the prompt with ACP's `authRequired` on a
+  // mid-session sign-out. The backend keeps that turn-scoped and synthesizes
+  // `turn_failed_auth_required`; without its own case here the user would get
+  // the raw English "needs you to sign in again" string instead.
+  it("localizes the auth-required turn code", async () => {
+    const handlers = await connectOwner()
+
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "error",
+      message: "raw english fallback",
+      agent_type: "claude_code",
+      code: "turn_failed_auth_required",
+    })
+
+    expect(h.store!.getConnection(TAB)!.error).toBe(
+      "backendErrors.turnFailedAuthRequired"
+    )
+  })
+
   it("routes details to the alert's evidence slot, keeping them out of detail, conn.error and the OS notification", async () => {
     const handlers = await connectOwner()
     h.pushAlert.mockClear()
-    h.sendSystemNotification.mockClear()
+    h.notifyDesktop.mockClear()
 
     const details =
-      "dropped 1 update(s) (0 decode, 1 dispatch)\nstderr (this turn, last 1 lines):\n  Error: 401 Unauthorized"
+      "dropped 1 unreadable update(s)\nstderr (this turn, last 1 lines):\n  Error: 401 Unauthorized"
     emitAcpEvent(handlers, {
       seq: 1,
       connection_id: "spawned-conn",
@@ -2262,7 +3295,7 @@ describe("empty-turn error diagnostics", () => {
     )
 
     // Notification centers persist their payload outside the app.
-    const notifyCalls = h.sendSystemNotification.mock.calls
+    const notifyCalls = h.notifyDesktop.mock.calls
     const notificationArgs = notifyCalls[notifyCalls.length - 1]!
     expect(JSON.stringify(notificationArgs)).not.toContain("401 Unauthorized")
   })
@@ -2561,7 +3594,7 @@ describe("HYDRATE_FROM_SNAPSHOT last_error recovery", () => {
   it("raises an alert for snapshot-carried details without touching conn.error or notifications", async () => {
     const handlers = await connectOwner()
     h.pushAlert.mockClear()
-    h.sendSystemNotification.mockClear()
+    h.notifyDesktop.mockClear()
 
     const details =
       "stderr (this turn, last 1 lines):\n  Error: 401 Unauthorized"
@@ -2587,7 +3620,7 @@ describe("HYDRATE_FROM_SNAPSHOT last_error recovery", () => {
     expect(h.store!.getConnection(TAB)!.error).toBe(
       "agent ended the turn without producing any response."
     )
-    expect(h.sendSystemNotification).not.toHaveBeenCalled()
+    expect(h.notifyDesktop).not.toHaveBeenCalled()
   })
 
   it("does not re-alert the same details on every re-attach", async () => {
@@ -3177,7 +4210,7 @@ describe("routing survives every surface watching one connection", () => {
         agentType: "claude_code",
       })
     })
-    h.sendSystemNotification.mockClear()
+    h.notifyDesktop.mockClear()
 
     act(() => {
       firehose()({
@@ -3191,7 +4224,7 @@ describe("routing survives every surface watching one connection", () => {
     // Two surfaces are streaming the same turn; the user must still get ONE
     // "finished responding" notification. The store effect, by contrast, is
     // per surface — both leave `prompting`.
-    expect(h.sendSystemNotification).toHaveBeenCalledTimes(1)
+    expect(h.notifyDesktop).toHaveBeenCalledTimes(1)
     expect(h.store!.getConnection(TAB)!.status).toBe("connected")
     expect(h.store!.getConnection(CHILD_VIEW)!.status).toBe("connected")
   })
@@ -3604,6 +4637,67 @@ describe("connect() teardown races", () => {
     expect(h.acpConnect).not.toHaveBeenCalled()
   })
 
+  // Orphan rescue happens MID-TURN, and the reducer drops a `STREAM_BATCH`
+  // for a key with no connection — so deltas still sitting in the old key's
+  // flush window are lost text unless they land before the entry moves. Up to
+  // STREAM_FLUSH_MAX_MS of a live reply.
+  it("lands the old key's coalesced deltas before rescuing its connection", async () => {
+    mountDesktop()
+    await act(async () => {})
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1")
+    })
+    const onEvent = vi.mocked(subscribe).mock.calls[0]![1] as (
+      envelope: EventEnvelope
+    ) => void
+    // Hold the clock from here on. The window is only 16 ms, so on real timers
+    // the rescue's own awaits could outlast it and the delta would land
+    // because the timer fired — the test would keep passing with the flush
+    // below deleted. Under fake timers the clock never advances, so the only
+    // thing that can deliver this text is the explicit flush.
+    h.acpTouchConnection.mockResolvedValue(true)
+    vi.useFakeTimers()
+    try {
+      act(() => {
+        onEvent({
+          seq: 1,
+          connection_id: "spawned-conn",
+          type: "session_started",
+          session_id: "sess-1",
+        } as EventEnvelope)
+        onEvent({
+          seq: 2,
+          connection_id: "spawned-conn",
+          type: "status_changed",
+          status: "prompting",
+        } as EventEnvelope)
+        // Still inside its flush window when the rescue below fires.
+        onEvent({
+          seq: 3,
+          connection_id: "spawned-conn",
+          type: "content_delta",
+          text: "half a sentence",
+        } as EventEnvelope)
+      })
+      // Queued, not applied: the window has not elapsed.
+      expect(h.store!.getConnection(TAB)?.liveMessage?.content).toEqual([])
+
+      await act(async () => {
+        await h.actions!.connect(RESCUE_TAB, "claude_code", "/tmp/x", "sess-1")
+      })
+
+      const rescued = h.store!.getConnection(RESCUE_TAB)
+      expect(rescued?.connectionId).toBe("spawned-conn")
+      expect(
+        (rescued?.liveMessage?.content ?? [])
+          .map((block) => (block.type === "text" ? block.text : ""))
+          .join("")
+      ).toBe("half a sentence")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("still connects when the backend GC'd the connection mid-probe", async () => {
     // Web/attach transport: `onDetached("connection_gone")` drops the entry
     // outright. That is NOT a rekey — nothing else holds the connection — so
@@ -3938,5 +5032,444 @@ describe("AcpConnectionsProvider retry banner (turn_retrying)", () => {
     })
 
     expect(h.store!.getConnection(TAB)?.claudeApiRetry?.attempt).toBe(1)
+  })
+})
+
+// The idle sweep reclaims any connection that is neither the single `activeKey`
+// nor an open TAB. Canvas conversation cards are neither — they live on a board
+// that has no tabs at all — so a second live card would have its agent
+// disconnected out from under the user after a minute of working in the first
+// one, while the card sat there still rendering as connected.
+describe("live surfaces that are not tabs", () => {
+  /** An owner sitting at `connected` — the only state the sweep reclaims. */
+  async function connectOwner(): Promise<void> {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+    emitAcpEvent(latestAttachHandlers(), {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "turn_complete",
+      stop_reason: "end_turn",
+    } as EventEnvelope)
+  }
+
+  /** Run the sweep with this key having been idle well past the timeout. */
+  async function sweepPastIdleTimeout(): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(
+        CONNECTION_IDLE_TIMEOUT_MS + IDLE_SWEEP_INTERVAL_MS + 1000
+      )
+    })
+  }
+
+  it("reclaims an idle connection nothing claims to be showing", async () => {
+    vi.useFakeTimers()
+    try {
+      await connectOwner()
+      h.actions!.setActiveKey("some-other-surface")
+      await sweepPastIdleTimeout()
+      expect(h.acpDisconnect).toHaveBeenCalledWith("spawned-conn")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("spares one a registered non-tab surface is still holding open", async () => {
+    vi.useFakeTimers()
+    try {
+      await connectOwner()
+      h.actions!.setActiveKey("some-other-surface")
+      h.actions!.registerLiveSurfaceKeys("canvas", new Set([TAB]))
+      await sweepPastIdleTimeout()
+      expect(h.acpDisconnect).not.toHaveBeenCalled()
+      expect(h.store!.getConnection(TAB)?.status).toBe("connected")
+
+      // The board unmounts (or the card collapses) and the claim is dropped —
+      // the connection goes back to being sweepable.
+      h.actions!.registerLiveSurfaceKeys("canvas", new Set())
+      await sweepPastIdleTimeout()
+      expect(h.acpDisconnect).toHaveBeenCalledWith("spawned-conn")
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps each registrar's claims separate", async () => {
+    vi.useFakeTimers()
+    try {
+      await connectOwner()
+      h.actions!.setActiveKey("some-other-surface")
+      h.actions!.registerLiveSurfaceKeys("canvas", new Set([TAB]))
+      // A second registrar publishing its own (empty) set must not drop the
+      // first one's claim — that is exactly how a single shared set breaks.
+      h.actions!.registerLiveSurfaceKeys("pet-window", new Set())
+      await sweepPastIdleTimeout()
+      expect(h.acpDisconnect).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
+
+/**
+ * A message the user sends mid-turn over the native `_session/steering`
+ * channel is spliced into the live turn, so the transcript can render it as a
+ * user turn between the two halves of the reply.
+ *
+ * The discriminator is that the note is ALREADY `delivered` when it is
+ * submitted: `FeedbackItem::new_delivered` (src-tauri/src/acp/feedback.rs) has
+ * exactly one caller, the native push path, and it exists precisely because
+ * the adapter has already consumed the text by then. A `pending` note is the
+ * cooperative `check_user_feedback` pull channel, which the agent reads as a
+ * tool result and never as a user message.
+ */
+describe("AcpConnectionsProvider mid-turn steering messages", () => {
+  /** The note's `created_at`: when the backend injected the text. Carried onto
+   *  the block so the runtime store can tell the agent's own copy of THIS
+   *  message from the same words sent in an earlier round. */
+  const STEER_AT = "2026-06-07T00:00:00Z"
+
+  async function connectOwner(): Promise<AttachHandlers> {
+    h.acpFindConnectionForConversation.mockResolvedValue(null)
+    await mountProvider()
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x", "sess-1", 42)
+    })
+    return latestAttachHandlers()
+  }
+
+  function conn() {
+    return h.store!.getConnection(TAB)!
+  }
+
+  function steeringBlocks() {
+    return (conn().liveMessage?.content ?? []).filter(
+      (b) => b.type === "steering"
+    )
+  }
+
+  function submitted(
+    seq: number,
+    id: string,
+    text: string,
+    status: "pending" | "delivered",
+    blocks?: UserMessageBlock[]
+  ): EventEnvelope {
+    return {
+      seq,
+      connection_id: "spawned-conn",
+      type: "feedback_submitted",
+      item: {
+        id,
+        text,
+        created_at: STEER_AT,
+        status,
+        ...(blocks && { blocks }),
+      },
+    } as unknown as EventEnvelope
+  }
+
+  it("splices a delivered note into the running turn and records the adoption", async () => {
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "content_delta",
+      text: "half one",
+    } as unknown as EventEnvelope)
+    emitAcpEvent(handlers, submitted(3, "n1", "use the other API", "delivered"))
+
+    expect(steeringBlocks()).toEqual([
+      {
+        type: "steering",
+        id: "n1",
+        text: "use the other API",
+        createdAt: STEER_AT,
+        // A text-only note records no block list, so the renderer falls back
+        // to `text` exactly as it always has.
+        blocks: null,
+      },
+    ])
+    expect(conn().steeredMessageIds).toEqual(["n1"])
+  })
+
+  it("carries a steered note's image into the live turn, not just its text", async () => {
+    // `text` is the composer's display form — it collapses an attachment into
+    // words. Without the note's blocks the running turn would show a sentence
+    // about the image and only a reload (which reads the agent's own copy)
+    // would put the image back.
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    emitAcpEvent(
+      handlers,
+      submitted(2, "n1", "this colour", "delivered", [
+        { type: "text", text: "this colour" },
+        { type: "image", data: "aGk=", mime_type: "image/png" },
+      ])
+    )
+
+    expect(steeringBlocks()).toEqual([
+      {
+        type: "steering",
+        id: "n1",
+        text: "this colour",
+        createdAt: STEER_AT,
+        // Widened to `ContentBlock`s, the same shape a `user_message` echo
+        // produces, so one message renders identically by either route.
+        blocks: [
+          { type: "text", text: "this colour" },
+          {
+            type: "image",
+            data: "aGk=",
+            mime_type: "image/png",
+            uri: null,
+          },
+        ],
+      },
+    ])
+  })
+
+  it("ignores a pending note - the pull channel is not a user message", async () => {
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    emitAcpEvent(handlers, submitted(2, "n1", "waiting note", "pending"))
+
+    expect(steeringBlocks()).toEqual([])
+    expect(conn().steeredMessageIds).toEqual([])
+  })
+
+  it("is idempotent - the submit broadcast reaches the sender too", async () => {
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    emitAcpEvent(handlers, submitted(2, "n1", "same note", "delivered"))
+    emitAcpEvent(handlers, submitted(3, "n1", "same note", "delivered"))
+
+    expect(steeringBlocks()).toHaveLength(1)
+    expect(conn().steeredMessageIds).toEqual(["n1"])
+  })
+
+  it("refuses a note that arrives with no turn running", async () => {
+    // The native submit is recorded ungated on the backend, so a note can land
+    // just after the turn settled. There is nothing to split then, and
+    // appending would graft it onto the finished turn. The note keeps its
+    // strip instead (it is absent from `steeredMessageIds`), and the agent
+    // recorded it either way, so a reload still shows it.
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    emitAcpEvent(handlers, {
+      seq: 2,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "connected",
+    })
+    emitAcpEvent(handlers, submitted(3, "n1", "too late", "delivered"))
+
+    expect(steeringBlocks()).toEqual([])
+    expect(conn().steeredMessageIds).toEqual([])
+  })
+
+  it("starts each turn with no adoptions carried over", async () => {
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    emitAcpEvent(handlers, submitted(2, "n1", "first turn", "delivered"))
+    expect(conn().steeredMessageIds).toEqual(["n1"])
+
+    emitAcpEvent(handlers, {
+      seq: 3,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "connected",
+    })
+    emitAcpEvent(handlers, {
+      seq: 4,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    expect(conn().steeredMessageIds).toEqual([])
+    expect(steeringBlocks()).toEqual([])
+  })
+
+  it("gives the note its strip back when a snapshot replaces the live message", async () => {
+    // A mid-turn re-attach (WS reconnect in server mode) hydrates the backend's
+    // live message, which carries no steering block — the wire has no such kind
+    // — so the spliced message is gone from the transcript. Holding on to the
+    // adoption there would hide the strip for a message that is now rendered
+    // NOWHERE, the one failure worse than rendering it twice.
+    const handlers = await connectOwner()
+    emitAcpEvent(handlers, {
+      seq: 1,
+      connection_id: "spawned-conn",
+      type: "status_changed",
+      status: "prompting",
+    })
+    emitAcpEvent(handlers, submitted(2, "n1", "use the other API", "delivered"))
+    expect(conn().steeredMessageIds).toEqual(["n1"])
+
+    h.denormalizeSnapshot.mockReturnValue({
+      connectionId: "spawned-conn",
+      status: "prompting",
+      sessionId: null,
+      modes: null,
+      configOptions: null,
+      availableCommands: null,
+      usage: null,
+      liveMessage: {
+        id: "lm-server",
+        role: "assistant",
+        content: [{ type: "text", text: "half one" }],
+        startedAt: 0,
+      },
+      pendingPermission: null,
+      pendingAskQuestion: null,
+      pendingUserMessage: null,
+      promptCapabilities: null,
+      selectorsReady: false,
+      supportsFork: false,
+      configStale: false,
+      configStaleKind: null,
+      backgroundOutstanding: 0,
+      activeDelegations: [],
+      lastError: null,
+      lastErrorDetails: null,
+      eventSeq: 9,
+    })
+    hydrateSnapshot(handlers, {
+      event_seq: 9,
+    } as unknown as LiveSessionSnapshot)
+
+    expect(steeringBlocks()).toEqual([])
+    expect(conn().steeredMessageIds).toEqual([])
+  })
+})
+
+describe("connect() is observable while it is still in flight", () => {
+  // `acpConnect` does not return until the agent has spawned, handshaken and
+  // resumed the session — seconds to a minute for a large historical session.
+  // `CONNECTION_CREATED` (the first `status: "connecting"`) only runs after it
+  // resolves, so for that whole stretch the connections map is empty and every
+  // consumer read `null` = "idle, nothing in flight". The pending marker is
+  // what closes that gap.
+  it("publishes a pending marker before the backend call and clears it after", async () => {
+    await mountProvider()
+    let resolveConnect: (id: string) => void = () => {}
+    h.acpConnect.mockImplementation(
+      () =>
+        new Promise<string>((res) => {
+          resolveConnect = res
+        })
+    )
+
+    let connectPromise: Promise<void> | undefined
+    await act(async () => {
+      connectPromise = h.actions!.connect(
+        TAB,
+        "claude_code",
+        "/tmp/x",
+        "sess-1"
+      )
+    })
+
+    // Mid-flight: still no entry, but the key is demonstrably connecting —
+    // and it names the agent + cwd, so a status chip has something to show.
+    expect(h.store!.getConnection(TAB)).toBeUndefined()
+    expect(h.store!.getConnectPending(TAB)).toEqual({
+      agentType: "claude_code",
+      workingDir: "/tmp/x",
+    })
+
+    await act(async () => {
+      resolveConnect("spawned-conn")
+      await connectPromise
+    })
+
+    // The entry has taken over as the source of truth, so the marker retires.
+    expect(h.store!.getConnection(TAB)?.status).toBe("connecting")
+    expect(h.store!.getConnectPending(TAB)).toBeUndefined()
+  })
+
+  it("clears the marker when the connect fails, leaving no phantom `connecting`", async () => {
+    await mountProvider()
+    // The preflight rejection path: the agent is not installed, so connect()
+    // throws before it ever reaches the backend.
+    h.acpGetAgentStatus.mockResolvedValue({
+      agent_type: "claude_code",
+      enabled: true,
+      available: true,
+      installed_version: null,
+      host_tools_agent_mode: false,
+      is_acp_adapter: true,
+    })
+
+    await act(async () => {
+      await h.actions!.connect(TAB, "claude_code", "/tmp/x").catch(() => {})
+    })
+
+    expect(h.store!.getConnection(TAB)).toBeUndefined()
+    expect(h.store!.getConnectPending(TAB)).toBeUndefined()
+  })
+
+  it("wakes the key's subscribers so a mounted surface re-renders on it", async () => {
+    await mountProvider()
+    const notifications: string[] = []
+    const unsub = h.store!.subscribeKey(TAB, () =>
+      notifications.push(
+        h.store!.getConnectPending(TAB) ? "pending" : "not-pending"
+      )
+    )
+    let resolveConnect: (id: string) => void = () => {}
+    h.acpConnect.mockImplementation(
+      () =>
+        new Promise<string>((res) => {
+          resolveConnect = res
+        })
+    )
+
+    let connectPromise: Promise<void> | undefined
+    await act(async () => {
+      connectPromise = h.actions!.connect(TAB, "claude_code", "/tmp/x")
+    })
+    expect(notifications[0]).toBe("pending")
+
+    await act(async () => {
+      resolveConnect("spawned-conn")
+      await connectPromise
+    })
+    unsub()
+    expect(notifications).toContain("not-pending")
   })
 })

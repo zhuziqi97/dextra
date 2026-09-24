@@ -74,6 +74,7 @@ const folder = (overrides: Partial<FolderDetail> = {}): FolderDetail => ({
   parent_id: null,
   kind: "regular",
   alias: null,
+  group_id: null,
   ...overrides,
 })
 
@@ -681,7 +682,11 @@ const configuration = {
   execution_project: null,
   binding_id: null,
   mcp_scope_modules: [],
-  mcp_capabilities: { code_graph_enabled: false, forge_enabled: false, issue_enabled: false },
+  mcp_capabilities: {
+    code_graph_enabled: false,
+    forge_enabled: false,
+    issue_enabled: false,
+  },
   mcp_enabled: false,
   mcp_scope_details: [],
   module_labels: {},

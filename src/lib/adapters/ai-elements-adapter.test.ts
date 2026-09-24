@@ -13,6 +13,7 @@ import {
   type AdaptedContentPart,
   type AdaptedToolCallPart,
 } from "./ai-elements-adapter"
+import { CODEX_SEARCH_ACTION_META_KEY } from "@/lib/codex-command-action"
 
 function poll(toolName: string, taskId?: string): AdaptedToolCallPart {
   return {
@@ -725,6 +726,124 @@ describe("adaptMessageTurn proposed plan", () => {
     const adapted = wrap("Just a normal reply.")
     expect(adapted.content.map((p) => p.type)).toEqual(["text"])
   })
+
+  // Regression: any agent may write *about* the tag. Verbatim from a Claude
+  // Code reply that explained this very parser — the unclosed mention inside a
+  // code span used to swallow the rest of the sentence into a plan card.
+  it("keeps a tag quoted in an inline code span as plain text", () => {
+    const text =
+      "**缺陷 A — 计划卡片**。新增 `event_msg.item_completed` 分支，" +
+      "并把助手的 `<proposed_plan>` 记录从 promotion 闸门前拦下来单独处理。"
+    const adapted = wrap(text)
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+    expect(adapted.content[0]).toMatchObject({ type: "text", text })
+  })
+
+  it("keeps a quoted open/close pair inside one code span as plain text", () => {
+    const text = "| **2** | `<proposed_plan>…</proposed_plan>` ← 计划回来了 |"
+    const adapted = wrap(text)
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+    expect(adapted.content[0]).toMatchObject({ type: "text", text })
+  })
+
+  it("keeps several quoted mentions in one block as plain text", () => {
+    const text =
+      "| 助手正文落在哪 | `item_completed`(14) + `<proposed_plan>`(15) | 正常 |\n" +
+      "解析器两份都不要：`<proposed_plan>` 撞上 promotion 闸门。"
+    const adapted = wrap(text)
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+    expect(adapted.content[0]).toMatchObject({ type: "text", text })
+  })
+
+  it("keeps tags inside a fenced code block as plain text", () => {
+    const text =
+      "codex writes the record like this:\n\n" +
+      "```text\n<proposed_plan>\n# Plan\n</proposed_plan>\n```\n\nThat is all."
+    const adapted = wrap(text)
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+    expect(adapted.content[0]).toMatchObject({ type: "text", text })
+  })
+
+  // Mid-stream the closing backtick has not arrived, so the code-span check
+  // cannot see the quote yet; the opener is still mid-line, which is what stops
+  // a half-typed sentence from flashing a plan card.
+  it("keeps a half-typed quote as plain text while the turn streams", () => {
+    const adapted = wrap("并把助手的 `<proposed_plan>", true)
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+  })
+
+  it("ignores an indented tag markdown would render as code", () => {
+    const adapted = wrap("Example:\n\n    <proposed_plan>\n    # Plan")
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+  })
+
+  // A tab reaches CommonMark's four-column indent on its own.
+  it("ignores a tab-indented tag", () => {
+    const adapted = wrap("Example:\n\n\t<proposed_plan>\n\t# Plan")
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+  })
+
+  // A CRLF line slice ends in `\r`, which `.` never matches — leaving it in
+  // makes every fence unrecognisable and silently disables the code-block
+  // guard on Windows-style text.
+  it("keeps tags inside a CRLF fenced code block as plain text", () => {
+    const text =
+      "before\r\n```text\r\n<proposed_plan>\r\n# Plan\r\n" +
+      "</proposed_plan>\r\n```\r\nafter"
+    const adapted = wrap(text)
+    expect(adapted.content.map((p) => p.type)).toEqual(["text"])
+    expect(adapted.content[0]).toMatchObject({ type: "text", text })
+  })
+
+  it("still lifts a real plan from CRLF text", () => {
+    const adapted = wrap(
+      "Here is my plan.\r\n<proposed_plan>\r\n# Plan\r\n\r\n- step one\r\n" +
+        "</proposed_plan>\r\nProceeding."
+    )
+    expect(adapted.content.map((p) => p.type)).toEqual([
+      "text",
+      "proposed-plan",
+      "text",
+    ])
+    expect(adapted.content[1]).toMatchObject({
+      markdown: "# Plan\r\n\r\n- step one",
+      isStreaming: false,
+    })
+  })
+
+  it("still lifts a real plan from a block that also quotes the tag", () => {
+    const adapted = wrap(
+      "The `<proposed_plan>` tag wraps it.\n" +
+        "<proposed_plan>\n# Plan\n\n- step one\n</proposed_plan>\nProceeding."
+    )
+    expect(adapted.content.map((p) => p.type)).toEqual([
+      "text",
+      "proposed-plan",
+      "text",
+    ])
+    expect(adapted.content[0]).toMatchObject({
+      text: "The `<proposed_plan>` tag wraps it.\n",
+    })
+    expect(adapted.content[1]).toMatchObject({
+      markdown: "# Plan\n\n- step one",
+      isStreaming: false,
+    })
+  })
+
+  it("closes on the real tag, not one quoted inside the plan body", () => {
+    const adapted = wrap(
+      "<proposed_plan>\n# Plan\n\n```text\n</proposed_plan>\n```\n" +
+        "</proposed_plan>\nProceeding."
+    )
+    expect(adapted.content.map((p) => p.type)).toEqual([
+      "proposed-plan",
+      "text",
+    ])
+    expect(adapted.content[0]).toMatchObject({
+      markdown: "# Plan\n\n```text\n</proposed_plan>\n```",
+    })
+    expect(adapted.content[1]).toMatchObject({ text: "\nProceeding." })
+  })
 })
 
 describe("adaptMessageTurn goal update text", () => {
@@ -1048,6 +1167,132 @@ describe("adaptMessageTurn plan handling", () => {
     expect(tc.toolName).toBe("EnterPlanMode")
   })
 
+  it("carries a reloaded codex plan turn: plan card, then its approval marker", () => {
+    // The seam with `parsers/codex.rs`. A Plan-mode turn reaching this adapter
+    // from disk is exactly these blocks: codex's own `<proposed_plan>` text
+    // (the announcement and the model-history copy collapsed into one), then
+    // an input-less `plan_review` call settled with codex-acp's approval
+    // wording — the same shape the live permission gate seeds, so both paths
+    // render one <PlanModeCard>. If either half stops resolving, the
+    // historical plan turn silently degrades to raw XML plus a bare tool card.
+    const adapted = adaptMessageTurn(
+      {
+        id: "codex-plan-reload",
+        role: "assistant",
+        timestamp: "2026-09-02T03:39:41.791Z",
+        blocks: [
+          {
+            type: "text",
+            text: "<proposed_plan>\n# 演示计划\n\n- step one\n</proposed_plan>\n\n如果你希望调整，告诉我。",
+          },
+          {
+            type: "tool_use",
+            tool_use_id: "codex-plan-review-3",
+            tool_name: "plan_review",
+            // Null on the wire, exactly as the parser emits it: the plan is
+            // already in the transcript, so the call carries no input.
+            input_preview: null,
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "codex-plan-review-3",
+            output_preview: "User approved the plan.",
+            is_error: false,
+          },
+        ],
+      },
+      msgText,
+      false
+    )
+
+    expect(adapted.content.map((p) => p.type)).toEqual([
+      "proposed-plan",
+      "text",
+      "tool-call",
+    ])
+
+    const plan = adapted.content[0]
+    if (plan.type !== "proposed-plan") throw new Error("expected proposed-plan")
+    expect(plan.markdown).toBe("# 演示计划\n\n- step one")
+    expect(plan.isStreaming).toBe(false)
+    // The prose codex writes after the block stays prose, not plan.
+    expect(JSON.stringify(adapted.content)).not.toContain("<proposed_plan>")
+
+    const review = adapted.content[2]
+    if (review.type !== "tool-call") throw new Error("expected a tool-call")
+    // `plan_review` must survive verbatim (the renderer gate is
+    // underscore-preserving) and settle, or PlanModeCard reports "awaiting"
+    // for a decision the user already made.
+    expect(review.toolName).toBe("plan_review")
+    expect(review.state).toBe("output-available")
+    expect(review.output).toBe("User approved the plan.")
+  })
+
+  it("drops the plan text codex also sent as the review card's input", () => {
+    // Live, codex publishes its Plan-mode plan on BOTH channels at once: as an
+    // ordinary agent_message (plain prose) and as `rawInput.plan` on the
+    // plan-review permission request. Both land in one turn, so the reader saw
+    // the entire plan twice — once bare, once boxed.
+    const plan = "# 演示计划\n\n- step one"
+    const adapted = adaptMessageTurn(
+      {
+        id: "codex-plan-live",
+        role: "assistant",
+        timestamp: "2026-09-02T03:39:41.791Z",
+        blocks: [
+          { type: "text", text: plan },
+          {
+            type: "tool_use",
+            tool_use_id: "plan-review:item-7",
+            tool_name: "plan_review",
+            input_preview: JSON.stringify({ plan }),
+          },
+          {
+            type: "tool_result",
+            tool_use_id: "plan-review:item-7",
+            output_preview: "User approved the plan.",
+            is_error: false,
+          },
+        ],
+      },
+      msgText,
+      false
+    )
+
+    // Only the card survives — it carries the title, the clamp and the decision.
+    expect(adapted.content.map((p) => p.type)).toEqual(["tool-call"])
+    const review = adapted.content[0]
+    if (review.type !== "tool-call") throw new Error("expected a tool-call")
+    expect(review.toolName).toBe("plan_review")
+    expect(review.input).toContain("step one")
+  })
+
+  it("keeps assistant text that only resembles the review card's plan", () => {
+    // Exact match only: a message that quotes or extends the plan is the
+    // agent's own prose and must not be swallowed.
+    const plan = "# 演示计划\n\n- step one"
+    const adapted = adaptMessageTurn(
+      {
+        id: "codex-plan-live-extended",
+        role: "assistant",
+        timestamp: "2026-09-02T03:39:41.791Z",
+        blocks: [
+          { type: "text", text: `${plan}\n\n如果你希望调整，告诉我。` },
+          {
+            type: "tool_use",
+            tool_use_id: "plan-review:item-8",
+            tool_name: "plan_review",
+            input_preview: JSON.stringify({ plan }),
+          },
+        ],
+      },
+      msgText,
+      false
+    )
+
+    expect(adapted.content.map((p) => p.type)).toEqual(["text", "tool-call"])
+  })
+
   it("keeps an empty thinking block while streaming (live Thinking… indicator)", () => {
     const adapted = adaptMessageTurn(
       {
@@ -1233,6 +1478,179 @@ describe("adaptMessageTurn plan handling", () => {
       // The non-write TodoList renders through the normal tool-card path
       // (wrapped in a tool-group by groupConsecutiveToolCalls).
       expect(adapted.content.some((p) => p.type === "tool-group")).toBe(true)
+    }
+  )
+})
+
+describe("adaptMessageTurn — Codex grep no-match results", () => {
+  const msgText = {
+    attachedResources: "Attached resources",
+    toolCallFailed: "Tool failed",
+  }
+
+  function adaptSearchResult({
+    toolName = "Search for 'definitely absent'",
+    output = JSON.stringify({ exit_code: 1, formatted_output: "" }),
+    isError = true,
+    pairing = "id",
+    isStreaming = false,
+    status,
+    meta,
+  }: {
+    toolName?: string
+    output?: string | null
+    isError?: boolean
+    pairing?: "id" | "position"
+    isStreaming?: boolean
+    /** Live ACP status; persisted rows carry none. */
+    status?: string
+    meta?: Record<string, unknown>
+  } = {}): AdaptedToolCallPart {
+    const toolUseId = pairing === "id" ? "search-1" : null
+    const adapted = adaptMessageTurn(
+      {
+        id: `codex-search-${pairing}-${isStreaming ? "live" : "reload"}`,
+        role: "assistant",
+        timestamp: "2026-09-04T00:00:00.000Z",
+        blocks: [
+          {
+            type: "tool_use",
+            tool_use_id: toolUseId,
+            tool_name: toolName,
+            input_preview: JSON.stringify({ pattern: "definitely absent" }),
+            ...(status ? { status } : {}),
+            ...(meta ? { meta } : {}),
+          },
+          {
+            type: "tool_result",
+            tool_use_id: toolUseId,
+            output_preview: output,
+            is_error: isError,
+          },
+        ],
+      },
+      msgText,
+      isStreaming
+    )
+    const group = adapted.content[0]
+    if (group?.type !== "tool-group" || !group.items[0]) {
+      throw new Error("expected a grouped tool call")
+    }
+    return group.items[0]
+  }
+
+  it.each([
+    ["id", false],
+    ["id", true],
+    ["position", false],
+    ["position", true],
+  ] as const)(
+    "normalizes an exact exit-1 empty grep envelope for %s pairing (streaming=%s)",
+    (pairing, isStreaming) => {
+      const raw = JSON.stringify({ exit_code: 1, formatted_output: "" })
+      const part = adaptSearchResult({ pairing, isStreaming, output: raw })
+
+      expect(part.state).toBe("output-available")
+      expect(part.errorText).toBeUndefined()
+      expect(part.output).toBe(raw)
+    }
+  )
+
+  // A shell that echoes a bare newline still means "no matches":
+  // <SearchResultsOutput> renders any blank body that way, so the card status
+  // has to agree or the same result reads as red-with-"No matches".
+  it("normalizes a whitespace-only exit-1 grep envelope", () => {
+    const raw = JSON.stringify({ exit_code: 1, formatted_output: "\r\n" })
+    const part = adaptSearchResult({ output: raw })
+
+    expect(part.state).toBe("output-available")
+    expect(part.errorText).toBeUndefined()
+    expect(part.output).toBe(raw)
+  })
+
+  it.each([
+    [
+      "an ordinary command",
+      "bash",
+      JSON.stringify({ exit_code: 1, formatted_output: "" }),
+    ],
+    [
+      "a glob command",
+      "List files",
+      JSON.stringify({ exit_code: 1, formatted_output: "" }),
+    ],
+    [
+      "grep output",
+      "Search for 'definitely absent'",
+      JSON.stringify({
+        exit_code: 1,
+        formatted_output: "rg: permission denied",
+      }),
+    ],
+    [
+      "a higher exit code",
+      "Search for 'definitely absent'",
+      JSON.stringify({ exit_code: 2, formatted_output: "" }),
+    ],
+    ["a non-Codex result", "Search for 'definitely absent'", ""],
+  ])("keeps %s on the error path", (_label, toolName, output) => {
+    const part = adaptSearchResult({ toolName, output })
+
+    expect(part.state).toBe("output-error")
+    expect(part.errorText).toBe(output || undefined)
+  })
+
+  // With `_meta.terminal_output_delta` advertised, codex-acp sends no
+  // `rawOutput` on a completion, so a search that printed nothing is a bare
+  // live `failed` — there is no exit code left to read. The backend marks
+  // codex's own search calls, and only those qualify.
+  const codexSearch = { [CODEX_SEARCH_ACTION_META_KEY]: true }
+
+  it.each([
+    ["id", null],
+    ["position", null],
+    ["id", " \n"],
+  ] as const)(
+    "normalizes a live failed codex search with no output (%s pairing, output %j)",
+    (pairing, output) => {
+      const part = adaptSearchResult({
+        pairing,
+        output,
+        status: "failed",
+        meta: codexSearch,
+      })
+
+      expect(part.state).toBe("output-available")
+      expect(part.errorText).toBeUndefined()
+      // An empty body is what the search card renders as "No matches".
+      expect(part.output).toBe(output ?? "")
+    }
+  )
+
+  it.each([
+    [
+      "a live failure that printed a diagnostic",
+      "Search for 'definitely absent'",
+      "rg: regex parse error",
+      "failed",
+      codexSearch,
+    ],
+    ["a live glob failure", "List files", null, "failed", codexSearch],
+    [
+      "a persisted row",
+      "Search for 'definitely absent'",
+      null,
+      undefined,
+      codexSearch,
+    ],
+    // Another adapter's interrupted grep looks exactly like this.
+    ["an unmarked live grep", "Grep", null, "failed", undefined],
+  ] as const)(
+    "keeps %s on the error path",
+    (_label, toolName, output, status, meta) => {
+      const part = adaptSearchResult({ toolName, output, status, meta })
+
+      expect(part.state).toBe("output-error")
     }
   )
 })
@@ -1427,6 +1845,17 @@ describe("adaptMessageTurn — image tool results", () => {
     expect(group.items[0]?.state).toBe("input-available")
   })
 })
+
+const PAGE_BLOCK = [
+  "",
+  '<context ref="https://linux.do/">',
+  "Captured from a web page in the built-in browser at the person's request.",
+  "",
+  "- page: LINUX DO — https://linux.do/",
+  "- element: a.title.raw-link.raw-topic-link",
+  '- text: "openlist"',
+  "</context>",
+].join("\n")
 
 describe("extractUserResourcesFromText — codeg references stay inline", () => {
   it("keeps a codeg://agent link inline (the @-prefixed label no longer lifts it to a chip)", () => {
@@ -1633,6 +2062,105 @@ describe("extractUserResourcesFromText — codeg references stay inline", () => 
     expect(resources).toEqual([])
     expect(text).toBe("see [](file:///x/foo.ts) ok")
   })
+
+  // What the composer showed as a badge, coming back out of the agent's own
+  // record of the prompt. Rendering it whole turned a one-line question into a
+  // screenful of page dump the second time the conversation was opened.
+  it("folds a handed-over page onto the chip row, leaving the prose", () => {
+    const { text, resources } = extractUserResourcesFromText(
+      `what is this post${PAGE_BLOCK}`
+    )
+    // Named the way the composer's badge was — the block says what was picked
+    // — and carrying the same inert display uri a composer badge carries.
+    expect(resources).toEqual([
+      {
+        name: "a.title.raw-link.raw-topic-link",
+        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2F",
+        mime_type: null,
+      },
+    ])
+    expect(text).toBe("what is this post")
+  })
+
+  // The block is page content: the `[…](…)` and `@name` shapes in it are the
+  // page's, and a link a site happens to contain must not become a chip of the
+  // sender's — nor reach the prose at all.
+  it("does not read the page's own markup as the sender's references", () => {
+    const block = [
+      "",
+      '<context ref="https://shop.test/orders">',
+      "- text: see [receipt.pdf](file:///etc/passwd) and ask @ops [blocked: x]",
+      "</context>",
+    ].join("\n")
+    const { text, resources } = extractUserResourcesFromText(`hi${block}`)
+    expect(resources).toEqual([
+      {
+        name: "shop.test/orders",
+        uri: "codeg://embedded/https%3A%2F%2Fshop.test%2Forders",
+        mime_type: null,
+      },
+    ])
+    expect(text).toBe("hi")
+  })
+
+  it("names a ref that is not a web address by its file name", () => {
+    const block = [
+      "",
+      '<context ref="clipboard://notes.md-2f8c">',
+      "# Notes",
+      "</context>",
+    ].join("\n")
+    const { resources } = extractUserResourcesFromText(block)
+    expect(resources).toEqual([
+      {
+        name: "notes.md-2f8c",
+        uri: "codeg://embedded/clipboard%3A%2F%2Fnotes.md-2f8c",
+        mime_type: null,
+      },
+    ])
+  })
+
+  // Somebody asking about one of these blocks pastes it into a fence. Lifting
+  // it out would delete their words from their own message — the exact bug
+  // this pass exists to fix, inverted.
+  it("leaves a block a person quoted inside a code fence alone", () => {
+    const input = ["why is this in my transcript?", "```", PAGE_BLOCK.trim(), "```"].join("\n") // prettier-ignore
+    const { text, resources } = extractUserResourcesFromText(input)
+    expect(resources).toEqual([])
+    // Their question AND the block they quoted, both still in the message.
+    // (The blank line inside it is collapsed by the prose normalizer, which
+    // has always done that to every message here.)
+    expect(text).toContain("why is this in my transcript?")
+    expect(text).toContain('<context ref="https://linux.do/">')
+    expect(text).toContain("- element: a.title.raw-link.raw-topic-link")
+    expect(text).toContain("</context>")
+  })
+
+  // …and an opener somebody typed and never closed must not reach forward to
+  // a real block's closer, taking the prose in between with it.
+  it("does not let an unclosed opener swallow the prose after it", () => {
+    const { text, resources } = extractUserResourcesFromText(
+      `it starts with <context ref="typed">\nand then I asked this${PAGE_BLOCK}`
+    )
+    expect(resources).toEqual([
+      {
+        name: "a.title.raw-link.raw-topic-link",
+        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2F",
+        mime_type: null,
+      },
+    ])
+    expect(text).toContain("and then I asked this")
+    expect(text).toContain('<context ref="typed">')
+  })
+
+  // Deleting content and showing nothing in its place is worse than showing
+  // too much: a block that names nothing stays exactly where it is.
+  it("leaves a block that names nothing alone", () => {
+    const block = ['<context ref="">', "something", "</context>"].join("\n")
+    const { text, resources } = extractUserResourcesFromText(block)
+    expect(resources).toEqual([])
+    expect(text).toBe(block)
+  })
 })
 
 describe("adaptMessageTurn — user reference resources", () => {
@@ -1689,5 +2217,141 @@ describe("adaptMessageTurn — user reference resources", () => {
       .join("\n")
     expect(joined).toContain("[#42](codeg://session/codex_abc)")
     expect(joined).toContain("[foo.ts](file:///x/foo.ts)")
+  })
+
+  // The shape a browser hand-off actually comes back in: the prose, the bare
+  // page address the ACP adapter wrote where the badge was, and the embedded
+  // block as its own trailing text block. All three are one attachment, and
+  // the composer showed it as one badge and one chip.
+  it("shows a handed-over page the way the composer did", () => {
+    const adapted = adaptMessageTurn(
+      {
+        id: "u3",
+        role: "user",
+        timestamp: "2026-06-11T00:00:00.000Z",
+        blocks: [
+          { type: "text", text: "what is this post" },
+          { type: "text", text: "https://linux.do/" },
+          { type: "text", text: PAGE_BLOCK },
+        ],
+      },
+      msgText
+    )
+
+    expect(adapted.userResources).toEqual([
+      {
+        name: "a.title.raw-link.raw-topic-link",
+        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2F",
+        mime_type: null,
+      },
+    ])
+    // One part, and it reads the way the composer did: the badge, then the
+    // question. No bare address left in the prose, and no page dump.
+    expect(adapted.content).toEqual([
+      {
+        type: "text",
+        text: "[a.title.raw-link.raw-topic-link](codeg://embedded/https%3A%2F%2Flinux.do%2F) what is this post",
+      },
+    ])
+  })
+
+  // …and an address that is NOT one of this turn's attachments is text the
+  // person typed. It stays exactly that.
+  it("leaves a bare address that no block claims alone", () => {
+    const adapted = adaptMessageTurn(
+      {
+        id: "u4",
+        role: "user",
+        timestamp: "2026-06-11T00:00:00.000Z",
+        blocks: [
+          { type: "text", text: "have a look at" },
+          { type: "text", text: "https://example.com/" },
+        ],
+      },
+      msgText
+    )
+
+    expect(adapted.userResources).toBeUndefined()
+    const joined = adapted.content
+      .map((p) => (p.type === "text" ? p.text : ""))
+      .join("\n")
+    expect(joined).toContain("https://example.com/")
+  })
+
+  // A screenshot or a page's console lines carry no `- element:` line: their
+  // badge was named in the app's own language, which is nowhere in what the
+  // agent recorded. The address is what is left, and it is the same page.
+  it("falls back to the address for a block that names no element", () => {
+    const block = [
+      "",
+      '<context ref="https://linux.do/t/topic/1">',
+      "Captured from a web page in the built-in browser at the person's request.",
+      "- page: LINUX DO — https://linux.do/t/topic/1",
+      "- screenshot: the visible 1332×839 CSS px of the page",
+      "</context>",
+    ].join("\n")
+    const adapted = adaptMessageTurn(
+      {
+        id: "u5",
+        role: "user",
+        timestamp: "2026-06-11T00:00:00.000Z",
+        blocks: [
+          { type: "text", text: "what does this look like" },
+          { type: "text", text: "https://linux.do/t/topic/1" },
+          { type: "text", text: block },
+        ],
+      },
+      msgText
+    )
+
+    expect(adapted.userResources).toEqual([
+      {
+        name: "linux.do/t/topic/1",
+        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2Ft%2Ftopic%2F1",
+        mime_type: null,
+      },
+    ])
+  })
+})
+
+describe("createMessageTurnAdapter — per-turn cache invalidation", () => {
+  const labels = {
+    attachedResources: "Attached resources",
+    toolCallFailed: "Tool failed",
+  }
+  const reply = {
+    id: "live-7-abc",
+    role: "assistant" as const,
+    timestamp: "2026-06-02T00:00:00.000Z",
+    blocks: [{ type: "text" as const, text: "done" }],
+    usage: {
+      input_tokens: 10,
+      output_tokens: 5,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    },
+    completed_at: "2026-06-02T00:00:03.000Z",
+  }
+
+  it("reuses the adapted message when nothing about the turn changed", () => {
+    const adapter = createMessageTurnAdapter()
+    const [first] = adapter.adapt([reply], labels)
+    const [second] = adapter.adapt([{ ...reply }], labels)
+    expect(second).toBe(first)
+  })
+
+  it("re-adapts when a later sync places source_turn_id on an already-patched turn", () => {
+    // The post-turn reparse can name a reply in a ROUND AFTER the one that
+    // pinned its stats, leaving `source_turn_id` as the only changed field.
+    // Reusing the adapted message there keeps the merged-run cache (which
+    // freezes its members' sourceTurns) on the pre-patch turn object, so the
+    // reply's "fork from here" stays greyed out as unnamed.
+    const adapter = createMessageTurnAdapter()
+    const [first] = adapter.adapt([reply], labels)
+    const [second] = adapter.adapt(
+      [{ ...reply, source_turn_id: "turn-9" }],
+      labels
+    )
+    expect(second).not.toBe(first)
   })
 })

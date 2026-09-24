@@ -268,7 +268,10 @@ export function ClientFolderConfiguration({
               disabled={busy || !configuration}
               onCheckedChange={(checked) =>
                 edit({
-                  mcp_capabilities: { ...input.mcp_capabilities, code_graph_enabled: checked === true },
+                  mcp_capabilities: {
+                    ...input.mcp_capabilities,
+                    code_graph_enabled: checked === true,
+                  },
                 })
               }
             />
@@ -281,9 +284,14 @@ export function ClientFolderConfiguration({
               aria-label="Forge"
               checked={input.mcp_capabilities.forge_enabled}
               disabled={busy || !configuration}
-              onCheckedChange={(checked) => edit({
-                mcp_capabilities: { ...input.mcp_capabilities, forge_enabled: checked === true },
-              })}
+              onCheckedChange={(checked) =>
+                edit({
+                  mcp_capabilities: {
+                    ...input.mcp_capabilities,
+                    forge_enabled: checked === true,
+                  },
+                })
+              }
             />
           }
         />
@@ -294,9 +302,14 @@ export function ClientFolderConfiguration({
               aria-label="Issue"
               checked={input.mcp_capabilities.issue_enabled}
               disabled={busy || !configuration}
-              onCheckedChange={(checked) => edit({
-                mcp_capabilities: { ...input.mcp_capabilities, issue_enabled: checked === true },
-              })}
+              onCheckedChange={(checked) =>
+                edit({
+                  mcp_capabilities: {
+                    ...input.mcp_capabilities,
+                    issue_enabled: checked === true,
+                  },
+                })
+              }
             />
           }
         />

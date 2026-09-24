@@ -14,7 +14,10 @@ export function getCodegToken(): string {
 }
 
 export function redirectToCodegLogin(): void {
-  if (getWebMountPath()) { window.close(); return }
+  if (getWebMountPath()) {
+    window.close()
+    return
+  }
   if (window.location.pathname.startsWith("/login")) return
   localStorage.removeItem(TOKEN_KEY)
   window.location.href = "/login"

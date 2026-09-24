@@ -4,8 +4,6 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 import prettier from "prettier"
 
-
-
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url))
 const outputPath = path.resolve(
   scriptDirectory,
@@ -55,7 +53,9 @@ function visit(value) {
   Object.values(value).forEach(visit)
 }
 
-const runnerPaths = Object.keys(source.paths ?? {}).filter((route) => route.startsWith("/api/v1/execution-runner"))
+const runnerPaths = Object.keys(source.paths ?? {}).filter((route) =>
+  route.startsWith("/api/v1/execution-runner")
+)
 const selectedPaths = {}
 for (const runnerPath of runnerPaths) {
   const pathItem = source.paths?.[runnerPath]

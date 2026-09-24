@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { NextIntlClientProvider } from "next-intl"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import type { FolderDetail } from "@/lib/types"
 
 // The menu is a thin router over existing entry points, so every one of them is
 // stubbed: the test's job is to prove each row reaches the right door (and that
@@ -14,20 +13,24 @@ const mocks = vi.hoisted(() => {
   ]
   return {
     connections,
-    openImportSessionsWindow: vi.fn(),
     openProjectBootWindow: vi.fn(() => Promise.resolve()),
     openPetWindow: vi.fn(() => Promise.resolve()),
     openRemoteWorkspace: vi.fn(() => Promise.resolve()),
     listRemoteWorkspaceConnections: vi.fn(() => Promise.resolve(connections)),
     setRoute: vi.fn(),
+    openConversations: vi.fn(),
+    openBrowserTab: vi.fn(() => "browser:new"),
   }
 })
+
+// The built-in browser row is gated on the backend's own answer, not on the
+// platform, so the test drives that answer directly.
+let browserAvailable = true
 
 let desktop = true
 vi.mock("@/lib/platform", () => ({ isDesktop: () => desktop }))
 
 vi.mock("@/lib/api", () => ({
-  openImportSessionsWindow: mocks.openImportSessionsWindow,
   openProjectBootWindow: mocks.openProjectBootWindow,
 }))
 
@@ -36,14 +39,6 @@ vi.mock("@/lib/pet/api", () => ({ openPetWindow: mocks.openPetWindow }))
 vi.mock("@/lib/remote-workspace", () => ({
   listRemoteWorkspaceConnections: mocks.listRemoteWorkspaceConnections,
   openRemoteWorkspace: mocks.openRemoteWorkspace,
-}))
-
-let activeFolder: FolderDetail | null = null
-vi.mock("@/contexts/active-folder-context", () => ({
-  useActiveFolder: () => ({
-    activeFolder,
-    activeFolderId: activeFolder?.id ?? null,
-  }),
 }))
 
 vi.mock("@/contexts/automations-view-context", () => ({
@@ -58,7 +53,19 @@ vi.mock("@/contexts/workbench-route-context", () => ({
   useWorkbenchRoute: () => ({
     routeId: "conversations",
     setRoute: mocks.setRoute,
+    openConversations: mocks.openConversations,
   }),
+}))
+
+vi.mock("@/contexts/workspace-context", () => ({
+  useOptionalWorkspaceActions: () => ({
+    openBrowserTab: mocks.openBrowserTab,
+  }),
+}))
+
+vi.mock("@/lib/browser/use-browser-capabilities", () => ({
+  useBrowserCapabilities: () =>
+    browserAvailable ? { available: true } : { available: false },
 }))
 
 // Dialogs render nothing until opened and drag in large trees; the menu only
@@ -75,16 +82,9 @@ vi.mock("./remote-workspace-manage-dialog", () => ({
   RemoteWorkspaceManageDialog: ({ open }: { open: boolean }) =>
     open ? <div>REMOTE-MANAGE-DIALOG</div> : null,
 }))
-vi.mock("@/components/conversations/conversation-manage-dialog", () => ({
-  ConversationManageDialog: ({ folderId }: { folderId: number }) => (
-    <div>MANAGE-DIALOG-{folderId}</div>
-  ),
-}))
 
 import { QuickActionsDropdown } from "./quick-actions-dropdown"
 import enMessages from "@/i18n/messages/en.json"
-
-const FOLDER = { id: 7, name: "repo", path: "/tmp/repo" } as FolderDetail
 
 /** Mount once, then open the (single) trigger. */
 async function mountAndOpen() {
@@ -108,21 +108,19 @@ async function clickItem(name: string | RegExp) {
 // "Automations" carries a failure-count badge inside the row (2, per the mock),
 // so its accessible name is the label plus that number — matched by prefix.
 const AUTOMATIONS_ROW = /^Automations/
-// Same shape, for the same reason: the repository panel row carries a "Beta"
-// chip, so its accessible name is the label plus that word.
-const FORGE_ROW = /^Repository panel/
+const FORGE_ROW = "Repository panel"
 
 beforeEach(() => {
   desktop = true
-  activeFolder = null
+  browserAvailable = true
   vi.clearAllMocks()
 })
 
 describe("QuickActionsDropdown", () => {
-  it("groups all ten actions under their headings on desktop", async () => {
+  it("groups all nine actions under their headings on desktop", async () => {
     await mountAndOpen()
 
-    for (const group of ["Workspace", "Sessions", "Navigation", "More"]) {
+    for (const group of ["Workspace", "Navigation", "More"]) {
       expect(await screen.findByText(group)).toBeVisible()
     }
     for (const label of [
@@ -130,24 +128,38 @@ describe("QuickActionsDropdown", () => {
       "Clone Repository",
       "Project Boot",
       "Open remote workspace",
-      "Manage conversations",
-      "Import local sessions",
       AUTOMATIONS_ROW,
       "To-dos",
       FORGE_ROW,
+      "Open browser tab",
       "Show pet",
     ]) {
       expect(await screen.findByRole("menuitem", { name: label })).toBeVisible()
     }
   })
 
-  it("marks the repository panel Beta on the row that opens it", async () => {
+  it("opens a blank browser tab, returning to the conversations route first", async () => {
     await mountAndOpen()
-    // On the entry point, not only on the page it leads to — the marker has to
-    // land before the click, and it is part of the row's accessible name so a
-    // screen reader hears it there too.
+    await clickItem("Open browser tab")
+
+    // The file column that holds browser tabs only exists on the conversations
+    // route, so the route swap has to happen too — otherwise the tab opens
+    // behind whichever full-page route is covering the workspace.
+    expect(mocks.openConversations).toHaveBeenCalled()
+    expect(mocks.openBrowserTab).toHaveBeenCalledWith("about:blank")
+  })
+
+  it("drops the browser row when there is no built-in browser", async () => {
+    browserAvailable = false
+    await mountAndOpen()
+
     expect(
-      await screen.findByRole("menuitem", { name: "Repository panel Beta" })
+      screen.queryByRole("menuitem", { name: "Open browser tab" })
+    ).toBeNull()
+    // The rest of the group survives, so this is the gate and not the group
+    // failing to render.
+    expect(
+      await screen.findByRole("menuitem", { name: "Show pet" })
     ).toBeVisible()
   })
 
@@ -158,15 +170,30 @@ describe("QuickActionsDropdown", () => {
     expect(screen.queryByRole("menuitem", { name: "Search" })).toBeNull()
   })
 
+  it("has no folder-scoped session rows", async () => {
+    await mountAndOpen()
+    // Manage conversations / Import local sessions act on ONE folder, so their
+    // homes are the folder row's context menu and the Folders section header —
+    // both of which are reachable without this launcher. A copy here would only
+    // ever act on whatever folder happened to be active.
+    expect(screen.queryByText("Sessions")).toBeNull()
+    expect(
+      screen.queryByRole("menuitem", { name: "Manage conversations" })
+    ).toBeNull()
+    expect(
+      screen.queryByRole("menuitem", { name: "Import local sessions" })
+    ).toBeNull()
+  })
+
   it("drops the desktop-only rows in web mode", async () => {
     desktop = false
     await mountAndOpen()
 
-    // The remaining eight still render, so this is a targeted removal rather
+    // The remaining six still render, so this is a targeted removal rather
     // than the menu failing to open. The navigation rows in particular are
     // platform-neutral route switches and must survive off the desktop.
     expect(
-      await screen.findByRole("menuitem", { name: "Import local sessions" })
+      await screen.findByRole("menuitem", { name: "Open Folder" })
     ).toBeVisible()
     expect(
       await screen.findByRole("menuitem", { name: FORGE_ROW })
@@ -179,18 +206,10 @@ describe("QuickActionsDropdown", () => {
   })
 
   it("routes each action to its own entry point", async () => {
-    activeFolder = FOLDER
     await mountAndOpen()
 
     await clickItem(AUTOMATIONS_ROW)
     expect(mocks.setRoute).toHaveBeenCalledWith("automations")
-
-    await reopen()
-    await clickItem("Import local sessions")
-    // Anchored on the active folder, like the folder context-menu entry.
-    expect(mocks.openImportSessionsWindow).toHaveBeenCalledWith({
-      focusPath: "/tmp/repo",
-    })
 
     await reopen()
     await clickItem("Project Boot")
@@ -236,22 +255,6 @@ describe("QuickActionsDropdown", () => {
     )
     await clickItem("Manage remote workspace")
     expect(await screen.findByText("REMOTE-MANAGE-DIALOG")).toBeVisible()
-  })
-
-  it("opens the conversation manager scoped to the active folder", async () => {
-    activeFolder = FOLDER
-    await mountAndOpen()
-
-    await clickItem("Manage conversations")
-    expect(await screen.findByText("MANAGE-DIALOG-7")).toBeVisible()
-  })
-
-  it("disables conversation management with no active folder", async () => {
-    await mountAndOpen()
-
-    expect(
-      await screen.findByRole("menuitem", { name: "Manage conversations" })
-    ).toHaveAttribute("data-disabled")
   })
 
   it("opens the folder and clone dialogs from their rows", async () => {

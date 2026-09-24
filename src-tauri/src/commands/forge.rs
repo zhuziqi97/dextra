@@ -37,6 +37,12 @@ pub struct ForgeRemote {
     /// and handed to the client for display and for building the reverse-lookup
     /// keys. The client never picks it: that choice selects a credential.
     pub provider: ForgeProvider,
+    /// Whether `provider` is known rather than assumed — see
+    /// `HostProfile::recognized`. `false` says the remote parsed fine but names
+    /// a host codeg has no reason to think is GitHub or GitLab, so the panel
+    /// says so up front instead of spending a request that comes back as a raw
+    /// API failure.
+    pub supported: bool,
 }
 
 /// Client-supplied coordinates of the work item being triggered.
@@ -434,6 +440,7 @@ pub async fn folder_forge_remote_core(
         // whatever configured it, and this value crosses to the client.
         remote_url: redact_userinfo(&url),
         provider: profile.provider,
+        supported: profile.recognized,
     }))
 }
 
@@ -490,6 +497,7 @@ pub async fn forge_list_issues_core(
     Ok(match remote.provider {
         ForgeProvider::GitHub => forge::github::list_issues(&auth, &request).await?,
         ForgeProvider::GitLab => forge::gitlab::list_issues(&auth, &request).await?,
+        ForgeProvider::Gitea => forge::gitea::list_issues(&auth, &request).await?,
     })
 }
 
@@ -522,6 +530,7 @@ pub async fn forge_tab_count_core(
     let listed = match remote.provider {
         ForgeProvider::GitHub => forge::github::list_issues(&auth, &request).await,
         ForgeProvider::GitLab => forge::gitlab::list_issues(&auth, &request).await,
+        ForgeProvider::Gitea => forge::gitea::list_issues(&auth, &request).await,
     };
     Ok(listed.ok().and_then(|page| page.trustworthy_count()))
 }
@@ -558,6 +567,11 @@ pub async fn forge_list_comments_core(
             forge::gitlab::list_notes(&auth, &remote.owner_repo, kind, number, page, per_page)
                 .await?
         }
+        // Nor here, and for the same reason — Gitea models a pull request as an
+        // issue exactly as GitHub does.
+        ForgeProvider::Gitea => {
+            forge::gitea::list_comments(&auth, &remote.owner_repo, number, page, per_page).await?
+        }
     })
 }
 
@@ -591,6 +605,9 @@ pub async fn forge_create_comment_core(
         ForgeProvider::GitLab => {
             forge::gitlab::create_note(&auth, &remote.owner_repo, kind, number, &body).await?
         }
+        ForgeProvider::Gitea => {
+            forge::gitea::create_comment(&auth, &remote.owner_repo, number, &body).await?
+        }
     })
 }
 
@@ -615,6 +632,9 @@ pub async fn forge_set_item_state_core(
         ForgeProvider::GitLab => {
             forge::gitlab::set_item_state(&auth, &remote.owner_repo, kind, number, action).await?
         }
+        ForgeProvider::Gitea => {
+            forge::gitea::set_item_state(&auth, &remote.owner_repo, kind, number, action).await?
+        }
     })
 }
 
@@ -636,6 +656,9 @@ pub async fn forge_create_issue_core(
         }
         ForgeProvider::GitLab => {
             forge::gitlab::create_issue(&auth, &remote.owner_repo, &resolved).await?
+        }
+        ForgeProvider::Gitea => {
+            forge::gitea::create_issue(&auth, &remote.owner_repo, &resolved).await?
         }
     })
 }
@@ -661,6 +684,9 @@ pub async fn forge_change_detail_core(
         ForgeProvider::GitLab => {
             forge::gitlab::change_detail(&auth, &remote.owner_repo, number).await?
         }
+        ForgeProvider::Gitea => {
+            forge::gitea::change_detail(&auth, &remote.owner_repo, number).await?
+        }
     })
 }
 
@@ -684,6 +710,10 @@ pub async fn forge_change_files_core(
         }
         ForgeProvider::GitLab => {
             forge::gitlab::list_change_files(&auth, &remote.owner_repo, number, page, per_page)
+                .await?
+        }
+        ForgeProvider::Gitea => {
+            forge::gitea::list_change_files(&auth, &remote.owner_repo, number, page, per_page)
                 .await?
         }
     })
@@ -725,6 +755,7 @@ pub async fn forge_merge_options_core(
     Ok(match remote.provider {
         ForgeProvider::GitHub => forge::github::merge_options(&auth, &remote.owner_repo).await?,
         ForgeProvider::GitLab => forge::gitlab::merge_options(&auth, &remote.owner_repo).await?,
+        ForgeProvider::Gitea => forge::gitea::merge_options(&auth, &remote.owner_repo).await?,
     })
 }
 
@@ -755,6 +786,9 @@ pub async fn forge_merge_change_core(
         ForgeProvider::GitLab => {
             forge::gitlab::merge_change(&auth, &remote.owner_repo, number, method, head_sha).await?
         }
+        ForgeProvider::Gitea => {
+            forge::gitea::merge_change(&auth, &remote.owner_repo, number, method, head_sha).await?
+        }
     })
 }
 
@@ -771,6 +805,7 @@ pub async fn forge_list_labels_core(
     Ok(match remote.provider {
         ForgeProvider::GitHub => forge::github::list_labels(&auth, &remote.owner_repo).await?,
         ForgeProvider::GitLab => forge::gitlab::list_labels(&auth, &remote.owner_repo).await?,
+        ForgeProvider::Gitea => forge::gitea::list_labels(&auth, &remote.owner_repo).await?,
     })
 }
 
@@ -830,6 +865,9 @@ pub async fn work_task_create_from_forge_core(
             }
             ForgeProvider::GitLab => {
                 forge::gitlab::get_merge_request(&auth, &owner_repo, source.number).await?
+            }
+            ForgeProvider::Gitea => {
+                forge::gitea::get_pull(&auth, &owner_repo, source.number).await?
             }
         };
         // Refused here, at the only moment the user can still choose something
@@ -928,6 +966,10 @@ pub async fn work_task_create_from_forge_core(
         deliverable: scenario
             .is_report()
             .then(|| crate::models::DELIVERABLE_REPORT.to_string()),
+        // A forge task's base is not the user's to pick here: a pull request
+        // brings its own (the review's base ref), and an issue starts from the
+        // project folder's checkout.
+        base_branch: None,
     };
     let task_draft = WorkTaskDraft {
         folder_id: draft.folder_id,

@@ -24,7 +24,11 @@ it("compares editable values as sets and restores clean state after reverting", 
       { module_id: "a", permission: "READ" as const },
       { module_id: "b", permission: "WRITE" as const },
     ],
-    mcp_capabilities: { code_graph_enabled: false, forge_enabled: false, issue_enabled: false },
+    mcp_capabilities: {
+      code_graph_enabled: false,
+      forge_enabled: false,
+      issue_enabled: false,
+    },
   }
   expect(
     sameConfiguration(original, {
@@ -52,7 +56,11 @@ it("shows unbound without selecting the first project or exposing credentials", 
     execution_module_id: null,
     mcp_enabled: false,
     mcp_scope_modules: [],
-    mcp_capabilities: { code_graph_enabled: false, forge_enabled: false, issue_enabled: false },
+    mcp_capabilities: {
+      code_graph_enabled: false,
+      forge_enabled: false,
+      issue_enabled: false,
+    },
   }
   const change = vi.fn()
   render(
@@ -88,7 +96,11 @@ it("shows unbound without selecting the first project or exposing credentials", 
   expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument()
   fireEvent.click(screen.getByRole("checkbox", { name: "Issue" }))
   expect(change).toHaveBeenCalledWith({
-    mcp_capabilities: { code_graph_enabled: false, forge_enabled: false, issue_enabled: true },
+    mcp_capabilities: {
+      code_graph_enabled: false,
+      forge_enabled: false,
+      issue_enabled: true,
+    },
   })
 })
 
@@ -97,7 +109,11 @@ it("lets the user clear the project filter without changing saved module access"
     execution_module_id: "module",
     mcp_enabled: true,
     mcp_scope_modules: [{ module_id: "module", permission: "READ" as const }],
-    mcp_capabilities: { code_graph_enabled: false, forge_enabled: false, issue_enabled: false },
+    mcp_capabilities: {
+      code_graph_enabled: false,
+      forge_enabled: false,
+      issue_enabled: false,
+    },
   }
   const change = vi.fn()
   render(
@@ -148,7 +164,11 @@ it("tracks per-module permissions and the graph switch independently of order", 
       { module_id: "a", permission: "READ" as const },
       { module_id: "b", permission: "WRITE" as const },
     ],
-    mcp_capabilities: { code_graph_enabled: false, forge_enabled: false, issue_enabled: false },
+    mcp_capabilities: {
+      code_graph_enabled: false,
+      forge_enabled: false,
+      issue_enabled: false,
+    },
   }
   expect(
     sameConfiguration(original, {
@@ -168,7 +188,11 @@ it("tracks per-module permissions and the graph switch independently of order", 
   expect(
     sameConfiguration(original, {
       ...original,
-      mcp_capabilities: { code_graph_enabled: true, forge_enabled: false, issue_enabled: false },
+      mcp_capabilities: {
+        code_graph_enabled: true,
+        forge_enabled: false,
+        issue_enabled: false,
+      },
     })
   ).toBe(false)
   expect(
@@ -184,7 +208,11 @@ it("restores the bound project and preserves browsing on unrelated refreshes", a
     execution_module_id: "module",
     mcp_enabled: false,
     mcp_scope_modules: [],
-    mcp_capabilities: { code_graph_enabled: false, forge_enabled: false, issue_enabled: false },
+    mcp_capabilities: {
+      code_graph_enabled: false,
+      forge_enabled: false,
+      issue_enabled: false,
+    },
   }
   const configuration = {
     ...input,
