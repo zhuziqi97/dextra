@@ -17,6 +17,7 @@ export function configurationInput(
     mcp_capabilities: {
       code_graph_enabled: value?.mcp_capabilities.code_graph_enabled ?? false,
       forge_enabled: value?.mcp_capabilities.forge_enabled ?? false,
+      issue_enabled: value?.mcp_capabilities.issue_enabled ?? false,
     },
   }
 }
@@ -34,6 +35,7 @@ export function sameConfiguration(
       (right.execution_module_id ?? null) &&
     left.mcp_enabled === right.mcp_enabled &&
     left.mcp_capabilities.forge_enabled === right.mcp_capabilities.forge_enabled &&
+    left.mcp_capabilities.issue_enabled === right.mcp_capabilities.issue_enabled &&
     left.mcp_capabilities.code_graph_enabled ===
       right.mcp_capabilities.code_graph_enabled &&
     modules.size === right.mcp_scope_modules.length &&

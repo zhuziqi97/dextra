@@ -25,6 +25,8 @@ pub struct MCPCapabilities {
     pub code_graph_enabled: bool,
     #[serde(default)]
     pub forge_enabled: bool,
+    #[serde(default)]
+    pub issue_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]

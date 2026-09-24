@@ -287,6 +287,19 @@ export function ClientFolderConfiguration({
             />
           }
         />
+        <SettingRow
+          title="Issue"
+          control={
+            <Checkbox
+              aria-label="Issue"
+              checked={input.mcp_capabilities.issue_enabled}
+              disabled={busy || !configuration}
+              onCheckedChange={(checked) => edit({
+                mcp_capabilities: { ...input.mcp_capabilities, issue_enabled: checked === true },
+              })}
+            />
+          }
+        />
       </SettingCard>
     </div>
   )
