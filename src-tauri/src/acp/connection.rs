@@ -92,15 +92,15 @@ use crate::web::event_bridge::{emit_with_state, emit_with_state_gated, EventEmit
 ///   toggle used to do nothing for the build command most people run first.
 /// - `TERM` — not a color flag, a precondition for the others. BSD `ls` resolves
 ///   its palette through `tgetent(getenv("TERM"))` and stays monochrome when
-///   TERM names nothing, which is the normal case for a codeg launched from
+///   TERM names nothing, which is the normal case for a dextra launched from
 ///   Finder rather than from a shell. `supports-color` reads it too, and answers
 ///   256 colors for a `-256color` suffix where `FORCE_COLOR=1` alone caps at 16.
 ///
 /// `TERM` is the one entry here that OVERRIDES an inherited value rather than
 /// filling in a missing one (`merge_agent_env` lists what a launch sets;
 /// everything else is inherited). That is deliberate: the agent's stdout is a
-/// pipe to codeg and never a terminal, so an inherited `TERM` describes the
-/// shell that happened to start codeg — `screen-256color` under tmux, nothing
+/// pipe to dextra and never a terminal, so an inherited `TERM` describes the
+/// shell that happened to start dextra — `screen-256color` under tmux, nothing
 /// at all under Finder — not anything the agent is attached to. Pinning one
 /// known-good entry is what makes the toggle behave the same in a packaged app
 /// as in `pnpm tauri dev`. A per-agent env row still outranks all four.
@@ -126,14 +126,14 @@ static FORCE_COMMAND_COLOR: AtomicBool = AtomicBool::new(false);
 /// environment.
 ///
 /// **Off by default**, which is a behavior change: launches used to force
-/// `CLICOLOR_FORCE` unconditionally. The feature it buys is real — codeg
+/// `CLICOLOR_FORCE` unconditionally. The feature it buys is real — dextra
 /// preserves ANSI through tool-call output streaming ([`trim_partial_ansi_tail`])
 /// so the transcript's `<Terminal>` card renders command output in color — but
 /// the cost was paid by everything else in the process tree.
 ///
-/// codeg cannot scope the force to the output it renders. Agents like Claude
+/// dextra cannot scope the force to the output it renders. Agents like Claude
 /// Code run their bash tool IN-PROCESS, so the commands whose color shows up in
-/// the card are not spawned by codeg at all; the only reachable lever is the
+/// the card are not spawned by dextra at all; the only reachable lever is the
 /// agent's own environment, which every descendant inherits. So the same
 /// variables that color the terminal card also color the output the agent pipes
 /// into `jq` — and neither force flag can be vetoed downstream: `CLICOLOR_FORCE`
@@ -213,7 +213,7 @@ fn merge_agent_env_with_color(
     }
 
     // Ensure agent-invoked `officecli …` (from an enabled office skill) resolves
-    // even when codeg installed the binary outside the user's shell PATH — the
+    // even when dextra installed the binary outside the user's shell PATH — the
     // Windows self-managed dir, or `~/.local/bin` under a GUI launch.
     prepend_officecli_path(&mut merged);
 
@@ -221,10 +221,10 @@ fn merge_agent_env_with_color(
     // a style choice. A self-extracting agent binary resolves its unpack
     // location from `TMP` before `TEMP` (Windows `GetTempPathW`), so leaving a
     // per-agent `env_json` `TMP` in place would send a 1.17 GB extraction
-    // wherever that points while codeg cheerfully deleted an empty scratch
+    // wherever that points while dextra cheerfully deleted an empty scratch
     // directory and reported the leak fixed. Users who want the churn on
-    // another volume set `CODEG_ACP_TMP_ROOT`; users who want the old
-    // pass-through wholesale set `CODEG_ACP_TMP_ISOLATION=0`.
+    // another volume set `DEXTRA_ACP_TMP_ROOT`; users who want the old
+    // pass-through wholesale set `DEXTRA_ACP_TMP_ISOLATION=0`.
     if let Some(dir) = scratch {
         crate::acp::scratch_dir::apply_to_env(&mut merged, dir);
     }
@@ -303,7 +303,7 @@ fn apply_grok_env_policy(merged: &mut Vec<(String, String)>, runtime_env: &BTree
     }
 }
 
-/// codeg-side knob recording which Antigravity auth method the settings panel
+/// dextra-side knob recording which Antigravity auth method the settings panel
 /// chose. It is NOT read by the agent — the server takes its auth intent from
 /// `auth.type` in `antigravity-acp/settings.json` — so the launch path uses it
 /// twice: to decide which credential env vars may reach the process
@@ -313,7 +313,7 @@ const ANTIGRAVITY_AUTH_METHOD_ENV: &str = "AGY_AUTH_METHOD";
 
 /// The four `auth.type` values Antigravity's ACP server accepts, canonical
 /// spellings only. `vertex-ai` is the pre-rebrand alias for `agent-platform`;
-/// the server still accepts it, but codeg never writes it.
+/// the server still accepts it, but dextra never writes it.
 const ANTIGRAVITY_AUTH_METHODS: &[&str] = &[
     "oauth-personal",
     "oauth-business",
@@ -382,7 +382,7 @@ fn antigravity_env_vars_for_method(method: &str) -> &'static [&'static str] {
 /// override the project the user explicitly filled in, sending the session to
 /// another account and another billing target with nothing on screen to say so.
 /// The same reasoning covers an inherited `GOOGLE_CLOUD_PROJECT`, which would
-/// otherwise outrank the `gcp` block in the settings file codeg just wrote.
+/// otherwise outrank the `gcp` block in the settings file dextra just wrote.
 ///
 /// The cost is that a credential supplied ONLY by the surrounding environment
 /// stops working once a method is recorded — but the panel already warns about
@@ -425,20 +425,20 @@ fn apply_antigravity_env_policy(
 ///
 /// This is load-bearing, not a convenience: `session/new` fails outright with
 /// `-32000 Authentication required` when that file declares no `auth.type`
-/// (environment-based selection was removed upstream), and codeg does not
+/// (environment-based selection was removed upstream), and dextra does not
 /// implement the ACP `authenticate` request that would otherwise set it. With
 /// the file in place the server runs its own browser OAuth loopback flow inside
 /// `session/new`, so writing it is what makes the agent usable at all.
 ///
 /// Deliberately a READ-MODIFY-WRITE merge of only three keys. The file is the
 /// user's (the server parses it as Hjson and documents it as user-provided), so
-/// unknown keys and any hand-written `gcp` block survive a codeg write.
+/// unknown keys and any hand-written `gcp` block survive a dextra write.
 ///
 /// FAILS CLOSED, exactly like the server's own `settings_writer`: "a file that
 /// cannot be parsed is left alone, since rewriting it would delete content we
 /// could not read." A missing file means "create"; a read error, a parse error
-/// or a non-object root all mean "give up". The one place codeg is stricter is
-/// the dialect — the server parses Hjson (comments, trailing commas) and codeg
+/// or a non-object root all mean "give up". The one place dextra is stricter is
+/// the dialect — the server parses Hjson (comments, trailing commas) and dextra
 /// only strict JSON, so a hand-commented file lands in the give-up branch
 /// rather than being flattened. The warning names the file so the user can set
 /// `auth.type` there themselves; the panel shows that same path.
@@ -534,7 +534,7 @@ fn sync_antigravity_settings_file(runtime_env: &BTreeMap<String, String>) -> Ant
         }
         Err(err) => {
             tracing::warn!("[ACP][Antigravity] cannot write {}: {err}", path.display());
-            AntigravitySyncReport::skipped(&path, format!("codeg could not write it ({err})"))
+            AntigravitySyncReport::skipped(&path, format!("dextra could not write it ({err})"))
         }
     }
 }
@@ -545,7 +545,7 @@ fn sync_antigravity_settings_file(runtime_env: &BTreeMap<String, String>) -> Ant
 /// a local `PathBuf::from`, because `GEMINI_HOME` is one of the variables whose
 /// upstream runs `os.path.expanduser`. Building the path by hand made
 /// `GEMINI_HOME=~/somewhere` mean two different directories: the server read
-/// `$HOME/somewhere`, while codeg created a folder literally named `~` under
+/// `$HOME/somewhere`, while dextra created a folder literally named `~` under
 /// whatever directory it happened to be launched from — and wrote the
 /// `auth.type` there, so `session/new` still failed with `Authentication
 /// required` no matter how many times the panel was saved.
@@ -566,7 +566,7 @@ fn antigravity_acp_dir_for_env(runtime_env: &BTreeMap<String, String>) -> Result
     antigravity_acp_dir_with_inherited(runtime_env, std::env::var_os("GEMINI_HOME"))
 }
 
-/// [`antigravity_acp_dir_for_env`] with codeg's own `GEMINI_HOME` handed in.
+/// [`antigravity_acp_dir_for_env`] with dextra's own `GEMINI_HOME` handed in.
 ///
 /// Split out so the three-state resolution can be tested without mutating the
 /// process environment. A `temp_env` writer would race every other test that
@@ -580,10 +580,10 @@ fn antigravity_acp_dir_with_inherited(
     // Three states, and they are NOT interchangeable — the same distinction
     // [`crate::acp::file_system_runtime::child_home_dir`] spells out for `HOME`,
     // for the same reason. `merge_agent_env` names only the variables a launch
-    // SETS, so an ABSENT key means the child inherits codeg's value, and a
+    // SETS, so an ABSENT key means the child inherits dextra's value, and a
     // container that relocates the tree does exactly that: `GEMINI_HOME` in the
     // image's own environment, nothing in the per-agent row. Reading only the
-    // row made codeg write `auth.type` — and name the token file — under
+    // row made dextra write `auth.type` — and name the token file — under
     // `~/.gemini` (i.e. `/root/.gemini`) while the agent used the relocated
     // one, so the file the panel talked about was never the file the session
     // read.
@@ -597,13 +597,13 @@ fn antigravity_acp_dir_with_inherited(
         // reaches the child verbatim and trimming here would name a directory
         // it never opens.
         Some(value) => Some(std::ffi::OsString::from(value)),
-        // Absent: the child inherits codeg's environment, so codeg's own answer
+        // Absent: the child inherits dextra's environment, so dextra's own answer
         // is exact. Empty is filtered because the server's `paths.py` treats an
         // empty `GEMINI_HOME` as unset (`if not home`).
         None => inherited.filter(|value| !value.is_empty()),
     };
 
-    // The CHILD's home, not codeg's. `merge_agent_env` copies `HOME` into the
+    // The CHILD's home, not dextra's. `merge_agent_env` copies `HOME` into the
     // child like any other variable, so a launch that relocates it moves both
     // the `~/.gemini` default and any `~` in `GEMINI_HOME` with it — and the
     // server, running `os.path.expanduser` in that environment, resolves them
@@ -615,7 +615,7 @@ fn antigravity_acp_dir_with_inherited(
     let home = crate::acp::file_system_runtime::child_home_dir(runtime_env);
     if needs_home && home.is_none() {
         return Err(
-            "codeg cannot tell which home directory the agent will use (this launch removes \
+            "dextra cannot tell which home directory the agent will use (this launch removes \
              HOME, or points it somewhere relative), so it cannot tell where the file is"
                 .to_string(),
         );
@@ -772,12 +772,12 @@ pub fn is_antigravity_auth_method(method_id: &str) -> bool {
     ANTIGRAVITY_AUTH_METHODS.contains(&method_id)
 }
 
-/// What codeg can say about the method the ACP server will authenticate with.
+/// What dextra can say about the method the ACP server will authenticate with.
 ///
 /// Three states, and [`Unreadable`](Self::Unreadable) is emphatically not a
-/// flavor of [`Absent`](Self::Absent). The server parses Hjson and codeg only
-/// strict JSON, so a file codeg cannot read is one the SERVER can — it names a
-/// method, codeg just cannot see which. Collapsing the two would let a caller
+/// flavor of [`Absent`](Self::Absent). The server parses Hjson and dextra only
+/// strict JSON, so a file dextra cannot read is one the SERVER can — it names a
+/// method, dextra just cannot see which. Collapsing the two would let a caller
 /// treat "I have no idea" as "there is nothing there", which for the sign-out
 /// means aiming `logout` at a flavor with nothing to clear and reporting the
 /// `{}` it answers as a success.
@@ -788,7 +788,7 @@ pub enum AntigravityAuthType {
     /// No file, or a file that names no method. The server has nothing to
     /// infer from either, and falls back to its own defaults.
     Absent,
-    /// codeg could not read or parse it. The server still can.
+    /// dextra could not read or parse it. The server still can.
     Unreadable,
 }
 
@@ -827,7 +827,7 @@ pub fn antigravity_effective_auth_type(
         .unwrap_or(AntigravityAuthType::Absent)
 }
 
-/// The pre-rebrand `vertex-ai` spelling resolved to the id codeg uses.
+/// The pre-rebrand `vertex-ai` spelling resolved to the id dextra uses.
 fn canonical_antigravity_auth_method(method: &str) -> &str {
     match method {
         "vertex-ai" => "agent-platform",
@@ -850,7 +850,7 @@ pub fn antigravity_acp_dir_for_runtime_env(
 /// Read `settings.json` for editing.
 ///
 /// `Ok(None)` means "no file, safe to create". `Err` means "do not touch it" —
-/// unreadable, not JSON codeg can parse, or not a JSON object.
+/// unreadable, not JSON dextra can parse, or not a JSON object.
 fn read_antigravity_settings(path: &Path) -> Result<Option<serde_json::Value>, String> {
     let raw = match std::fs::read_to_string(path) {
         Ok(raw) => raw,
@@ -858,7 +858,7 @@ fn read_antigravity_settings(path: &Path) -> Result<Option<serde_json::Value>, S
         Err(err) => return Err(format!("could not read it ({err})")),
     };
     let parsed: serde_json::Value = serde_json::from_str(&raw).map_err(|err| {
-        format!("it is not strict JSON codeg can rewrite without losing content ({err})")
+        format!("it is not strict JSON dextra can rewrite without losing content ({err})")
     })?;
     if !parsed.is_object() {
         return Err("it does not hold a JSON object".to_string());
@@ -881,7 +881,7 @@ fn write_antigravity_settings(
     let parent = target.parent().unwrap_or(acp_dir);
     std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
 
-    let temp = parent.join(format!(".settings.json.codeg-{}.tmp", std::process::id()));
+    let temp = parent.join(format!(".settings.json.dextra-{}.tmp", std::process::id()));
     std::fs::write(&temp, format!("{body}\n")).map_err(|err| err.to_string())?;
     if let Err(err) = std::fs::rename(&temp, &target) {
         let _ = std::fs::remove_file(&temp);
@@ -893,7 +893,7 @@ fn write_antigravity_settings(
 /// Merge the panel's choice into a parsed `settings.json`.
 ///
 /// `Ok(None)` means the file already says exactly this, so the caller can skip
-/// the write. `Err` means a block codeg would have to edit is not the shape it
+/// the write. `Err` means a block dextra would have to edit is not the shape it
 /// expects — the same fail-closed rule the read side applies to the whole
 /// document, and the same one the server's own `settings_writer` applies here
 /// ("not editing %r because `auth` is not an object"). Replacing a non-object
@@ -990,11 +990,11 @@ fn merge_antigravity_settings(
 }
 
 /// Codex-only launch policy: force codex-acp's MCP name-conflict de-duplication
-/// OFF. codeg injects its companion server (`codeg-mcp`) over ACP
+/// OFF. dextra injects its companion server (`dextra-mcp`) over ACP
 /// `session/new.mcpServers`; codex-acp otherwise drops any ACP-passed server
 /// whose name collides with a `config.toml` entry — global *or* project layer
 /// (the check was widened to project `.codex/config.toml` in codex-acp #322) —
-/// silently stripping codeg-mcp and with it ask_user_question / delegation /
+/// silently stripping dextra-mcp and with it ask_user_question / delegation /
 /// feedback / session_info. The late `retain` + `push` makes the override win
 /// over any user `runtime_env` twin, so the injection is guaranteed to survive.
 /// Codex launch env policy. `initial_agent_mode` is the preset resolved from
@@ -1121,7 +1121,7 @@ fn prepend_agent_install_dirs_path(env: &mut Vec<(String, String)>, agent_type: 
     *env = map.into_iter().collect();
 }
 
-/// Prepend codeg's known OfficeCLI install dir to `env`'s PATH when officecli is
+/// Prepend dextra's known OfficeCLI install dir to `env`'s PATH when officecli is
 /// installed there but not yet on the live PATH (see
 /// `office_tools::officecli_agent_path_dir`). Applied to both the agent process
 /// env (`merge_agent_env`) and the ACP terminal runtime's base env, so an
@@ -1247,14 +1247,14 @@ pub enum ConnectionCommand {
 /// Sentinel string embedded in a `agent_client_protocol::Error` when the Initialize
 /// handshake times out. Converted back to `AcpError::InitializeTimeout`
 /// by the outer `.map_err(...)` in `run_connection`.
-const INIT_TIMEOUT_SENTINEL: &str = "__codeg_init_timeout__";
+const INIT_TIMEOUT_SENTINEL: &str = "__dextra_init_timeout__";
 
-/// Sentinel appended to a `session/new` failure when codeg had just forwarded
+/// Sentinel appended to a `session/new` failure when dextra had just forwarded
 /// MCP servers to a *custom* agent, so the outer `.map_err(...)` can raise
 /// `AcpError::McpRejectedByAgent` and point the user at the `supports_mcp`
 /// switch. Same trick as [`INIT_TIMEOUT_SENTINEL`] — the inner future is typed
-/// to `agent_client_protocol::Error`, which has nowhere to carry a codeg error kind.
-const MCP_SUSPECT_SENTINEL: &str = "__codeg_mcp_suspect__";
+/// to `agent_client_protocol::Error`, which has nowhere to carry a dextra error kind.
+const MCP_SUSPECT_SENTINEL: &str = "__dextra_mcp_suspect__";
 
 /// Sentinel appended to a `session/new` failure the agent answered with ACP's
 /// `authRequired`, so the outer `.map_err(...)` can raise
@@ -1263,7 +1263,7 @@ const MCP_SUSPECT_SENTINEL: &str = "__codeg_mcp_suspect__";
 /// typed to, and this is the one classification that has to be made while it
 /// is still there — the wire text alone is the agent's own wording, which for
 /// cursor-agent names a command that does not exist.
-const AUTH_REQUIRED_SENTINEL: &str = "__codeg_auth_required__";
+const AUTH_REQUIRED_SENTINEL: &str = "__dextra_auth_required__";
 
 /// Classify a `session/new` failure while its typed code is still readable.
 ///
@@ -1283,13 +1283,13 @@ fn tag_new_session_failure(
     tag_mcp_suspect(err, agent_type, mcp_servers)
 }
 
-/// Mark a `session/new` failure as possibly caused by the MCP servers codeg put
+/// Mark a `session/new` failure as possibly caused by the MCP servers dextra put
 /// on the wire.
 ///
 /// Restricted to custom agents on purpose. A built-in's `supports_mcp` is a
 /// repository constant already verified against the real agent, so blaming MCP
 /// there would send the user chasing a switch that isn't wrong (and that they
-/// cannot flip). A custom agent's is a user declaration about a binary codeg
+/// cannot flip). A custom agent's is a user declaration about a binary dextra
 /// knows nothing about — the case this hint is for. An empty list rules MCP out
 /// entirely, since then nothing was forwarded to reject.
 fn tag_mcp_suspect(
@@ -1413,13 +1413,13 @@ impl AgentConnection {
 /// Directory handed to codex-acp via `APP_SERVER_LOGS` so its adapter-side
 /// (ACP ↔ Codex app-server translation) logs land on disk for support.
 ///
-/// Roots under the same `<cache>/app.codeg` tree as
+/// Roots under the same `<cache>/app.dextra` tree as
 /// [`binary_cache::cache_dir`] for consistency. Returns `None` — and the
 /// caller injects nothing — when the system cache dir is unknown or the
 /// directory can't be created: diagnostics must never block a connection.
 fn codex_app_server_log_dir() -> Option<String> {
     let dir = dirs::cache_dir()?
-        .join("app.codeg")
+        .join("app.dextra")
         .join("acp-logs")
         .join("codex-acp");
     std::fs::create_dir_all(&dir).ok()?;
@@ -1457,7 +1457,7 @@ fn pi_launch_preflight(runtime_env: &BTreeMap<String, String>) -> Option<String>
     })
 }
 
-/// Transcript directory for an agent that codeg must record itself, or `None`
+/// Transcript directory for an agent that dextra must record itself, or `None`
 /// for agents with their own store parser.
 ///
 /// Only custom ACP agents are recorded: every built-in has a dedicated parser
@@ -1479,7 +1479,7 @@ fn record_transcript_header(agent_type: AgentType, session_id: &str, cwd: &str) 
 /// [`record_transcript_header`] for a session that carries an existing
 /// conversation forward.
 ///
-/// `continues_from` is set when `session/load` failed and codeg opened a fresh
+/// `continues_from` is set when `session/load` failed and dextra opened a fresh
 /// agent session for the same conversation: the earlier turns stay where they
 /// are and this header links back to them, so the reader still sees one
 /// history. See [`crate::acp_transcript::TranscriptHeader::continues_from`].
@@ -1547,7 +1547,7 @@ fn queue_transcript_header(
 ///
 /// The window is small but reachable (the writer can be behind on a slow disk,
 /// and a conversation can be torn down between its first prompt and its turn
-/// end, which is the other place codeg waits). A prompt happens once per turn,
+/// end, which is the other place dextra waits). A prompt happens once per turn,
 /// so closing it costs one disk write per turn — nothing the user can perceive,
 /// against a failure that is permanent and silent.
 async fn record_prompt(agent_type: AgentType, session_id: &str, blocks: &[ContentBlock]) {
@@ -1806,7 +1806,7 @@ async fn build_agent(
                 if let Some(message) = pi_launch_preflight(runtime_env) {
                     return Err(AcpError::SdkNotInstalled(message));
                 }
-                // NOTE: codeg deliberately does NOT touch pi's `trust.json` here.
+                // NOTE: dextra deliberately does NOT touch pi's `trust.json` here.
                 // It used to mark this workspace trusted on every launch, which
                 // made pi load the repo's own `.pi/*` — including `.pi/extensions`,
                 // JS/TS modules whose top level executes at pi startup with the
@@ -1841,11 +1841,11 @@ async fn build_agent(
             };
             apply_codex_env_policy(agent_type, &mut merged_env, codex_initial_mode.as_deref());
             // codex-acp 1.0.0 honors APP_SERVER_LOGS as a directory for its
-            // adapter-side logs. Surface it only under CODEG_ACP_DEBUG so
+            // adapter-side logs. Surface it only under DEXTRA_ACP_DEBUG so
             // default runs are unchanged; a directory-creation failure silently
             // skips injection (diagnostics must never block a connect).
             let want_codex_logs = agent_type == AgentType::Codex
-                && std::env::var("CODEG_ACP_DEBUG")
+                && std::env::var("DEXTRA_ACP_DEBUG")
                     .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                     .unwrap_or(false);
             if want_codex_logs {
@@ -1869,14 +1869,14 @@ async fn build_agent(
             );
             // Grok's root-level launch flags go BEFORE its `agent stdio`
             // subcommand (which rejects them):
-            //  - `--no-auto-update`: codeg owns the pinned version, so suppress the
+            //  - `--no-auto-update`: dextra owns the pinned version, so suppress the
             //    CLI's background self-update (it would drift off the pin and can
             //    break the ACP contract). Config twin: `[cli].auto_update = false`.
             //  - `--permission-mode <value>`: grok's real permission enum
             //    (default/acceptEdits/auto/dontAsk/bypassPermissions/plan), read
             //    from the Grok panel's `[ui].permission_mode`. Only passed for a
             //    non-`default` mode; `default`/unset leaves it off so ACP
-            //    permission requests still reach codeg's UI. (Grok exposes no ACP
+            //    permission requests still reach dextra's UI. (Grok exposes no ACP
             //    `modes` channel for permission — verified against 0.2.99 — so this
             //    launch flag, not a live `session/set_mode`, is the control point.)
             if agent_type == AgentType::Grok {
@@ -1922,7 +1922,7 @@ async fn build_agent(
                 .map(|a| {
                     // `false`: this branch never logged stdin/stdout, and the
                     // shared callback must not quietly widen that. Only the
-                    // Binary branch opts into the CODEG_ACP_DEBUG stdio dump.
+                    // Binary branch opts into the DEXTRA_ACP_DEBUG stdio dump.
                     a.with_debug(agent_debug_callback(agent_name, tail, false))
                 })
                 .map_err(|e| AcpError::SpawnFailed(e.to_string()))
@@ -2006,7 +2006,7 @@ async fn build_agent(
             // Cursor's ROOT-level `--model <id>` flag precedes the `acp`
             // subcommand and sets the session's default model. Sourced from
             // the Cursor panel's default-model control (env_json key
-            // CURSOR_MODEL — a codeg-side launch knob; the CLI itself reads
+            // CURSOR_MODEL — a dextra-side launch knob; the CLI itself reads
             // no model env var).
             if agent_type == AgentType::Cursor {
                 if let Some(model) = runtime_env
@@ -2022,7 +2022,7 @@ async fn build_agent(
                 // never reach session/request_permission (deny rules still
                 // apply, and an org policy can downgrade it to rule-based
                 // approval). Sourced from the panel's permission-mode
-                // control (env_json key CURSOR_FORCE — codeg-side knob; the
+                // control (env_json key CURSOR_FORCE — dextra-side knob; the
                 // CLI reads no such env var). Unset means Ask; see
                 // `cursor_force_enabled`.
                 if cursor_force_enabled(runtime_env.get("CURSOR_FORCE").map(String::as_str)) {
@@ -2034,7 +2034,7 @@ async fn build_agent(
                 server = server.args(cmd_args);
             }
             let mut merged_env = merge_agent_env(env, runtime_env, scratch);
-            // codeg launches the binary by absolute path, so this is not about
+            // dextra launches the binary by absolute path, so this is not about
             // finding it — it is about the agent finding ITSELF. An agent that
             // re-execs its own CLI for a subtask looks it up on PATH, and a
             // desktop launch never inherits the shell rc line the vendor's
@@ -2087,13 +2087,13 @@ async fn build_agent(
             //   contents, and permission-response payloads — all of
             //   which may contain API keys pasted by users or file
             //   contents the agent is editing. They are gated behind
-            //   the `CODEG_ACP_DEBUG=1` env var so production builds
+            //   the `DEXTRA_ACP_DEBUG=1` env var so production builds
             //   don't persist user content into OS-level log files
             //   (Console.app on macOS, journald on Linux).
             // - Max line length is kept short so what does get logged
             //   captures the JSON-RPC envelope (method, id) rather
             //   than large payload bodies.
-            let stdio_debug_enabled = std::env::var("CODEG_ACP_DEBUG")
+            let stdio_debug_enabled = std::env::var("DEXTRA_ACP_DEBUG")
                 .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
                 .unwrap_or(false);
             let agent_name = meta.name.to_string();
@@ -2170,7 +2170,7 @@ async fn build_agent(
     }?;
 
     // Run the agent subprocess in the session's working directory rather than
-    // codeg's own process cwd (a desktop app launched from the Dock often
+    // dextra's own process cwd (a desktop app launched from the Dock often
     // inherits "/"). A coding agent belongs in its project root. This is
     // required for Hermes, whose local terminal backend force-exports
     // TERMINAL_CWD = os.getcwd() at import (clobbering any inherited value)
@@ -2355,13 +2355,13 @@ pub async fn spawn_agent_connection(
     // agent's state. Uses the same `launch_cwd` the process and ACP session get.
     let fs_policy = FsAccessPolicy::from_env(&launch_cwd, agent_type, &runtime_env);
 
-    // Whether codeg hosts the `fs/*` + `terminal/*` channels at all, or hands
+    // Whether dextra hosts the `fs/*` + `terminal/*` channels at all, or hands
     // them back to the agent so the agent's OWN sandbox covers them (#436).
     // Resolved here for the same reason as `fs_policy`: it reads the full
     // per-agent `runtime_env`, which does not survive into `run_connection`.
     let host_tools = HostToolsPolicy::from_env(&runtime_env);
 
-    // Forward only the codeg git credential helper keys into the terminal
+    // Forward only the dextra git credential helper keys into the terminal
     // runtime — not the agent's API tokens or model provider credentials.
     // This makes `git fetch`/`git push` issued through the ACP
     // `terminal/create` tool authenticate via the same helper path the
@@ -2372,7 +2372,7 @@ pub async fn spawn_agent_connection(
         .filter(|(k, _)| k.starts_with("GIT_CONFIG_"))
         .map(|(k, v)| (k.clone(), v.clone()))
         .collect();
-    // Also surface a codeg-installed OfficeCLI on the terminal's PATH: agents run
+    // Also surface a dextra-installed OfficeCLI on the terminal's PATH: agents run
     // office skills' `officecli …` through this `terminal/create` tool, not as a
     // child of the agent process, so the agent-env injection alone wouldn't reach
     // them right after install (before install.ps1's User-PATH change lands).
@@ -2550,7 +2550,7 @@ pub async fn spawn_agent_connection(
 /// `session/request_permission`; `CodexElicitation` is a codex approval-style
 /// `elicitation/create` (MCP tool-call approval / message-only confirm) routed
 /// through the SAME permission card so approvals look exactly like they did
-/// before codeg advertised `elicitation.form` — its chosen option answers the
+/// before dextra advertised `elicitation.form` — its chosen option answers the
 /// blocked elicitation request instead (see `handle_elicitation_request`).
 enum PermissionReply {
     Acp(Responder<RequestPermissionResponse>),
@@ -3102,7 +3102,7 @@ async fn withdraw_permission(
 /// Retire a permission card the moment the agent takes its request back.
 ///
 /// The ACP runtime marks a parked request cancelled when the agent sends
-/// `$/cancel_request` for it, and the two adapters codeg follows most closely
+/// `$/cancel_request` for it, and the two adapters dextra follows most closely
 /// both do: claude-agent-acp (0.81) wires each tool call's abort signal into its
 /// `session/request_permission`, so a stopped sub-agent or an interrupted tool
 /// withdraws its approval; codex-acp (1.13) wires its prompt's signal into every
@@ -3286,7 +3286,7 @@ fn map_session_config_select_group(
 /// `_meta.jetbrains.air` envelope.
 ///
 /// Envelope validation mirrors [`air_session_failure`] (integer `version >= 1`,
-/// the same check the adapters run on codeg's own advertisement), so a
+/// the same check the adapters run on dextra's own advertisement), so a
 /// future-incompatible envelope yields `None` rather than a half-understood
 /// hint. The payload must be a non-blank string: codex-acp only ever writes a
 /// model id or a reasoning-effort id there, and anything else is not something
@@ -3383,8 +3383,8 @@ fn map_session_config_options(
 /// [`SessionState::env_pinned_config_option_ids`]).
 ///
 /// Only cline has one today: its `provider` selector is hard-refused whenever
-/// `CLINE_PROVIDER` is exported, which codeg does for every bring-your-own
-/// provider. The check is on the variable codeg actually ships, not on the
+/// `CLINE_PROVIDER` is exported, which dextra does for every bring-your-own
+/// provider. The check is on the variable dextra actually ships, not on the
 /// configured provider id, because the pin is what the agent tests.
 fn env_pinned_config_option_ids(
     agent_type: AgentType,
@@ -3452,7 +3452,7 @@ async fn emit_selectors_ready(state: &Arc<RwLock<SessionState>>, emitter: &Event
 }
 
 /// The conventional id of a model selector. ACP reserves none — `category:
-/// "model"` is the spec-level signal — but every agent codeg drives spells the
+/// "model"` is the spec-level signal — but every agent dextra drives spells the
 /// id this way, and the frontend's `isModelConfigOption` accepts either.
 const MODEL_CONFIG_OPTION_ID: &str = "model";
 
@@ -3666,7 +3666,7 @@ fn set_grok_effort_selector_for_model(
 }
 
 /// Grok does not emit the standard ACP `config_options` / `modes` channels that
-/// codeg's generic composer-selector pipeline reads (which is why the composer
+/// dextra's generic composer-selector pipeline reads (which is why the composer
 /// showed no selectors for Grok). Instead it ships its selectors in a
 /// non-standard `_meta["x.ai/sessionConfig"].options` list — a flat array of
 /// `{id, category, label, description?, selected}` covering both model choices
@@ -3847,7 +3847,7 @@ fn build_grok_set_model_params(
 /// Send `_session/steering` (the ACP steering extension) to inject a message
 /// into the RUNNING turn. Untyped because it is an extension method the schema
 /// has no typed request for. Always opts into the 0.64.0
-/// `promptRequired` idle contract; codeg only enables native steering for
+/// `promptRequired` idle contract; dextra only enables native steering for
 /// adapters proven to honor it AND to keep the owning prompt in flight across
 /// the steered work (claude-agent-acp 0.65.0 / #958 — see
 /// [`synthesize_native_steering`] and `registry::steering_prompt_required_min_version`),
@@ -4309,7 +4309,7 @@ async fn apply_and_emit_session_config_options(
 /// advertises `image: false`, accepts a native `image` block anyway, and answers
 /// correctly about the pixels — while the same bytes as a resource blob make the
 /// model invent an answer. The advertisement has simply been wrong for as long
-/// as codeg has supported grok, across every version tested, so this is
+/// as dextra has supported grok, across every version tested, so this is
 /// deliberately NOT version-gated (and stays correct if grok ever starts
 /// advertising the truth: `image` is already true then). Deliberately no pinned
 /// version named here either — `registry.rs` moves on its own schedule, and a
@@ -4381,7 +4381,7 @@ fn claude_raw_sdk_session_meta(
     Some(meta)
 }
 
-/// The client capabilities codeg advertises on Initialize, with per-agent
+/// The client capabilities dextra advertises on Initialize, with per-agent
 /// gates. Extracted for testability — each gate is a documented product
 /// decision:
 ///
@@ -4399,15 +4399,15 @@ fn claude_raw_sdk_session_meta(
 ///   tool-call approvals and MCP-server forms included — so the handler must
 ///   cover every shape (`classify_elicitation`). URL elicitation is
 ///   deliberately NOT advertised: codex-acp then falls back to
-///   `session/request_permission`, which codeg already handles. Scoped to
+///   `session/request_permission`, which dextra already handles. Scoped to
 ///   Codex to keep the blast radius off other agents (e.g. Claude's native
 ///   AskUserQuestion, which would otherwise un-gate and duplicate the
-///   codeg-mcp ask tool).
+///   dextra-mcp ask tool).
 /// - Claude Code only: `_meta["subagent-transcript"] = true` — opt into
 ///   claude-agent-acp ≥0.63's subagent transcript forwarding (#881, SDK
 ///   `forwardSubagentText`). Subagent text/thought chunks then stream with
 ///   update-level `_meta.claudeCode.parentToolUseId` instead of being
-///   filtered; codeg routes them into the live Agent capsule (see
+///   filtered; dextra routes them into the live Agent capsule (see
 ///   `claude_chunk_parent_tool_use_id`). The adapter checks strictly
 ///   `=== true`, and a pre-0.63 binary ignores the unknown key, so this is
 ///   inert everywhere it isn't understood.
@@ -4448,7 +4448,7 @@ fn build_client_capabilities(
         client_capabilities = client_capabilities
             .elicitation(ElicitationCapabilities::new().form(ElicitationFormCapabilities::new()));
     }
-    // Client `_meta` extensions, per agent. `jetbrains.air` opts codeg into
+    // Client `_meta` extensions, per agent. `jetbrains.air` opts dextra into
     // JetBrains AIR typed session-failure records (claude-agent-acp 0.67+,
     // codex-acp 1.2+) — both adapters gate publication on EXACTLY this
     // advertisement (integer version >= 1 and "sessionFailure" in the
@@ -4466,7 +4466,7 @@ fn build_client_capabilities(
     // it, so BOTH are advertised. It publishes the lifecycle of an agent's
     // NON-AGENT background work as `async_task_spawned` / `_progress` /
     // `_state_update`, all on the parent session id. Unlike the two capabilities
-    // below, this one adds something codeg cannot get anywhere else: the
+    // below, this one adds something dextra cannot get anywhere else: the
     // transcript watcher (`background_watch`) can see that a task was launched
     // but explicitly CANNOT tell a still-running task from one whose CLI died,
     // it never sees workflow/monitor tasks at all (they produce no tool call),
@@ -4555,7 +4555,7 @@ fn build_client_capabilities(
     // practice every prompt — the turn's completion now waits on the checkpoint
     // read, up to 2s, including on turns that changed no file at all.
     //
-    // The report exists for clients with no filesystem watcher; codeg is not
+    // The report exists for clients with no filesystem watcher; dextra is not
     // one. Nothing else in either release depends on it, and both adapters no-op
     // without the advertisement, so staying out costs us nothing.
     //
@@ -4565,14 +4565,14 @@ fn build_client_capabilities(
     // fallback for SDKs that strip it). It stays out — and the reason is no
     // longer "the schema crate can't deserialize it". `air_async_task_delta`
     // proves a raw pre-dispatch reader gets around that for any variant. The
-    // reason is that advertising DELETES the frame codeg renders subagents
+    // reason is that advertising DELETES the frame dextra renders subagents
     // from, and replaces it with strictly less:
     //
     // * The adapter suppresses the `Agent`/`Task` tool call outright once the
     //   capability is on — `NativeSubagentRuntime.route()` returns null for it,
     //   commented "Native Agent/Task control calls are intentionally not
     //   transcript tools". codex does the same to its `subAgentActivity` item.
-    // * That tool call is codeg's whole anchor. `conversation-runtime-store`
+    // * That tool call is dextra's whole anchor. `conversation-runtime-store`
     //   registers its id as an "agent" capsule, nests the child's tool calls
     //   under it by `meta.claudeCode.parentToolUseId`, and attaches the child's
     //   prose to it as `agent_transcript`.
@@ -4581,9 +4581,9 @@ fn build_client_capabilities(
     //   The child's own updates keep theirs, but it names the tool call that
     //   was just suppressed, so every one of them would arrive as an orphan.
     // * The child's output is not new information either. `route()` rewrites
-    //   only `sessionId`; the `_meta.claudeCode.parentToolUseId` codeg already
+    //   only `sessionId`; the `_meta.claudeCode.parentToolUseId` dextra already
     //   routes on rides through untouched. So opting in would move the same
-    //   content onto a session id codeg would then have to map back — to a
+    //   content onto a session id dextra would then have to map back — to a
     //   capsule it no longer receives.
     //
     // Net: the advertisement trades a precise rendering for a poorer one plus a
@@ -4592,9 +4592,9 @@ fn build_client_capabilities(
     // itself "Temporary typed surface … replaced by SDK exports when the draft
     // ships". Revisit when the draft lands and the announcement carries enough
     // to rebuild the capsule — a parent tool-use id, or the child tool calls
-    // arriving with one codeg has seen.
+    // arriving with one dextra has seen.
     //
-    // "recommendedValue" is the last AIR capability, and codeg takes it from
+    // "recommendedValue" is the last AIR capability, and dextra takes it from
     // BOTH speakers — claude-agent-acp 0.76.0 and codex-acp 1.11.0 each
     // implement it, so the "advertise nothing an agent hasn't built" rule is
     // satisfied on both sides. With it, `session/new`'s `model` and
@@ -4613,12 +4613,12 @@ fn build_client_capabilities(
     //
     // * codex marks the model it calls `isDefault` and the CURRENT model's
     //   `defaultReasoningEffort`, so the effort recommendation re-derives on a
-    //   model switch. That matters most where codeg's own persisted per-agent
+    //   model switch. That matters most where dextra's own persisted per-agent
     //   preference pins an option: a user who once pinned
     //   `reasoning_effort: max` otherwise has no signal that the model they
     //   just switched to defaults somewhere else.
     // * claude additionally DROPS the ambiguous `default` row from both
-    //   selectors, and codeg wants that row gone more than it wants the
+    //   selectors, and dextra wants that row gone more than it wants the
     //   marker: `current_model_id_from_opts` reads the model selector's
     //   `current_value`, and that string is what `record_turn_end` stamps on
     //   every journaled turn — on the `default` row it is the literal
@@ -4642,7 +4642,7 @@ fn build_client_capabilities(
     }
     // codex-acp 1.13.0 (#528): with `terminal_output_delta` advertised, a
     // command's completion frame stops repeating its whole aggregated output
-    // as `rawOutput`. codeg already takes that output from the deltas it
+    // as `rawOutput`. dextra already takes that output from the deltas it
     // streams (the `hosted_terminal_*` bridge, for EVERY command — codex
     // forwards `outputDelta` for search/listFiles/read too), so the repeat was
     // parsed only to be thrown away. The key it streams under does not change:
@@ -4662,7 +4662,7 @@ fn build_client_capabilities(
     //
     // claude-agent-acp 0.81.0 honours the same key (#1150), but there it is the
     // gate for claude's whole terminal `_meta` presentation, which moves shell
-    // output off `content` onto a channel codeg does not bridge for claude
+    // output off `content` onto a channel dextra does not bridge for claude
     // (see `hosted_terminal_output_key`) — so it stays codex-only.
     if agent_type == AgentType::Codex {
         meta.insert(
@@ -4690,7 +4690,7 @@ fn build_client_capabilities(
     // "object"`; codex's `clientSupportsCompaction`: `session.compaction !=
     // null`), which is exactly what the empty capability structs serialize to.
     //
-    // ⚠️ Both members REPLACE a surface codeg already consumes, so neither may
+    // ⚠️ Both members REPLACE a surface dextra already consumes, so neither may
     // be advertised without its consumer:
     // * `notices` outranks the AIR advisory lane (claude publishes its model
     //   fallback advisory only `if (!supportsNotices &&
@@ -4718,7 +4718,7 @@ fn build_client_capabilities(
         );
     }
     // Two more client capabilities are deliberately NOT advertised, because each
-    // would change a surface codeg reads today with nothing ready to take it
+    // would change a surface dextra reads today with nothing ready to take it
     // over:
     // * `session.configOptions.boolean`. Both adapters answer it by turning
     //   their "Fast mode" option from an On/Off `select` into a `boolean`. The
@@ -4845,11 +4845,11 @@ async fn send_new_session_capturing_models(
 /// actually reach the agent's model. Almost all adapters deliver them; pi-acp
 /// (0.0.31) accepts the `mcpServers` field but DROPS it — it never forwards MCP
 /// to the inner `pi --mode rpc` process, and pi has no native MCP. So forwarding
-/// either user servers or the built-in codeg-mcp companion to pi is futile, and
-/// injecting codeg-mcp would falsely mark delegation/feedback/ask as available
+/// either user servers or the built-in dextra-mcp companion to pi is futile, and
+/// injecting dextra-mcp would falsely mark delegation/feedback/ask as available
 /// (`feedback_tool_available`, a registered delegation token pi can never use).
 /// `supports_mcp` stays `true` for pi (session/new tolerates the field), so this
-/// is a separate, narrower gate. Gate codeg-mcp injection on it.
+/// is a separate, narrower gate. Gate dextra-mcp injection on it.
 fn agent_delivers_wire_mcp(agent_type: AgentType) -> bool {
     !matches!(agent_type, AgentType::Pi)
 }
@@ -4863,27 +4863,27 @@ fn load_mcp_servers_for_agent(agent_type: AgentType) -> Vec<McpServer> {
     // registered as `mcp-<name>` toolsets), Kimi Code from
     // `~/.kimi-code/mcp.json` (`mcpServers`), Grok from `~/.grok/config.toml`
     // (`[mcp_servers.<name>]`), Cursor from `~/.cursor/mcp.json`
-    // (`mcpServers`, shared with the IDE). codeg manages those files directly
+    // (`mcpServers`, shared with the IDE). dextra manages those files directly
     // via the MCP settings UI, so forwarding the same servers over the ACP
     // wire here would double-register them — skip it. (The built-in
-    // `codeg-mcp` companion is injected separately by `inject_codeg_mcp`, so
+    // `dextra-mcp` companion is injected separately by `inject_dextra_mcp`, so
     // it still reaches them.)
     //
     // DeepSeek is deliberately NOT in this set: deepseek-acp reads no MCP file
-    // at all, so `$DSH_HOME/mcp.json` (codeg's own store) reaches it ONLY
+    // at all, so `$DSH_HOME/mcp.json` (dextra's own store) reaches it ONLY
     // through the wire — skipping it would silently drop every user server.
     //
     // Qoder joins the skip set: the CLI reads `mcpServers` out of its own
     // `~/.qoder/settings.json` (gemini-schema settings file) at startup, which
-    // codeg's MCP settings UI manages directly — forwarding the same servers
+    // dextra's MCP settings UI manages directly — forwarding the same servers
     // over the wire would double-mount them.
     //
     // Antigravity joins it too, for the same reason with one nuance: its ACP
-    // server reads `<GEMINI_HOME>/config/mcp_config.json` (which codeg's MCP
+    // server reads `<GEMINI_HOME>/config/mcp_config.json` (which dextra's MCP
     // settings UI manages) and MERGES it with the wire list BY NAME, wire
     // winning — so forwarding would not actually double-mount. It is skipped
     // anyway because defining one server through two channels is noise, and
-    // because the `codeg-mcp` companion is injected separately regardless.
+    // because the `dextra-mcp` companion is injected separately regardless.
     if matches!(
         agent_type,
         AgentType::Hermes
@@ -4962,7 +4962,7 @@ fn mcp_servers_for_launch(
         .collect()
 }
 
-/// Context the connection layer needs to inject the built-in `codeg-mcp`
+/// Context the connection layer needs to inject the built-in `dextra-mcp`
 /// MCP entry. Built once per `run_connection` from the live AppState pieces
 /// (broker config, token registry, UDS path) and passed through.
 ///
@@ -5021,17 +5021,17 @@ pub struct DelegationInjection {
     /// time so `delegate_to_agent` only advertises launchable targets.
     pub agent_availability: Arc<dyn AgentAvailabilityLookup>,
     /// Hot-swappable "is live-feedback enabled?" flag. Read at injection time
-    /// alongside the broker's delegation flag so `codeg-mcp` is injected when
+    /// alongside the broker's delegation flag so `dextra-mcp` is injected when
     /// EITHER feature is on, and the companion is told which tool groups to
     /// expose. Shares the same `tokens` registry and UDS socket as delegation.
     pub feedback: crate::acp::feedback::FeedbackRuntimeConfig,
     /// Hot-swappable "is ask-user-question enabled?" flag. Read at injection
-    /// time alongside delegation + feedback so `codeg-mcp` is injected when ANY
+    /// time alongside delegation + feedback so `dextra-mcp` is injected when ANY
     /// of the three is on, and the companion's `--features` lists `ask` to expose
     /// the `ask_user_question` tool.
     pub ask: crate::acp::question::QuestionRuntimeConfig,
     /// Hot-swappable "is get-session-info enabled?" flag. Read at injection time
-    /// alongside the other three so `codeg-mcp` is injected when ANY of the four
+    /// alongside the other three so `dextra-mcp` is injected when ANY of the four
     /// is on, and the companion's `--features` lists `sessions` to expose the
     /// `get_session_info` tool. No teardown handle (the lookup is stateless).
     pub sessions: crate::acp::session_info::SessionInfoRuntimeConfig,
@@ -5054,7 +5054,7 @@ pub struct DelegationInjection {
     /// `ConnectionManager` as the listener's question lookup.
     pub questions: Arc<dyn crate::acp::question::SessionQuestionAccess>,
     /// Plan-approval registry handle for Grok's `exit_plan_mode` ext bridge.
-    /// Unlike delegation / ask / feedback this is NOT a codeg-mcp feature — it is
+    /// Unlike delegation / ask / feedback this is NOT a dextra-mcp feature — it is
     /// Grok's native plan mode — so it has no runtime on/off flag and is always
     /// wired. Shares the same backing `ConnectionManager` as the question lookup.
     /// The `run_connection` handler registers approvals + parks on the reply
@@ -5063,19 +5063,19 @@ pub struct DelegationInjection {
     pub plan_approvals: Arc<dyn crate::acp::plan_approval::SessionPlanApprovalAccess>,
 }
 
-/// Locate the `codeg-mcp` companion binary across the supported deployment
+/// Locate the `dextra-mcp` companion binary across the supported deployment
 /// shapes:
 ///
-/// 1. `CODEG_MCP_BIN` env override — explicit absolute path. Lets dev shells,
+/// 1. `DEXTRA_MCP_BIN` env override — explicit absolute path. Lets dev shells,
 ///    custom installs, and integration tests point at a freshly compiled
 ///    binary without touching the install layout.
 /// 2. Sibling of the running executable — the production layout for every
-///    shipping target. Tauri sidecar (`Contents/MacOS/codeg-mcp` on macOS,
-///    next to `codeg.exe` on Windows, next to the unix binary on Linux
-///    deb/rpm), `install.sh`/`install.ps1` (drops `codeg-mcp` next to
-///    `codeg-server`), Docker image (`/usr/local/bin/codeg-mcp` next to
-///    `codeg-server`), and `cargo build` dev output
-///    (`target/<profile>/codeg-mcp`).
+///    shipping target. Tauri sidecar (`Contents/MacOS/dextra-mcp` on macOS,
+///    next to `dextra.exe` on Windows, next to the unix binary on Linux
+///    deb/rpm), `install.sh`/`install.ps1` (drops `dextra-mcp` next to
+///    `dextra-server`), Docker image (`/usr/local/bin/dextra-mcp` next to
+///    `dextra-server`), and `cargo build` dev output
+///    (`target/<profile>/dextra-mcp`).
 /// 3. `PATH` lookup — last-resort for atypical layouts where ops moved the
 ///    two binaries apart but kept both reachable on `PATH`.
 ///
@@ -5084,14 +5084,14 @@ pub struct DelegationInjection {
 /// injection — never paper over with a phantom path, because that fails
 /// inside the agent's MCP spawn loop and may take the entire ACP session
 /// down on stricter agents.
-pub fn locate_codeg_mcp_binary() -> Option<PathBuf> {
+pub fn locate_dextra_mcp_binary() -> Option<PathBuf> {
     let filename = if cfg!(windows) {
-        "codeg-mcp.exe"
+        "dextra-mcp.exe"
     } else {
-        "codeg-mcp"
+        "dextra-mcp"
     };
 
-    if let Some(raw) = std::env::var_os("CODEG_MCP_BIN") {
+    if let Some(raw) = std::env::var_os("DEXTRA_MCP_BIN") {
         let candidate = PathBuf::from(raw);
         if is_executable_file(&candidate) {
             return Some(candidate);
@@ -5130,7 +5130,7 @@ fn is_executable_file(path: &Path) -> bool {
     true
 }
 
-/// Append the built-in `codeg-mcp` MCP entry if delegation is enabled
+/// Append the built-in `dextra-mcp` MCP entry if delegation is enabled
 /// AND the companion binary is present on disk. Returns the per-launch token
 /// that was registered, or `None` when injection was skipped (disabled by
 /// config, or binary missing).
@@ -5141,7 +5141,7 @@ fn is_executable_file(path: &Path) -> bool {
 /// new ACP session ship a guaranteed-to-fail MCP server entry: stricter
 /// agents (Claude Code) refuse the whole session; lax agents lose the
 /// delegate tool silently. Skipping leaves the agent fully functional minus
-/// `delegate_to_agent`, which is the right degradation when codeg-mcp didn't
+/// `delegate_to_agent`, which is the right degradation when dextra-mcp didn't
 /// make it into the install.
 /// Which tool groups a companion launch should expose. A struct rather than a
 /// positional bool list: the groups keep growing and seven adjacent `bool`s at a
@@ -5213,7 +5213,7 @@ fn companion_features_arg(flags: CompanionFeatureFlags) -> Option<String> {
     Some(features.join(","))
 }
 
-/// Outcome of injecting the `codeg-mcp` companion: the per-launch token to
+/// Outcome of injecting the `dextra-mcp` companion: the per-launch token to
 /// stash for revocation, plus whether the `check_user_feedback` tool was exposed
 /// to this agent (so the session can gate submit + UI on its real capability).
 struct CompanionInjection {
@@ -5223,7 +5223,7 @@ struct CompanionInjection {
     delegation_enabled: bool,
 }
 
-async fn inject_codeg_mcp(
+async fn inject_dextra_mcp(
     servers: &mut Vec<McpServer>,
     injection: &DelegationInjection,
     parent_connection_id: &str,
@@ -5231,19 +5231,19 @@ async fn inject_codeg_mcp(
     tasks_enabled: bool,
     host_tools: HostToolsPolicy,
 ) -> Option<CompanionInjection> {
-    inject_codeg_mcp_with_binary_locator(
+    inject_dextra_mcp_with_binary_locator(
         servers,
         injection,
         parent_connection_id,
         working_dir,
         tasks_enabled,
         host_tools,
-        locate_codeg_mcp_binary,
+        locate_dextra_mcp_binary,
     )
     .await
 }
 
-async fn inject_codeg_mcp_with_binary_locator<F>(
+async fn inject_dextra_mcp_with_binary_locator<F>(
     servers: &mut Vec<McpServer>,
     injection: &DelegationInjection,
     parent_connection_id: &str,
@@ -5255,7 +5255,7 @@ async fn inject_codeg_mcp_with_binary_locator<F>(
 where
     F: FnOnce() -> Option<PathBuf>,
 {
-    // codeg-mcp carries BOTH the delegation tools and the live-feedback tool.
+    // dextra-mcp carries BOTH the delegation tools and the live-feedback tool.
     // Inject it when EITHER feature is enabled; the `--features` arg tells the
     // companion which tool groups to expose so a disabled feature's tools never
     // surface to the LLM. (Historically this was gated on delegation alone.)
@@ -5264,12 +5264,12 @@ where
     let feedback_enabled = injection.feedback.is_enabled().await;
     let authoring = injection.authoring.snapshot().await;
     // Delegation is a THIRD door into the same room as `fs/*` and `terminal/*`:
-    // `delegate_to_agent` has codeg spawn a second agent — in codeg's process
+    // `delegate_to_agent` has dextra spawn a second agent — in dextra's process
     // tree, under ITS own (by default `Default`) policy — and hand its output
     // back. A sandboxed agent that cannot read `.env` itself would just ask a
     // sibling to read it. That defeats the boundary this switch advertises, for
     // the same reason withholding only one of fs/terminal would, so `agent`
-    // withholds this group too. The other groups stay: they surface codeg's own
+    // withholds this group too. The other groups stay: they surface dextra's own
     // state (feedback, ask, session info, task reporting), not arbitrary file
     // or command execution on the user's machine.
     let delegation_configured = injection.broker.config_snapshot().await.enabled;
@@ -5282,7 +5282,7 @@ where
         tracing::info!(
             "[delegation] multi-agent delegation is enabled in settings but withheld from \
              connection {parent_connection_id}: {HOST_TOOLS_ENV}=agent hands fs/terminal back \
-             to this agent, and delegate_to_agent would route the same work through codeg \
+             to this agent, and delegate_to_agent would route the same work through dextra \
              anyway. Turn that per-agent switch off to restore the delegation tools."
         );
     }
@@ -5320,10 +5320,10 @@ where
     let features_arg = companion_features_arg(flags)?;
     let Some(binary_path) = locate_binary() else {
         tracing::warn!(
-            "[delegation][WARN] codeg-mcp companion binary not found (checked CODEG_MCP_BIN, \
+            "[delegation][WARN] dextra-mcp companion binary not found (checked DEXTRA_MCP_BIN, \
              exe sibling, and PATH); skipping delegate_to_agent / check_user_feedback / \
              ask_user_question / get_session_info tool injection for connection \
-             {parent_connection_id}. Reinstall codeg or set CODEG_MCP_BIN to fix."
+             {parent_connection_id}. Reinstall dextra or set DEXTRA_MCP_BIN to fix."
         );
         return None;
     };
@@ -5331,7 +5331,7 @@ where
     // targets; disabled BUILT-INS are subtracted companion-side
     // (`--disabled-agents`) so the embedded schema stays the single source of
     // truth for the builtin list and its order. Either flag is omitted when
-    // empty, which also keeps an older codeg-mcp binary — one that rejects
+    // empty, which also keeps an older dextra-mcp binary — one that rejects
     // unknown flags at startup — working for installations needing neither.
     let (custom_slugs, disabled_builtins) = delegate_target_args(&disabled);
     let token = uuid::Uuid::new_v4().to_string();
@@ -5345,7 +5345,7 @@ where
             },
         )
         .await;
-    let mut server = McpServerStdio::new("codeg-mcp", binary_path.clone());
+    let mut server = McpServerStdio::new("dextra-mcp", binary_path.clone());
     let mut args = vec![
         "--parent-connection-id".to_string(),
         parent_connection_id.to_string(),
@@ -5353,7 +5353,7 @@ where
         injection.socket_path.to_string_lossy().to_string(),
         "--token".to_string(),
         token.clone(),
-        // Self-cleanup watchdog: codeg-mcp exits when this PID is gone so
+        // Self-cleanup watchdog: dextra-mcp exits when this PID is gone so
         // orphaned companions can't keep the binary file locked across an
         // installer upgrade (Windows) or hold a stale broker connection
         // (any platform).
@@ -5541,7 +5541,7 @@ async fn run_connection(
     let cwd = resolve_working_dir(working_dir.as_deref());
     // Default terminals to the session working directory so an agent that calls
     // `terminal/create` without a `cwd` (e.g. CodeBuddy) runs in the folder the
-    // conversation runs in rather than codeg's own process cwd.
+    // conversation runs in rather than dextra's own process cwd.
     // An agent that runs `pnpm dev` through `terminal/create` has started a
     // local server the same way a person in the terminal panel has, and that
     // output is the only place its address appears. A connection with no real
@@ -5565,13 +5565,13 @@ async fn run_connection(
         fs_policy.describe(),
         host_tools.describe()
     );
-    // `strict` reads as a containment boundary and is not one while codeg also
+    // `strict` reads as a containment boundary and is not one while dextra also
     // advertises `terminal`: an agent refused a read just `cat`s the file
-    // through the shell codeg runs for it (empirically what grok does). Say so
+    // through the shell dextra runs for it (empirically what grok does). Say so
     // rather than letting the knob's name do the promising.
     if fs_policy.confines_reads() && host_tools.hosts_channels() {
         tracing::warn!(
-            "[ACP] {FS_POLICY_ENV} confines the fs channel but codeg still advertises \
+            "[ACP] {FS_POLICY_ENV} confines the fs channel but dextra still advertises \
              `terminal`, so an agent reaches the same paths through a shell — this is \
              not a containment boundary. Set {HOST_TOOLS_ENV}=agent to hand file access \
              and commands back to the agent, where its own sandbox applies."
@@ -5586,7 +5586,7 @@ async fn run_connection(
 
     // Shared question access + feature toggle (both live on the delegation
     // injection) for the agents that ask NATIVELY, over a blocking request of
-    // their own rather than the codeg-mcp tool: grok's `_x.ai/ask_user_question`
+    // their own rather than the dextra-mcp tool: grok's `_x.ai/ask_user_question`
     // ext request (verified against 0.2.101) and pi's extension-UI `select`,
     // which pi-acp folds into `session/request_permission`. Both handlers
     // register the questions through the SAME interactive-card pipeline and
@@ -5637,7 +5637,7 @@ async fn run_connection(
 
     Client
         .builder()
-        .name("codeg")
+        .name("dextra")
         // First in the chain on purpose: it has to claim a null-`sessionId`
         // message before the runtime can park it for retry. See the type docs.
         .with_handler(ClaimNullSessionIds)
@@ -5655,12 +5655,12 @@ async fn run_connection(
                 async move |req: RequestPermissionRequest,
                             responder: Responder<RequestPermissionResponse>,
                             cx: ConnectionTo<Agent>| {
-                    // An approval gating codeg's OWN ask tool is a dialog asking
+                    // An approval gating dextra's OWN ask tool is a dialog asking
                     // permission to show a dialog; allow it so the user sees only
                     // the interactive question card (see
-                    // `codeg_ask_auto_allow_option`).
+                    // `dextra_ask_auto_allow_option`).
                     let responder =
-                        match try_auto_allow_codeg_ask(&perm_ask_access, &req, responder).await {
+                        match try_auto_allow_dextra_ask(&perm_ask_access, &req, responder).await {
                             Ok(()) => return Ok(()),
                             Err(responder) => responder,
                         };
@@ -5872,7 +5872,7 @@ async fn run_connection(
             {
                 // Codex `elicitation/create`: question-style requests (Plan
                 // mode `request_user_input`, generic MCP forms) bridge into
-                // the same ask card as the codeg-mcp ask tool (reusing the ask
+                // the same ask card as the dextra-mcp ask tool (reusing the ask
                 // access + kill switch); approval-style requests (MCP
                 // tool-call approvals, message-only confirms) route through
                 // the permission card via `pending_perms`.
@@ -6021,7 +6021,7 @@ async fn run_connection(
                         "[ACP][{agent_name_for_log}] Initialize TIMED OUT after {:?} \
                          — the agent never answered the handshake. Check the \
                          [stderr] lines above for agent-side errors. For a full \
-                         JSON-RPC trace, re-launch with CODEG_ACP_DEBUG=1.",
+                         JSON-RPC trace, re-launch with DEXTRA_ACP_DEBUG=1.",
                         init_started.elapsed()
                     );
                     return Err(agent_client_protocol::util::internal_error(INIT_TIMEOUT_SENTINEL));
@@ -6100,10 +6100,10 @@ async fn run_connection(
             // Whether this agent accepts MCP server entries over the ACP wire
             // (`session/new`'s `mcpServers`). Almost all do; OpenClaw rejects
             // any server entry and fails session creation, so it must receive
-            // NONE — neither user-configured servers nor the built-in codeg-mcp
+            // NONE — neither user-configured servers nor the built-in dextra-mcp
             // companion. A custom agent carries the same flag as a stored
             // declaration the user flips in settings, for the same reason:
-            // codeg cannot know whether an arbitrary ACP agent tolerates the
+            // dextra cannot know whether an arbitrary ACP agent tolerates the
             // field, and one that doesn't fails to connect at all until it is
             // turned off. (The `mcpServers` key itself is always serialized as
             // `[]` by the ACP schema and OpenClaw tolerates the empty list; the
@@ -6127,13 +6127,13 @@ async fn run_connection(
                 )
             } else {
                 tracing::info!(
-                    "[ACP][{}] supports_mcp=false: skipping all MCP wire forwarding (user servers + codeg-mcp companion)",
+                    "[ACP][{}] supports_mcp=false: skipping all MCP wire forwarding (user servers + dextra-mcp companion)",
                     agent_type
                 );
                 Vec::new()
             };
 
-            // Inject the built-in `codeg-mcp` MCP server. Stdio is
+            // Inject the built-in `dextra-mcp` MCP server. Stdio is
             // unconditionally supported by the ACP wire — no `mcp_caps`
             // filter needed. The returned token is stashed on the session
             // state so connection teardown can revoke it. Skipped entirely
@@ -6144,7 +6144,7 @@ async fn run_connection(
                     // task_progress / task_complete tool group.
                     let tasks_enabled =
                         { state.read().await.owner_window_label == "work_task" };
-                    inject_codeg_mcp(
+                    inject_dextra_mcp(
                         &mut mcp_servers,
                         inj,
                         &conn_id,
@@ -6162,7 +6162,7 @@ async fn run_connection(
             {
                 let mut s = state.write().await;
                 // Native steering is independent of the MCP companion — set it
-                // even when no codeg-mcp is injected (it's exactly the channel
+                // even when no dextra-mcp is injected (it's exactly the channel
                 // that needs no tool; OpenClaw-style `supports_mcp: false`
                 // agents could ship it someday).
                 s.native_steering_available = native_steering_available;
@@ -6390,9 +6390,9 @@ async fn run_connection(
                         // but forward AvailableCommandsUpdate to the frontend.
                         //
                         // For a custom agent with no transcript yet — a session
-                        // created outside codeg, or one whose recording was
+                        // created outside dextra, or one whose recording was
                         // lost — this replay is the ONLY source of its history,
-                        // so capture it instead of discarding it. When codeg
+                        // so capture it instead of discarding it. When dextra
                         // already recorded the session live, the replay is a
                         // duplicate and stays drained.
                         let hydrate_from_replay = transcript_dir_for(agent_type).is_some_and(|dir| {
@@ -6431,7 +6431,7 @@ async fn run_connection(
                             // edge may never have been recorded. Drop rather
                             // than seed the live strip with zombie rows —
                             // but drop HERE, so it isn't counted as an
-                            // update codeg failed to read.
+                            // update dextra failed to read.
                             if air_async_task_delta(&dispatch).is_some() {
                                 continue;
                             }
@@ -6591,7 +6591,7 @@ async fn run_connection(
                         // keeps the session/new fallback below.
                         //
                         // Custom agents are the exception: their history is
-                        // codeg's own transcript, not the agent's store, so
+                        // dextra's own transcript, not the agent's store, so
                         // "the agent forgot this session" costs nothing the
                         // user can see. Many custom agents keep sessions in
                         // memory only, which would make the banner appear on
@@ -6646,11 +6646,11 @@ async fn run_connection(
                         if err_str.contains("Authentication required") {
                             return Ok(());
                         }
-                        // An agent that simply forgot a session codeg recorded
+                        // An agent that simply forgot a session dextra recorded
                         // itself is the expected steady state after a restart,
                         // not an incident — an error toast on every reopen
                         // would be pure noise.
-                        // A load codeg deliberately never sent is not a failure
+                        // A load dextra deliberately never sent is not a failure
                         // to report — the capability gate above is the expected
                         // path for agents that don't implement it.
                         if attempted_load && !err_str.contains("Method not found") && !recovers_locally
@@ -6691,7 +6691,7 @@ async fn run_connection(
                         let mut session = AgentSession::attach(&cx, new_resp)?;
                         // Same conversation, new agent session: link the fresh
                         // transcript to the one the failed load was for, so the
-                        // turns codeg already recorded keep rendering.
+                        // turns dextra already recorded keep rendering.
                         // Awaited: the link must be on disk before
                         // `SessionStarted` goes out, or the session-binding
                         // guard can read an empty chain and split this
@@ -6870,8 +6870,8 @@ async fn run_connection(
 
 /// Grok's native `ask_user_question` tool issues this ACP ext request
 /// (`_x.ai/ask_user_question`) and BLOCKS on the reply — it does NOT go through
-/// the codeg-mcp ask tool. Transparent over the raw params object
-/// (`{sessionId, toolCallId, questions, mode}`); the fields codeg needs are read
+/// the dextra-mcp ask tool. Transparent over the raw params object
+/// (`{sessionId, toolCallId, questions, mode}`); the fields dextra needs are read
 /// by [`crate::acp::question::parse_grok_ext_questions`]. The runtime routes typed
 /// handlers on the RAW wire method, so the derive keeps the leading `_`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonRpcRequest)]
@@ -6883,7 +6883,7 @@ struct GrokAskUserQuestionRequest(serde_json::Value);
 /// `exit_plan_mode` tool issues this ACP ext request (`_x.ai/exit_plan_mode`) and
 /// BLOCKS on the reply — the agent won't leave plan mode until the user acts.
 /// Transparent over the raw params object (`{sessionId, toolCallId, planContent}`);
-/// the fields codeg needs are read by
+/// the fields dextra needs are read by
 /// [`crate::acp::plan_approval::parse_grok_exit_plan_request`]. The runtime routes typed
 /// handlers on the RAW wire method, so the derive keeps the leading `_`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, JsonRpcRequest)]
@@ -6893,7 +6893,7 @@ struct GrokExitPlanModeRequest(serde_json::Value);
 
 /// Every codex `elicitation/create` request — `request_user_input` (Plan
 /// mode), generic MCP-server forms, MCP tool-call approvals, message-only
-/// confirms — arrives here once codeg advertises `elicitation.form`. Like the
+/// confirms — arrives here once dextra advertises `elicitation.form`. Like the
 /// grok bridge, this takes the raw params object and replies with a raw JSON
 /// value (the serialized `CreateElicitationResponse`): the form schemas codex
 /// sends carry `_meta` markers (`codex.isSecret`, …) that `question.rs` reads
@@ -6904,10 +6904,10 @@ struct GrokExitPlanModeRequest(serde_json::Value);
 #[serde(transparent)]
 struct CodexElicitationRequest(serde_json::Value);
 
-/// Bridge grok's native `_x.ai/ask_user_question` ext request into codeg's
-/// interactive question card. Grok blocks on the reply, so codeg registers the
+/// Bridge grok's native `_x.ai/ask_user_question` ext request into dextra's
+/// interactive question card. Grok blocks on the reply, so dextra registers the
 /// questions through the shared [`crate::acp::question::SessionQuestionAccess`] —
-/// the SAME path the codeg-mcp ask tool uses (it sets `pending_question`,
+/// the SAME path the dextra-mcp ask tool uses (it sets `pending_question`,
 /// broadcasts `QuestionRequest`, and the `AskQuestionCard` renders) — then answers
 /// the ext request with the user's choice, serialized to grok's own format, once
 /// they submit. Every early return responds with an error, which makes grok fall
@@ -6928,7 +6928,7 @@ async fn handle_grok_ask_user_question(
         let _ = responder.respond_with_internal_error("ask_user_question bridge unavailable");
         return;
     };
-    // Same kill switch as the codeg-mcp ask tool: when off, let grok fall back.
+    // Same kill switch as the dextra-mcp ask tool: when off, let grok fall back.
     if !ask_cfg.is_enabled().await {
         let _ = responder.respond_with_internal_error("ask_user_question is disabled");
         return;
@@ -6966,7 +6966,7 @@ async fn handle_grok_ask_user_question(
     tokio::spawn(async move {
         match registered.answer_rx.await {
             Ok(outcome) => {
-                // Surface the answered "提问回答" capsule in-stream — the codeg-mcp
+                // Surface the answered "提问回答" capsule in-stream — the dextra-mcp
                 // ask parity grok's native tool never emits into the ACP stream (it
                 // resolves the answer over THIS ext round-trip). Emit BEFORE
                 // unblocking grok so the card lands ahead of grok's follow-up text;
@@ -7010,15 +7010,15 @@ async fn handle_grok_ask_user_question(
 }
 
 /// The option id that silently allows a `session/request_permission` which is
-/// only gating codeg's OWN `ask_user_question` companion tool, or `None` to
+/// only gating dextra's OWN `ask_user_question` companion tool, or `None` to
 /// leave the request on the ordinary approval-card path.
 ///
 /// An agent whose permission mode consults the user before every MCP tool call
 /// (claude-agent-acp's default) gates the ask tool too, so asking the user a
-/// question used to cost TWO dialogs: a raw "run mcp__codeg-mcp__ask_user_question?"
+/// question used to cost TWO dialogs: a raw "run mcp__dextra-mcp__ask_user_question?"
 /// approval dumping the questions as JSON, and only after "Yes" the real
 /// interactive card. The first one carries no decision the second doesn't — see
-/// [`crate::acp::question::is_codeg_ask_tool_name`] for why answering it is the
+/// [`crate::acp::question::is_dextra_ask_tool_name`] for why answering it is the
 /// user's consent either way.
 ///
 /// The tool is identified by NAME, read from the two places a host puts it:
@@ -7027,13 +7027,13 @@ async fn handle_grok_ask_user_question(
 /// `_meta.permission.title` it pairs with (claude-agent-acp 0.73+ / codex-acp
 /// 1.7+, the same block [`hoist_request_permission_meta`] forwards to the card).
 /// The ACP `toolCall.name` field would be the exact answer but is UNSTABLE and
-/// dropped by the schema crate codeg pins, so it is not available here.
+/// dropped by the schema crate dextra pins, so it is not available here.
 ///
 /// Only an `allow_once` option is ever selected. An `allow_always` writes a
 /// durable permission rule into the user's own agent settings — a decision that
 /// outlives this turn and this connection, so it stays theirs to make. With no
 /// such option (an agent that offers only "always"), `None` keeps today's card.
-fn codeg_ask_auto_allow_option(req: &RequestPermissionRequest) -> Option<String> {
+fn dextra_ask_auto_allow_option(req: &RequestPermissionRequest) -> Option<String> {
     let permission_title = req
         .meta
         .as_ref()
@@ -7043,7 +7043,7 @@ fn codeg_ask_auto_allow_option(req: &RequestPermissionRequest) -> Option<String>
     let is_ask = [req.tool_call.fields.title.as_deref(), permission_title]
         .into_iter()
         .flatten()
-        .any(crate::acp::question::is_codeg_ask_tool_name);
+        .any(crate::acp::question::is_dextra_ask_tool_name);
     if !is_ask {
         return None;
     }
@@ -7053,7 +7053,7 @@ fn codeg_ask_auto_allow_option(req: &RequestPermissionRequest) -> Option<String>
         .map(|opt| opt.option_id.to_string())
 }
 
-/// Answer a permission request that is merely gating codeg's own ask tool, so
+/// Answer a permission request that is merely gating dextra's own ask tool, so
 /// the interactive question card is the only thing the user ever sees.
 ///
 /// `Err(responder)` hands the request back for the ordinary permission path —
@@ -7065,7 +7065,7 @@ fn codeg_ask_auto_allow_option(req: &RequestPermissionRequest) -> Option<String>
 // request, not an error bubbled through `?` — boxing it would only add an
 // allocation.
 #[allow(clippy::result_large_err)]
-async fn try_auto_allow_codeg_ask(
+async fn try_auto_allow_dextra_ask(
     access: &Option<(
         Arc<dyn crate::acp::question::SessionQuestionAccess>,
         crate::acp::question::QuestionRuntimeConfig,
@@ -7073,11 +7073,11 @@ async fn try_auto_allow_codeg_ask(
     req: &RequestPermissionRequest,
     responder: Responder<RequestPermissionResponse>,
 ) -> Result<(), Responder<RequestPermissionResponse>> {
-    let Some(option_id) = codeg_ask_auto_allow_option(req) else {
+    let Some(option_id) = dextra_ask_auto_allow_option(req) else {
         return Err(responder);
     };
     // Same kill switch as the ask tool itself (and as `try_bridge_pi_select_ask`):
-    // with the feature off codeg-mcp never exposed `ask_user_question`, so a
+    // with the feature off dextra-mcp never exposed `ask_user_question`, so a
     // request naming it is not the tool this shortcut is allowed to speak for.
     let Some((_, ask_cfg)) = access else {
         return Err(responder);
@@ -7086,7 +7086,7 @@ async fn try_auto_allow_codeg_ask(
         return Err(responder);
     }
     tracing::debug!(
-        "[ACP] auto-allowing the permission request for codeg's own ask_user_question tool \
+        "[ACP] auto-allowing the permission request for dextra's own ask_user_question tool \
          (option {option_id}); the interactive question card is the actual prompt"
     );
     let _ = responder.respond(RequestPermissionResponse::new(
@@ -7096,17 +7096,17 @@ async fn try_auto_allow_codeg_ask(
 }
 
 /// Bridge pi's extension-UI `select` — the way a pi extension asks the user a
-/// multiple-choice question (`ctx.ui.select`) — into codeg's interactive question
+/// multiple-choice question (`ctx.ui.select`) — into dextra's interactive question
 /// card.
 ///
 /// pi has no dedicated ask channel: pi-acp turns the dialog into a plain
 /// `session/request_permission` (see
-/// [`crate::acp::question::parse_pi_select_ask`] for the wire shape), so codeg
+/// [`crate::acp::question::parse_pi_select_ask`] for the wire shape), so dextra
 /// used to render it as a generic approval card that dumped the synthetic tool
 /// call as raw JSON, and — because pi never emits a `session/update` for that
 /// `pi-ui-*` id — left NO record of the answer once the card was dismissed
 /// (#644). This registers the choices through the shared
-/// [`crate::acp::question::SessionQuestionAccess`] (the SAME path the codeg-mcp
+/// [`crate::acp::question::SessionQuestionAccess`] (the SAME path the dextra-mcp
 /// ask tool uses), answers the blocked permission request with the option the
 /// user picked, and emits the answered `AskQuestionResultCard` into the stream.
 ///
@@ -7118,7 +7118,7 @@ async fn try_auto_allow_codeg_ask(
 /// A bridged select still parks an abort handle on `perms`, so every permission
 /// drain reclaims it exactly as it reclaimed the approval card this replaces —
 /// see [`PermissionQueue::detached`] for why that matters for pi specifically.
-// Same `Err` hand-back as `try_auto_allow_codeg_ask`; see its allow note.
+// Same `Err` hand-back as `try_auto_allow_dextra_ask`; see its allow note.
 #[allow(clippy::result_large_err)]
 async fn try_bridge_pi_select_ask(
     access: &Option<(
@@ -7143,7 +7143,7 @@ async fn try_bridge_pi_select_ask(
     let Some((questions, ask_cfg)) = access else {
         return Err(responder);
     };
-    // Same kill switch as the codeg-mcp ask tool: when the feature is off, the
+    // Same kill switch as the dextra-mcp ask tool: when the feature is off, the
     // approval card stays the way to answer.
     if !ask_cfg.is_enabled().await {
         return Err(responder);
@@ -7264,9 +7264,9 @@ async fn try_bridge_pi_select_ask(
     Ok(())
 }
 
-/// Bridge grok's native `_x.ai/exit_plan_mode` ext request into codeg's
+/// Bridge grok's native `_x.ai/exit_plan_mode` ext request into dextra's
 /// interactive plan-approval card. Grok BLOCKS on the reply — it won't leave plan
-/// mode until the user acts — so codeg registers the approval through the shared
+/// mode until the user acts — so dextra registers the approval through the shared
 /// [`crate::acp::plan_approval::SessionPlanApprovalAccess`] (which sets
 /// `pending_plan_approval`, broadcasts `PlanApprovalRequest`, and renders the card
 /// above the composer), then answers the ext request with the user's decision once
@@ -7341,22 +7341,22 @@ async fn handle_grok_exit_plan_mode(
     });
 }
 
-/// Bridge codex's `elicitation/create` requests into codeg's interactive
-/// surfaces. Codex only sends these when codeg declares `elicitation.form`
+/// Bridge codex's `elicitation/create` requests into dextra's interactive
+/// surfaces. Codex only sends these when dextra declares `elicitation.form`
 /// (see `connect_with`), then BLOCKS on the reply, so every shape must resolve
 /// to something the user can act on (see
 /// [`crate::acp::question::classify_elicitation`] for the full taxonomy):
 ///
 ///   * Question-style (Plan-mode `request_user_input`, generic MCP forms) →
 ///     the shared [`crate::acp::question::SessionQuestionAccess`] path — the
-///     SAME one the codeg-mcp ask tool and the grok bridge use (it sets
+///     SAME one the dextra-mcp ask tool and the grok bridge use (it sets
 ///     `pending_question`, broadcasts `QuestionRequest`, and `AskQuestionCard`
 ///     renders) — answered once the user submits.
 ///   * Approval-style (MCP tool-call approvals, message-only confirms) → the
 ///     permission card via `pending_perms`, exactly like the
 ///     `session/request_permission` fallback codex-acp used before the
 ///     capability was advertised. Auto-declining these would reject the tool
-///     call (including codeg-mcp's own tools in consent-requiring modes).
+///     call (including dextra-mcp's own tools in consent-requiring modes).
 ///
 /// Question-path early returns DECLINE, which makes codex proceed with its own
 /// judgment — no worse than the pre-bridge `{answers:{}}`, so nothing here can
@@ -7565,7 +7565,7 @@ async fn handle_elicitation_request(
     }
     let raw = req.0;
     // Who is on the other end, from the CONNECTION rather than from the frame.
-    // This handler is registered for every agent and codeg advertises
+    // This handler is registered for every agent and dextra advertises
     // `elicitation.form` to DeepSeek as well as Codex, so the parser must be
     // told the peer's identity instead of inferring it from `_meta.codex` —
     // `_meta` is an open namespace and another speaker (or an MCP server behind
@@ -7596,7 +7596,7 @@ async fn handle_elicitation_request(
     match plan {
         // Approval-style (MCP tool-call approval / message-only confirm):
         // render through the permission card — the exact surface these used
-        // before codeg advertised `elicitation.form` (codex-acp then sent
+        // before dextra advertised `elicitation.form` (codex-acp then sent
         // `session/request_permission`). Deliberately NOT gated by the
         // ask_user_question toggle: this is consent, not an agent question,
         // and auto-declining would reject the tool call outright.
@@ -7650,13 +7650,13 @@ async fn handle_elicitation_request(
             .await;
         }
         // Question-style (codex `request_user_input`, generic MCP forms):
-        // bridge into the same ask card as the codeg-mcp ask tool.
+        // bridge into the same ask card as the dextra-mcp ask tool.
         crate::acp::question::ElicitationPlan::Questions(questions) => {
             let Some((question_access, ask_cfg)) = access else {
                 let _ = responder.respond(decline());
                 return;
             };
-            // Same kill switch as the codeg-mcp ask tool and the grok bridge:
+            // Same kill switch as the dextra-mcp ask tool and the grok bridge:
             // when the user has turned ask_user_question off, decline so codex
             // proceeds.
             if !ask_cfg.is_enabled().await {
@@ -7887,9 +7887,9 @@ fn respond_terminal_request<T: agent_client_protocol::JsonRpcResponse>(
 
 /// Refuse a channel this launch never advertised
 /// ([`HostToolsPolicy::Agent`], #436). Withholding the capability is a
-/// DECLARATION; a non-conforming agent can still call the method, and if codeg
+/// DECLARATION; a non-conforming agent can still call the method, and if dextra
 /// then served it the whole switch would be a suggestion — the operation would
-/// land back in codeg's process, outside the agent's sandbox, which is exactly
+/// land back in dextra's process, outside the agent's sandbox, which is exactly
 /// the bug. `method_not_found` is the honest wire answer: as far as this
 /// connection is concerned the method does not exist, which is what the agent
 /// was told on Initialize.
@@ -7909,7 +7909,7 @@ fn refuse_unadvertised_channel<T: agent_client_protocol::JsonRpcResponse>(
 /// of the refusal a unit test can pin; the wiring itself is covered end-to-end.
 fn unadvertised_channel_error(method: &str) -> agent_client_protocol::Error {
     agent_client_protocol::Error::method_not_found().data(format!(
-        "codeg does not host {method} for this agent ({HOST_TOOLS_ENV}=agent)"
+        "dextra does not host {method} for this agent ({HOST_TOOLS_ENV}=agent)"
     ))
 }
 
@@ -8026,11 +8026,11 @@ fn config_option_rejection(
 
 /// Encode a selector value for `session/set_config_option`.
 ///
-/// codeg keeps config values as opaque `String`s end to end (Tauri command, web
+/// dextra keeps config values as opaque `String`s end to end (Tauri command, web
 /// handler, and the per-agent preference store all use `Record<string, string>`
 /// semantics), so the boolean round-trip is `"true"` ⇄ `true` and happens only
 /// here. A `select` value stays a bare `{"value": "…"}`, byte-for-byte what
-/// codeg sent before boolean options existed — every non-cline agent's wire
+/// dextra sent before boolean options existed — every non-cline agent's wire
 /// traffic is unchanged.
 fn encode_config_option_value(is_boolean: bool, value: &str) -> SessionConfigOptionValue {
     if is_boolean {
@@ -8044,7 +8044,7 @@ fn encode_config_option_value(is_boolean: bool, value: &str) -> SessionConfigOpt
 /// preference at connect can skip the round-trip. Reads the same `"true"` ⇄
 /// `true` encoding [`encode_config_option_value`] writes; an option kind this
 /// build cannot interpret is treated as "does not match" so the agent, not
-/// codeg, decides.
+/// dextra, decides.
 fn config_option_already_holds(option: &SessionConfigOption, value: &str) -> bool {
     match &option.kind {
         SessionConfigKind::Select(s) => s.current_value.to_string() == value,
@@ -8057,7 +8057,7 @@ fn config_option_already_holds(option: &SessionConfigOption, value: &str) -> boo
 /// replaying a saved preference for it at connect is a guaranteed error.
 ///
 /// This exists because a saved preference outlives the value it names.
-/// claude-agent-acp 0.76.0 is the case that forced it: once codeg advertises
+/// claude-agent-acp 0.76.0 is the case that forced it: once dextra advertises
 /// the AIR `recommendedValue` capability, the adapter REMOVES the `default` row
 /// from the model and effort selectors, and a user who had picked it keeps
 /// re-sending `"default"` on every connect forever — the option they would have
@@ -8066,7 +8066,7 @@ fn config_option_already_holds(option: &SessionConfigOption, value: &str) -> boo
 ///
 /// Decided from the agent's own answer, never from an agent id or a pinned
 /// version. That distinction is load-bearing: the registry pin only governs
-/// what codeg INSTALLS, while `resolve_npx_command` launches whatever
+/// what dextra INSTALLS, while `resolve_npx_command` launches whatever
 /// `claude-agent-acp` is on PATH — so "this is the built-in Claude Code agent"
 /// says nothing about which release is actually running, and pruning on that
 /// assumption would silently discard a still-valid pick on an older adapter.
@@ -8318,7 +8318,7 @@ async fn apply_preferred_session_options(
         if never_replayed(config_id) {
             tracing::info!(
                 "[ACP] skipping preferred config '{config_id}'='{value_id}' on connect: \
-                 codeg owns this option rather than the composer"
+                 dextra owns this option rather than the composer"
             );
             continue;
         }
@@ -8350,7 +8350,7 @@ async fn apply_preferred_session_options(
         }
         // Encode against what the agent advertised for this id. An id the agent
         // never advertised falls back to the select form — the same value shape
-        // codeg has always sent (see the note above on unadvertised "mode").
+        // dextra has always sent (see the note above on unadvertised "mode").
         let is_boolean =
             advertised.is_some_and(|o| matches!(o.kind, SessionConfigKind::Boolean(_)));
         let value = encode_config_option_value(is_boolean, value_id);
@@ -8383,7 +8383,7 @@ async fn apply_preferred_session_options(
     options
 }
 
-/// Compare an agent-pushed config-option list against the values codeg asserted
+/// Compare an agent-pushed config-option list against the values dextra asserted
 /// at session establishment and return the ones the push contradicts, removing
 /// each from the ledger as it is returned, **in application order**.
 ///
@@ -8978,7 +8978,7 @@ async fn poll_tracked_terminal_tool_calls(
 
 /// Append the just-ended turn's observed span to the timing journal (see
 /// `crate::turn_timings`). `probe` is `Some((send_stamp, prompt_hash))` only
-/// on agents codeg journals for (Cursor) and is consumed on the first
+/// on agents dextra journals for (Cursor) and is consumed on the first
 /// journaling terminal path, so a turn appends at most one line.
 ///
 /// ONLY cleanly completed turns are journaled — callers gate on the
@@ -9009,7 +9009,7 @@ async fn journal_turn_span(
         return;
     };
     let ack = crate::turn_timings::enqueue_turn_timing(
-        crate::paths::codeg_turn_timings_root(),
+        crate::paths::dextra_turn_timings_root(),
         crate::turn_timings::CURSOR_JOURNAL_AGENT.to_string(),
         session_id.to_string(),
         crate::turn_timings::TurnTiming {
@@ -9067,7 +9067,7 @@ fn is_image_mime(mime: &str) -> bool {
 ///   model can just read the source — measurably better than a drop.
 ///
 /// So decodable images are promoted (queued drafts and work-task prompts
-/// composed before codeg advertised `image:true` still carry the old shape),
+/// composed before dextra advertised `image:true` still carry the old shape),
 /// and undecodable ones are demoted back — the composer only sees the single
 /// `image` capability bit and cannot make this call per mime.
 fn normalize_grok_image_blocks(blocks: Vec<PromptInputBlock>) -> Vec<PromptInputBlock> {
@@ -9206,7 +9206,7 @@ struct ForkExitInfo {
     /// `current_mode` survives a transition into one and would hand an
     /// ancestor's mode to a child that does advertise modes. The parent's
     /// `AgentSession` is the only capability answer that can't go stale.
-    /// Its `current_mode_id` is NOT used — codeg tracks mode changes through
+    /// Its `current_mode_id` is NOT used — dextra tracks mode changes through
     /// events, and the attach-time snapshot never sees them.
     inherited_mode_id: Option<String>,
     original_session_id: String,
@@ -9524,7 +9524,7 @@ fn classify_session_load_failure(
     // codex holds a per-thread writer lock, and `session/fork` releases only the
     // CHILD's (`threadUnsubscribe({threadId: response.thread.id})` in codex-acp
     // 1.8.0) — the parent stays open in the forking process. Opening the sibling
-    // row codeg creates to keep the pre-fork history therefore lands here with
+    // row dextra creates to keep the pre-fork history therefore lands here with
     // "thread <id> already has an active writer".
     //
     // Nothing is lost and nothing is broken: the session is busy, not gone. That
@@ -9566,7 +9566,7 @@ const SESSION_GONE_MARKERS: &[&str] =
 /// prompt just works.
 ///
 /// Turn-scoped is the DEFAULT, because an agent that answered at all is an
-/// agent that is still there. Every ACP agent codeg drives rejects some prompts
+/// agent that is still there. Every ACP agent dextra drives rejects some prompts
 /// it is perfectly healthy to keep talking to: qwen-code answers -32603
 /// `Slash command not supported in ACP integration: …` for a `/mcp` its ACP
 /// surface doesn't implement (issue #797) and keeps the session in its map;
@@ -9576,7 +9576,7 @@ const SESSION_GONE_MARKERS: &[&str] =
 /// out a full respawn for a turn that merely failed.
 ///
 /// Only three families stay terminal:
-///  - `ResourceNotFound` — the agent has no record of the session id codeg
+///  - `ResourceNotFound` — the agent has no record of the session id dextra
 ///    just prompted on, so the handle this connection holds is void.
 ///  - [`SESSION_GONE_MARKERS`] — the agent answered to say its session or
 ///    process is gone. Keeping the connection would leave an entry whose every
@@ -9648,10 +9648,10 @@ async fn defer_to_connection_report(
     e
 }
 
-/// Whether codeg can absorb a "the agent forgot this session" load failure by
+/// Whether dextra can absorb a "the agent forgot this session" load failure by
 /// itself, rather than stopping and asking the user to Reload or start over.
 ///
-/// It can exactly when codeg — not the agent — owns the conversation's history:
+/// It can exactly when dextra — not the agent — owns the conversation's history:
 /// custom ACP agents, whose turns are recorded to
 /// [`crate::acp_transcript`]. There the failure costs nothing visible — the
 /// history still renders, and a fresh agent session (linked by
@@ -9800,7 +9800,7 @@ fn dropped_update_log_line(where_: &str, error: &impl std::fmt::Display, coalesc
     }
 }
 
-/// Emit the throttled "codeg dropped an update it could not read" WARN.
+/// Emit the throttled "dextra dropped an update it could not read" WARN.
 fn log_dropped_update(
     throttle: &mut LeadingEdgeThrottle,
     where_: &str,
@@ -9818,7 +9818,7 @@ fn log_dropped_update(
 /// each turn start.
 ///
 /// This exists because `EndTurn` with no output is ambiguous: it can be a real
-/// agent-side failure, a turn whose output codeg failed to parse, or a
+/// agent-side failure, a turn whose output dextra failed to parse, or a
 /// legitimately output-free command turn. Distinguishing them needs more than
 /// the single "did we see output" bit this replaces.
 #[derive(Debug, Default)]
@@ -9829,7 +9829,7 @@ struct TurnOutputProbe {
     /// user echo, …).
     saw_metadata_update: bool,
     /// `session/update`s whose params did not deserialize (schema drift) — the
-    /// output may well have been there; codeg could not read it.
+    /// output may well have been there; dextra could not read it.
     dropped: u32,
     /// First drop's *already-redacted* summary. Redaction happens here, at
     /// capture time, so nothing downstream can hold plaintext — parser errors
@@ -9868,7 +9868,7 @@ impl TurnOutputProbe {
 /// Why a turn ended with `EndTurn` but no agent output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum EmptyTurnCause {
-    /// codeg dropped updates it could not parse — the agent may well have
+    /// dextra dropped updates it could not parse — the agent may well have
     /// replied; we just couldn't read it.
     ProtocolMismatch,
     /// Only metadata arrived. Observational only: this is NOT proof the turn
@@ -9895,7 +9895,7 @@ impl EmptyTurnCause {
                 format!("{agent_type} ended the turn without producing any response.")
             }
             EmptyTurnCause::ProtocolMismatch => format!(
-                "{agent_type} produced output that codeg could not parse — \
+                "{agent_type} produced output that dextra could not parse — \
                  the agent version may not match the protocol."
             ),
             EmptyTurnCause::MetadataOnly => format!(
@@ -10124,7 +10124,7 @@ async fn run_conversation_loop(
     // they are live under the DEFAULT level, and one schema-drifted agent turns
     // them into a firehose. That is exactly the shape that wrote 34GB in 8.8h in
     // the 0.23.3 field report (issue #427). The information they carry is
-    // "codeg is dropping this agent's output", which is worth one line per
+    // "dextra is dropping this agent's output", which is worth one line per
     // window, not one per token: `TurnOutputProbe` keeps the exact counts and the
     // first redacted error, and surfaces them in the empty-turn diagnosis.
     //
@@ -10132,7 +10132,7 @@ async fn run_conversation_loop(
     // (the agent is speaking a protocol we can't read) seen with and without a
     // turn open, so the operator wants one signal, not two interleaved ones.
     let mut drop_log_throttle = LeadingEdgeThrottle::new(DROPPED_UPDATE_LOG_WINDOW);
-    // Options an agent push reverted after codeg asserted them at establishment.
+    // Options an agent push reverted after dextra asserted them at establishment.
     // Queued rather than re-asserted in place because the select below borrows
     // `session` for `read_update`, and the re-assert needs its connection;
     // drained immediately after the select, still inside the idle loop (the
@@ -10203,7 +10203,7 @@ async fn run_conversation_loop(
             for (config_id, value_id) in std::mem::take(&mut config_drift_to_reassert) {
                 tracing::info!(
                     "[ACP] re-asserting '{config_id}'='{value_id}' — the agent reverted it \
-                     after codeg applied it at session establishment"
+                     after dextra applied it at session establishment"
                 );
                 let cx = session.connection();
                 let sid = session.session_id().clone();
@@ -10230,11 +10230,11 @@ async fn run_conversation_loop(
                 prompt_ledger.record_prompt_blocks(&blocks);
                 // Establishment is over the moment the user speaks: from here a
                 // config push is attributable to the prompt (`/model` typed in
-                // chat is one), so codeg stops arbitrating and the agent owns
+                // chat is one), so dextra stops arbitrating and the agent owns
                 // the selectors. See `SessionState::asserted_config_values`.
                 state.write().await.asserted_config_values.clear();
                 // Cursor's ACP store carries no per-turn timestamps at all
-                // (see `crate::turn_timings`), so codeg journals its own
+                // (see `crate::turn_timings`), so dextra journals its own
                 // observation of the turn span: hash + ordinal here (before
                 // the blocks are consumed), the send stamp after the
                 // `UserMessage` broadcast below, the append at TurnComplete.
@@ -10852,7 +10852,7 @@ async fn run_conversation_loop(
                             // Every other turn-scoped rejection reports the
                             // agent's OWN words, because they are the actionable
                             // part ("The command \"/mcp\" is not supported in
-                            // this mode.") and codeg has no vocabulary for them.
+                            // this mode.") and dextra has no vocabulary for them.
                             let response = match prompt_result {
                                 Ok(response) => response,
                                 Err(e) if !prompt_rejection_is_terminal(&e) => {
@@ -11021,7 +11021,7 @@ async fn run_conversation_loop(
                             }
                             // ACP has no turn-end notification — the stop
                             // reason arrives here, in the prompt RESPONSE — so
-                            // codeg records it for the history parser. Unlike
+                            // dextra records it for the history parser. Unlike
                             // streamed chunks this one is bound-awaited: a
                             // conversation reopened right after a turn must not
                             // miss its tail.
@@ -11430,7 +11430,7 @@ pub(crate) fn synthesize_edit_input_from_diffs(content: &[ToolCallContent]) -> O
 /// Used on the self-hosted-terminal path only (see
 /// `hosted_terminal_meta_marks_shell`). A
 /// `ToolCallContent::Terminal` serializes to the bare `[Terminal: <id>]`
-/// placeholder, which is meaningful ONLY while codeg's own `TerminalRuntime`
+/// placeholder, which is meaningful ONLY while dextra's own `TerminalRuntime`
 /// owns that terminal and `poll_tracked_terminal_tool_calls` streams the real
 /// output over it (`raw_output_chunks` then wins over `content` in the
 /// frontend store). These agents' terminals are agent-hosted, so nothing ever
@@ -11760,7 +11760,7 @@ const OPENCODE_META_KEY: &str = "opencode";
 /// REPLAY finished tool parts through the same `pendingToolCall` builder: a
 /// replayed frame is also `status: "pending"`, but it is built from the
 /// COMPLETED state, so its title is the display label and its input is fully
-/// populated. Requiring the empty input keeps the marker off those. (codeg
+/// populated. Requiring the empty input keeps the marker off those. (dextra
 /// prefers `session/resume`, which replays nothing, so this is belt-and-braces.)
 /// A `pending` frame that did arrive with partial input simply goes unstamped —
 /// today's behavior, never a wrong name.
@@ -11805,7 +11805,7 @@ const CODEX_SEARCH_ACTION_META_KEY: &str = "codeg.codexSearchAction";
 /// Stamp codex's `search` command actions on their opening frame, so the
 /// frontend can tell them from every other agent's grep.
 ///
-/// It needs to because codeg advertises `_meta.terminal_output_delta`, and with
+/// It needs to because dextra advertises `_meta.terminal_output_delta`, and with
 /// that capability codex-acp completes a command that printed nothing as a
 /// bare `failed` status — no `rawOutput` envelope, so no exit code (see
 /// `build_client_capabilities`). For a search that is almost always rg's exit
@@ -11847,7 +11847,7 @@ fn stamp_codex_search_action(
 /// the result ITSELF is handed JSON source instead of the result.
 ///
 /// Verified against opencode 1.18.23 (driven over real ACP with a stub MCP
-/// server): a codeg-mcp `ask_user_question` completes as
+/// server): a dextra-mcp `ask_user_question` completes as
 ///   content:   [{"type":"content","content":{"type":"text","text":"The user
 ///               answered your question(s):\n1. [框架] …\n   → 选项 A\n"}}]
 ///   rawOutput: {"output":"<that same text>","metadata":{"truncated":false}}
@@ -12016,7 +12016,7 @@ fn pi_message_chunk_route(
         | "Automatic compaction finished; context was summarized to continue the session." => {
             PiChunkRoute::Drop
         }
-        // pi-acp's own prompt queue. codeg's turn gate normally makes this
+        // pi-acp's own prompt queue. dextra's turn gate normally makes this
         // unreachable (`manager.rs` rejects a concurrent prompt), so all three
         // are handled defensively and together — one of them showing up alone
         // would be the odd one out.
@@ -12038,7 +12038,7 @@ fn pi_message_chunk_route(
 }
 
 /// Recover `(attempt, max, delay_ms)` from `Retrying (attempt 1/3, waiting 2s)...`
-/// — pi-acp's `formatAutoRetryMessage`, which is the only place codeg can reach
+/// — pi-acp's `formatAutoRetryMessage`, which is the only place dextra can reach
 /// these numbers: pi sends them structured to pi-acp, which formats them into a
 /// sentence and forwards nothing else.
 ///
@@ -12084,7 +12084,7 @@ fn pi_is_queue_announcement(text: &str) -> bool {
 /// pi-acp builds a markdown banner (`buildStartupInfo`: pi's version, the
 /// project `AGENTS.md`, every discovered skill file, prompts, extensions, an
 /// update notice) and pushes it down the ORDINARY `agent_message_chunk` channel
-/// with no marker of any kind — so codeg rendered it as the assistant's opening
+/// with no marker of any kind — so dextra rendered it as the assistant's opening
 /// words, before the user had said anything, complete with the absolute paths of
 /// every skill and extension on the machine.
 ///
@@ -12161,7 +12161,7 @@ async fn pi_take_startup_banner(
 /// `current_mode_update` the protocol has for it: `handleApprovalModeChanged`
 /// pushes an `agent_message_chunk` whose entire content is
 /// `[MODE_UPDATE] ${payload.mode}` (packages/cli/src/acp/acpSession.ts, 0.60.0).
-/// Rendered as-is that is a literal assistant bubble, and codeg's own mode
+/// Rendered as-is that is a literal assistant bubble, and dextra's own mode
 /// selector never follows the switch the user just made in the agent.
 ///
 /// Two guards keep this from eating real prose:
@@ -12181,7 +12181,7 @@ async fn pi_take_startup_banner(
 /// Residual risk, accepted knowingly: gemini emits one chunk per model stream
 /// event with boundaries it chooses, so a reply that DISCUSSES the marker could
 /// in principle split so that one whole chunk is exactly `[MODE_UPDATE] yolo`.
-/// That would both swallow the line and desync codeg's mode selector (the event
+/// That would both swallow the line and desync dextra's mode selector (the event
 /// is latched into `modes.current_mode_id`) until the next real switch. There
 /// is no signal on the wire that separates that chunk from a genuine one, and
 /// the alternative — rendering the literal on every real mode switch — is the
@@ -12223,7 +12223,7 @@ async fn gemini_mode_update_chunk(
 /// `raw_input` is `{"tool_name": "<server>__<tool>", "tool_input": {..real args..}}`.
 /// Peel it so the call is correlated (delegation `lifecycle.rs`), classified, and
 /// parsed as a direct MCP call — identical to how hosts like Claude Code surface
-/// MCP tools. Without this, Grok's `delegate_to_agent` (and the other codeg-mcp
+/// MCP tools. Without this, Grok's `delegate_to_agent` (and the other dextra-mcp
 /// companion tools) never resolve to their dedicated cards, and the delegation
 /// broker can't correlate the parent tool call to bind the sub-session.
 ///
@@ -12266,7 +12266,7 @@ fn grok_mcp_output_text(raw_output: &serde_json::Value) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Recover a codeg-mcp companion tool's identity from its RESULT text, for
+/// Recover a dextra-mcp companion tool's identity from its RESULT text, for
 /// Cursor sessions only.
 ///
 /// Cursor's ACP layer announces every MCP call from the first streaming
@@ -12274,8 +12274,8 @@ fn grok_mcp_output_text(raw_output: &serde_json::Value) -> Option<String> {
 /// title "MCP: tool" with an empty `raw_input`, and `sendToolCallUpdate`
 /// (bundle-verified) never forwards `title`/`raw_input` again. The ONLY
 /// wire signal that ever identifies the call is the MCP result text arriving
-/// on the completion update, and for the codeg-mcp companion tools that text
-/// is a codeg-owned contract:
+/// on the completion update, and for the dextra-mcp companion tools that text
+/// is a dextra-owned contract:
 ///
 /// * a `delegate_to_agent` ack opens with
 ///   `"Delegation successful. task_id="` (`broker.rs::running_ack`);
@@ -12441,7 +12441,7 @@ fn codebuddy_meta_marks_subagent(
 /// whose `terminalId` is its OWN tool-call id, then stream the command's output
 /// over a bespoke `_meta` channel instead of the ACP terminal channel. Neither
 /// ever calls `terminal/create`, so the id they name can never resolve against
-/// `TerminalRuntime` — which only ever mints `term_<uuid>` ids. Codeg renders
+/// `TerminalRuntime` — which only ever mints `term_<uuid>` ids. Dextra renders
 /// the resulting placeholder and then polls a terminal that does not exist, so
 /// the card stays at `[Terminal: <id>]` with no command output, ever (#519).
 ///
@@ -12456,7 +12456,7 @@ fn codebuddy_meta_marks_subagent(
 ///   {terminal_id, exit_code, signal}` on the final frame. No `content`, no
 ///   `rawOutput` — this `_meta` is the only channel carrying the output.
 ///
-/// **codex-acp** has the SAME shape and codeg never noticed, because unlike pi
+/// **codex-acp** has the SAME shape and dextra never noticed, because unlike pi
 /// it also repeats the whole output as `rawOutput` at the end, so the card
 /// filled in — just not until the command had finished. `createTerminalCommandEvent`
 /// builds `content: [{type: "terminal", terminalId: item.id}]` +
@@ -12499,13 +12499,13 @@ fn hosted_terminal_meta_marks_shell(
 }
 
 /// The `_meta` key an adapter streams its self-hosted terminal output under,
-/// for the agents whose unnamespaced keys codeg is willing to read.
+/// for the agents whose unnamespaced keys dextra is willing to read.
 ///
 /// The two spell it differently for a reason: pi predates the ACP delta
 /// convention and reuses `terminal_output`, while codex-acp picks between
 /// `terminal_output` and `terminal_output_delta` in `resolveTerminalOutputMode`
 /// and lands on the delta key unless the client asks for the other one —
-/// which codeg does not: it advertises the delta key itself, for the duplicate
+/// which dextra does not: it advertises the delta key itself, for the duplicate
 /// `rawOutput` that drops (see `build_client_capabilities`). Both carry the
 /// same `{terminal_id, data}` payload with incremental `data`, so only the key
 /// differs.
@@ -12522,7 +12522,7 @@ fn hosted_terminal_output_key(agent_type: AgentType) -> Option<&'static str> {
 /// pi computes this delta itself as `next.startsWith(prev) ? next.slice(prev.len)
 /// : next`, so in the degenerate case where its cumulative text stops being a
 /// prefix extension (stdout still growing AFTER stderr was first folded in) it
-/// re-sends the WHOLE text as a "delta" and we append it, duplicating. Codeg
+/// re-sends the WHOLE text as a "delta" and we append it, duplicating. Dextra
 /// cannot detect that without holding the full snapshot, which
 /// `ToolCallOutputCache` deliberately does not do (8 KB tail only). Appending is
 /// the correct reading of the wire contract; the duplication is an upstream
@@ -12651,14 +12651,14 @@ fn pi_bash_input_from_title(title: Option<&str>) -> Option<String> {
 ///
 /// gemini-cli puts NO `rawInput` on the ACP wire at all: a call arrives as
 /// title + kind + locations + content and nothing else (`acpSession.ts`,
-/// 0.60.0). codeg classifies a live call by the SHAPE of its input, so with
+/// 0.60.0). dextra classifies a live call by the SHAPE of its input, so with
 /// none of it every gemini tool lands on the generic card named after its own
 /// title — no Bash card, no file card, no diff header.
 ///
 /// This is a whitelist of exact title formats and NOT a match on `kind`,
 /// because `kind` cannot identify the tool: `search` covers glob, grep AND web
 /// search, and every MCP tool is hardcoded to `other` (`DiscoveredMCPTool`).
-/// Synthesizing off `kind` alone would actively mislabel calls — codeg reads a
+/// Synthesizing off `kind` alone would actively mislabel calls — dextra reads a
 /// bare `pattern` as grep and a bare `query` as web search, so a guessed
 /// `{"pattern": title}` would turn every glob into a grep. Not synthesizing
 /// costs a generic card; guessing wrong invents a card that states something
@@ -12720,7 +12720,7 @@ fn gemini_synthesize_tool_input(
         // (read_many_files, read-mcp-resource, the shell-background and
         // tracker tools) reports ZERO, not several.
         //
-        // The line becomes `offset`, which is the key codeg's file card reads
+        // The line becomes `offset`, which is the key dextra's file card reads
         // (`content-parts-renderer.tsx`, `FileToolInput`); `start_line` is not
         // in its vocabulary and would render nothing.
         ToolKind::Read if locations.len() == 1 => {
@@ -12756,7 +12756,7 @@ const CODEX_SUBAGENT_FALLBACK_NAME: &str = "subagent";
 /// thing codex-acp forwards is `subAgentActivity`, as a `tool_call(kind:other)`
 /// carrying `_meta.codex.subagent = {threadId, path, activity}`.
 ///
-/// codeg used to DROP every one of these, on the premise that the
+/// dextra used to DROP every one of these, on the premise that the
 /// `collabAgentToolCall` capsule already showed the same thing. That premise
 /// died with the team-of-agents rewrite: codex raises no `collabAgentToolCall`
 /// for a spawn any more, so dropping this left a codex sub-agent completely
@@ -12772,7 +12772,7 @@ enum CodexSubagentActivity {
         input: String,
     },
     /// The child reached a terminal state (`completed` / `interrupted`). Carries
-    /// no card of its own — its `toolCallId` is a synthetic id codeg has never
+    /// no card of its own — its `toolCallId` is a synthetic id dextra has never
     /// seen (`subagent-completed-<uuid>`), so rendering it would open a SECOND
     /// capsule with the same name and no way to tell it from the launch. It is
     /// forwarded onto the LAUNCH capsule instead, keyed by `threadId`.
@@ -13008,7 +13008,7 @@ fn hoist_request_permission_meta(
 /// the TOP-LEVEL `_meta.steering.supported` flag, a sibling of
 /// `agentCapabilities` (NOT `agentCapabilities._meta`, which belongs to other
 /// conventions such as the ACP runtime's symposium capability ext). Both claude-agent-acp
-/// (0.61+) and codex-acp (1.1.6+) advertise here; whether codeg actually
+/// (0.61+) and codex-acp (1.1.6+) advertise here; whether dextra actually
 /// steers natively additionally requires the
 /// `registry::steering_prompt_required_min_version` policy plus the runtime
 /// version proof (see the synthesis in `run_connection`).
@@ -13120,7 +13120,7 @@ fn session_info_goal_value(
 /// The raw `sessionFailure` value out of a `_meta.jetbrains.air` envelope —
 /// present only when the envelope itself is well-formed (integer
 /// `version >= 1`, mirroring the advertisement check the adapters run on
-/// codeg's `clientCapabilities._meta.jetbrains.air`). A malformed or
+/// dextra's `clientCapabilities._meta.jetbrains.air`). A malformed or
 /// future-incompatible envelope yields `None` and the carrier is treated as
 /// holding no failure. Records ride TWO carriers with this same envelope: the
 /// per-attempt upserts on `session_info_update._meta`, and a turn's terminal
@@ -13331,7 +13331,7 @@ fn codex_retry_indicator(
 /// e.g. `/plan` as an `AvailableCommand` tagged
 /// `_meta.commandAction = {kind:"setConfigOption", configId:"collaboration_mode",
 /// value:"plan", resetValue:"default", presentation:"state"}` — codex's signal
-/// that the client should represent it as STATE. codeg already surfaces that
+/// that the client should represent it as STATE. dextra already surfaces that
 /// state as the `collaboration_mode` config-option selector (the generic
 /// `SessionConfigOption` path), so also listing `/plan` as a slash command is
 /// redundant and its static "Turn plan mode on" description is wrong once plan
@@ -13748,7 +13748,7 @@ fn track_grok_spawn_call(
 }
 
 /// True when a tool call's ACP `_meta` marks it as grok's native
-/// `ask_user_question` (`x.ai/tool.kind == "ask_user"`). Codeg answers grok's
+/// `ask_user_question` (`x.ai/tool.kind == "ask_user"`). Dextra answers grok's
 /// blocking `_x.ai/ask_user_question` ext request by rendering the interactive
 /// `AskQuestionCard` (see `handle_grok_ask_user_question`), so the parallel
 /// `tool_call` stream grok emits for the same call is redundant — it is dropped
@@ -13886,7 +13886,7 @@ fn map_claude_sdk_ext_notification(notification: &UntypedMessage) -> Option<AcpE
 /// The JSON-RPC methods grok uses for its private, namespaced session updates.
 /// Both share the standard `session/update` envelope (`params.update.
 /// sessionUpdate` + fields, verified live against grok 0.2.111) but carry
-/// variants the typed ACP pipeline can't deserialize, so codeg drops them.
+/// variants the typed ACP pipeline can't deserialize, so dextra drops them.
 const GROK_EXT_UPDATE_METHODS: [&str; 2] =
     ["_x.ai/session_notification", "_x.ai/session/update"];
 
@@ -14045,7 +14045,7 @@ fn map_grok_ext_notification(
 /// * `subagent_finished` for a spawn whose CALL already settled (= a
 ///   BACKGROUND child; the launch ack was its final wire output) settles via
 ///   the same `BackgroundActivity` channel Claude's async sub-agents use: the
-///   frontend flips the launch card's `[[codeg-background-task]]` marker
+///   frontend flips the launch card's `[[dextra-background-task]]` marker
 ///   in-memory (works out-of-turn too), raises the OS notification, and
 ///   mirrors `outstanding` for the idle-sweep exemption. A BLOCKING spawn is
 ///   skipped — its own completion frame delivers the output.
@@ -14079,7 +14079,7 @@ fn map_grok_subagent_notification_inner(
     let update = params.get("update")?;
     let subagent_id = update.get("subagent_id").and_then(|v| v.as_str())?;
     // `outstanding` = paired subagents still running whose launch call already
-    // settled — i.e. background children codeg would otherwise sweep as idle.
+    // settled — i.e. background children dextra would otherwise sweep as idle.
     let outstanding = |cb_state: &CodeBuddyLiveState| {
         cb_state
             .grok_subagent_to_call
@@ -14349,7 +14349,7 @@ fn grok_ext_notification_is_alert(dispatch: &Dispatch, agent_type: AgentType) ->
 /// `invalid type: null, expected a string` — and a handler `Err` brought the
 /// whole connection down, so the user saw `ACP protocol error: Invalid params:
 /// "invalid type: null, expected a string"` instead of a session (issue #794).
-/// The 2.x runtime logs a handler error instead of dying on it, and codeg's own
+/// The 2.x runtime logs a handler error instead of dying on it, and dextra's own
 /// `AgentSession` router simply matches no session on a null id — but nothing
 /// would ever claim the frame either, so without this guard it would sit in the
 /// retry queue for the connection's lifetime and be replayed into every handler
@@ -14368,15 +14368,15 @@ fn grok_ext_notification_is_alert(dispatch: &Dispatch, agent_type: AgentType) ->
 /// retry, and a parked message is replayed straight into the newly added
 /// dynamic handler without passing through this chain again.
 ///
-/// A null session id means "not about a session yet", and nothing codeg renders
+/// A null session id means "not about a session yet", and nothing dextra renders
 /// rides on such a notification, so it is dropped. A REQUEST shaped this way is
 /// the same protocol violation, and it would be parked just the same — the
 /// runtime's `method_not_found` fallback only answers requests with no
 /// `sessionId` field at all — leaving the agent blocked on a reply that never
 /// comes. It is answered `invalid_params` instead, which is also the truth.
-/// Being first in the chain, the guard answers it before codeg's own request
+/// Being first in the chain, the guard answers it before dextra's own request
 /// handlers see it: the typed ones would reject the null anyway, and no agent
-/// codeg drives sends a null to the raw-params bridges (grok's ask and plan
+/// dextra drives sends a null to the raw-params bridges (grok's ask and plan
 /// exit, the elicitation bridge codex and DeepSeek use, cursor's extension
 /// methods — which carry no `sessionId` at all).
 struct ClaimNullSessionIds;
@@ -14435,7 +14435,7 @@ fn has_null_session_id(message: &UntypedMessage) -> bool {
 /// with. Introduced by codex-acp 1.9.0; claude-agent-acp 0.75.0 adopted the
 /// same method with its own vocabulary.
 ///
-/// Connection-level: unlike every other agent push codeg reads, the params carry
+/// Connection-level: unlike every other agent push dextra reads, the params carry
 /// NO `sessionId`, which is exactly why it needs a handler of its own (see
 /// [`handle_auth_status_update`]). Only `authStatus` is modelled; the payload is
 /// kept as a raw value so a new `kind` or an added field can never turn a
@@ -14456,8 +14456,8 @@ struct AuthStatusUpdateNotification {
 /// start of every user prompt, which fires an async `claude auth status --json`
 /// probe (5s timeout), so a push can land MID-TURN and a consumer must not
 /// assume the channel is quiet while a turn is open. Neither is gated on
-/// anything codeg advertises; the agent merely ANNOUNCES the channel with
-/// `agentCapabilities._meta.authStatus = {}`, and codeg registers this handler
+/// anything dextra advertises; the agent merely ANNOUNCES the channel with
+/// `agentCapabilities._meta.authStatus = {}`, and dextra registers this handler
 /// for every agent rather than per type, so a third adopter is already claimed.
 ///
 /// Both push only when the payload DIFFERS from the last one sent, so the
@@ -14475,7 +14475,7 @@ struct AuthStatusUpdateNotification {
 /// claim is now what keeps the payload's shape recorded against a real reader.
 ///
 /// Nothing consumes the payload yet, and that is a deliberate stop: the status
-/// describes the AGENT-owned login only (on codex, routing codeg itself
+/// describes the AGENT-owned login only (on codex, routing dextra itself
 /// configured through `providers/set` is explicitly excluded upstream), and on
 /// both agents every failure it could warn about already arrives as an AIR
 /// `sessionFailure` carrying an actionable `login` — claude 0.74.0 additionally
@@ -14491,11 +14491,11 @@ struct AuthStatusUpdateNotification {
 ///                   "vendor"?: {…}}}
 ///
 /// Observed against a live 1.10.0 whose `~/.codex/config.toml` selects a custom
-/// provider: `{"kind":"gateway","label":"Custom model gateway","detail":"codeg"}`.
+/// provider: `{"kind":"gateway","label":"Custom model gateway","detail":"dextra"}`.
 /// Against a live claude-agent-acp 0.75.1 with no credential:
 /// `{"kind":"none","label":"Not logged in"}`.
 /// The payload is NOT logged whole: `account.email` and `account.organization`
-/// are the signed-in person's identity, and codeg's log file is user-visible
+/// are the signed-in person's identity, and dextra's log file is user-visible
 /// (and shipped in diagnostics). `kind` and `label` are the two fields that
 /// answer "which identity is this connection using", and neither identifies a
 /// person — `label` is one of a fixed per-agent vocabulary ("ChatGPT Pro",
@@ -14519,7 +14519,7 @@ fn handle_auth_status_update(agent_type: AgentType, notif: AuthStatusUpdateNotif
     );
 }
 
-/// Whether codeg has a mapper for this ext-notification method.
+/// Whether dextra has a mapper for this ext-notification method.
 ///
 /// Used ONLY to keep the unrecognized-method log quiet about methods we do know
 /// and merely declined to map this time. That distinction is the whole point:
@@ -14539,7 +14539,7 @@ fn is_known_ext_method(method: &str) -> bool {
 ///
 /// A notification no mapper claims is dropped, but not invisibly; a request is
 /// answered `method_not_found` rather than left hanging (see its arm). All
-/// lines are `debug!`: an agent is free to speak methods codeg doesn't
+/// lines are `debug!`: an agent is free to speak methods dextra doesn't
 /// implement, and a per-message `warn!` on a chatty agent is how log storms
 /// start.
 async fn maybe_emit_ext_notification(
@@ -14551,7 +14551,7 @@ async fn maybe_emit_ext_notification(
 ) {
     let notification = match dispatch {
         Dispatch::Notification(notification) => notification,
-        // An agent calling a client method codeg doesn't implement. It only
+        // An agent calling a client method dextra doesn't implement. It only
         // lands here because it names the session — the session router claims
         // every such message before the runtime's own fallback, which answers
         // `method_not_found` to an unhandled request that names none. Answer
@@ -14598,7 +14598,7 @@ async fn maybe_emit_ext_notification(
         emit_with_state(state, emitter, event).await;
     } else if !is_known_ext_method(notification.method()) {
         // The gap #409's second point was reaching for: an agent emitting an ext
-        // method codeg has never heard of was previously indistinguishable from
+        // method dextra has never heard of was previously indistinguishable from
         // an agent saying nothing at all.
         tracing::debug!(
             method = %notification.method(),
@@ -14750,7 +14750,7 @@ fn session_notice(dispatch: &Dispatch) -> Option<SessionNotice> {
 }
 
 /// Translate an ACP compaction frame into the `_meta.contextCompaction`
-/// synthetic tool call codeg already renders compaction from.
+/// synthetic tool call dextra already renders compaction from.
 ///
 /// Same pre-dispatch seam and the same reason as [`session_notice`]. The
 /// TRANSLATION, rather than a new event, is the point: `<ContextCompactionCard>`
@@ -14868,7 +14868,7 @@ const CONTEXT_COMPACTION_TITLE: &str = "Context compaction";
 
 /// `_meta` key claiming that a compaction call's `raw_output` IS its retained
 /// summary. Only [`session_compaction_event`] sets it, so it marks exactly the
-/// calls translated from the ACP compaction lifecycle. Codeg-namespaced (like
+/// calls translated from the ACP compaction lifecycle. Dextra-namespaced (like
 /// `codeg.delegation`) rather than nested in `contextCompaction`, whose members
 /// are the adapters' reserved vocabulary. The frontend twin is
 /// `COMPACTION_SUMMARY_META_KEY` in `src/lib/context-compaction.ts`.
@@ -15054,7 +15054,7 @@ async fn emit_conversation_update(
                     .insert(thread_id, (tool_call_id.clone(), input.clone()));
             }
             // Grok emits a redundant `tool_call` for its native ask_user_question
-            // alongside the blocking `_x.ai/ask_user_question` ext request codeg
+            // alongside the blocking `_x.ai/ask_user_question` ext request dextra
             // answers with the interactive card; drop it here (remembering the id so
             // later status-only updates that lost the meta are dropped too).
             if grok_meta_marks_ask_user(agent_type, tc.meta.as_ref()) {
@@ -15509,7 +15509,7 @@ async fn emit_conversation_update(
             // call's terminal frame arrives. The pairing site skipped its
             // outstanding emission then (call not yet settled), so surface the
             // count here — a completed launch with a paired, still-running
-            // child is a background subagent codeg must not idle-sweep. The
+            // child is a background subagent dextra must not idle-sweep. The
             // common ordering (completed first) emits from the pairing site,
             // and `subagent_finished` always re-emits the corrected count.
             if status.as_deref() == Some("completed")
@@ -15557,7 +15557,7 @@ async fn emit_conversation_update(
             // Cursor loses MCP tool identity on the wire entirely (announced as
             // "MCP: tool" before McpArgs exists; updates never resend title or
             // raw_input). The completion update's result text is the one signal
-            // left — recover the codeg-mcp companion identity from it and record
+            // left — recover the dextra-mcp companion identity from it and record
             // it as an authoritative override so the delegation / status cards
             // resolve instead of a generic tool. Gated to ids this connection
             // announced with the identity-less title (see the
@@ -15637,7 +15637,7 @@ async fn emit_conversation_update(
             // Agent-initiated push, applied verbatim: it reports what the agent
             // is actually running, and nothing here distinguishes "the user
             // typed /model" from "the agent re-pinned its own default". Logged
-            // because it can silently overwrite a value codeg just applied.
+            // because it can silently overwrite a value dextra just applied.
             //
             // Whether an establishment-time value gets defended against this is
             // decided one level up, in the idle loop's copy of this arm
@@ -15698,7 +15698,7 @@ async fn emit_conversation_update(
             // `_meta.goal` for adapters advertising the goal extension
             // (claude-agent-acp 0.66+, codex-acp 1.2+ — which dropped the
             // legacy key), else the legacy `_meta.codex.goal`. Either way it
-            // maps onto codeg's canonical create_goal/update_goal synthetic
+            // maps onto dextra's canonical create_goal/update_goal synthetic
             // tool call so the existing goal-card pipeline
             // (groupGoalRuns/GoalCard) renders it — byte-identical to the
             // history path (parsers/codex.rs). Agents publishing no goal meta
@@ -15765,7 +15765,7 @@ async fn emit_conversation_update(
                 state.write().await.goal_active = cb_state.codex_open_goal.is_some();
             }
             // JetBrains AIR typed session failure (claude-agent-acp 0.67+/
-            // codex-acp 1.2+): published only because codeg advertises
+            // codex-acp 1.2+): published only because dextra advertises
             // `clientCapabilities._meta.jetbrains.air` (see
             // `build_client_capabilities`). Valid upserts are forwarded
             // verbatim — the monotonic id+revision merge runs identically in
@@ -15810,7 +15810,7 @@ async fn emit_conversation_update(
             // Unhandled update types, for debugging. DEBUG, not INFO: this arm
             // runs once per `session/update` notification, and `{other:?}` is the
             // whole payload — for a chunk-shaped variant that is the agent's full
-            // text. At INFO a single agent emitting an update kind codeg doesn't
+            // text. At INFO a single agent emitting an update kind dextra doesn't
             // map would write the entire conversation to disk several times over
             // under the default level (issue #427). Nothing acts on this line;
             // it exists to be read while adding support for a new variant, which
@@ -16397,7 +16397,7 @@ mod tests {
         assert!(perms.lock().await.showing.is_none());
     }
 
-    /// An agent request codeg has no handler for still gets an answer. One
+    /// An agent request dextra has no handler for still gets an answer. One
     /// that names the session is claimed by the session router — ahead of the
     /// runtime's own `method_not_found` fallback — so without an explicit reply
     /// the agent would block on it forever.
@@ -16589,7 +16589,7 @@ mod tests {
         use agent_client_protocol::JsonRpcMessage;
         // Routing: the derive matches ONLY the underscore-prefixed ext method
         // (the runtime routes typed handlers on the raw wire method — verified against
-        // grok 0.2.101, where the missing underscore made codeg answer "unhandled"
+        // grok 0.2.101, where the missing underscore made dextra answer "unhandled"
         // and grok fall back to inert rendering).
         assert!(GrokAskUserQuestionRequest::matches_method(
             "_x.ai/ask_user_question"
@@ -16711,7 +16711,7 @@ mod tests {
         ));
         // A terminal marker is not dropped — it is the only live signal that the
         // child stopped working, and it is routed onto the LAUNCH capsule (its
-        // own `toolCallId` is a synthetic `subagent-completed-<uuid>` codeg has
+        // own `toolCallId` is a synthetic `subagent-completed-<uuid>` dextra has
         // never seen), keyed by the thread id.
         for kind in ["completed", "interrupted"] {
             let terminal = meta_map(serde_json::json!({
@@ -17300,7 +17300,7 @@ mod tests {
     ///   `details`, leaving the policy's client-neutral fallback as the title —
     ///   so the strip reads as a heading with the TUI advice behind its
     ///   expander, not the other way round;
-    /// * the record may carry a `reason` refinement. codeg never produces one
+    /// * the record may carry a `reason` refinement. dextra never produces one
     ///   (it is `--hide-claude-auth`-only; see the registry entry), and the
     ///   parser reads fields individually, so an unknown key must simply ride
     ///   through instead of failing the record.
@@ -17369,7 +17369,7 @@ mod tests {
             // "recommendedValue" IS wanted too, and from BOTH
             // (claude-agent-acp 0.76.0, codex-acp 1.11.0): it names each
             // selector's recommended row, and on claude it additionally
-            // retires the ambiguous `default` row so the value codeg journals
+            // retires the ambiguous `default` row so the value dextra journals
             // per turn is a real model id. Advertising a capability an agent
             // has NOT implemented is how a future meaning gets claimed by
             // accident — this one is safe only because both adapters now ship
@@ -17384,7 +17384,7 @@ mod tests {
             // explicitly narrower still (it omits anything not done through
             // `apply_patch`). And
             // "nativeSubagentSessions" would make both adapters SUPPRESS the
-            // `Agent`/`Task` tool call that codeg builds its whole subagent
+            // `Agent`/`Task` tool call that dextra builds its whole subagent
             // rendering around, replacing it with an announcement that carries
             // no parent tool-use id to rebuild it from. See the reasoning at
             // the advertisement site before relaxing this.
@@ -17425,7 +17425,7 @@ mod tests {
 
     /// codex gets `terminal_output_delta` (its completion frames stop repeating
     /// the output the bridge already streamed); claude must NOT — there the
-    /// same key moves shell output onto a `_meta` channel codeg does not
+    /// same key moves shell output onto a `_meta` channel dextra does not
     /// bridge. Neither may get the other spelling: it would move codex's shell
     /// output onto `terminal_output`, a key its bridge does not read.
     #[test]
@@ -17646,7 +17646,7 @@ mod tests {
         assert_eq!(at("1.11.1-preview.6"), Some(QuestionInDescription));
         assert_eq!(at("1.12.0-preview.1"), Some(QuestionInDescription));
 
-        // No `agentInfo`, or one codeg cannot parse: report nothing rather than
+        // No `agentInfo`, or one dextra cannot parse: report nothing rather than
         // guess a generation. The elicitation parser then dates the form from
         // its own markers.
         assert_eq!(codex_user_input_shape(AgentType::Codex, None), None);
@@ -17888,47 +17888,47 @@ mod tests {
     }
 
     #[test]
-    fn codeg_ask_auto_allow_option_picks_allow_once_for_codegs_own_ask_tool() {
+    fn dextra_ask_auto_allow_option_picks_allow_once_for_dextras_own_ask_tool() {
         let req = claude_mcp_permission_request(
-            "mcp__codeg-mcp__ask_user_question",
+            "mcp__dextra-mcp__ask_user_question",
             claude_permission_options(),
         );
         assert_eq!(
-            codeg_ask_auto_allow_option(&req).as_deref(),
+            dextra_ask_auto_allow_option(&req).as_deref(),
             Some("allow-once")
         );
         // The title alone is enough: an agent that sends no request-level
         // `_meta.permission` block still gets the shortcut.
         let mut bare = claude_mcp_permission_request(
-            "mcp__codeg-mcp__ask_user_question",
+            "mcp__dextra-mcp__ask_user_question",
             claude_permission_options(),
         );
         bare.meta = None;
         assert_eq!(
-            codeg_ask_auto_allow_option(&bare).as_deref(),
+            dextra_ask_auto_allow_option(&bare).as_deref(),
             Some("allow-once")
         );
     }
 
     #[test]
-    fn codeg_ask_auto_allow_option_leaves_every_other_approval_on_the_card() {
+    fn dextra_ask_auto_allow_option_leaves_every_other_approval_on_the_card() {
         // Another server's ask tool: approving it is the user's call, not
-        // codeg's, even though the tool half of the name matches.
+        // dextra's, even though the tool half of the name matches.
         for foreign in [
             "mcp__other-server__ask_user_question",
-            "mcp__codeg-mcp__delegate_to_agent",
+            "mcp__dextra-mcp__delegate_to_agent",
             "Bash",
         ] {
             let req = claude_mcp_permission_request(foreign, claude_permission_options());
             assert!(
-                codeg_ask_auto_allow_option(&req).is_none(),
+                dextra_ask_auto_allow_option(&req).is_none(),
                 "{foreign} must keep its approval card"
             );
         }
         // An agent offering only a DURABLE allow writes a rule into the user's
         // own settings — that outlives this turn, so it stays their decision.
         let always_only = claude_mcp_permission_request(
-            "mcp__codeg-mcp__ask_user_question",
+            "mcp__dextra-mcp__ask_user_question",
             vec![
                 agent_client_protocol::schema::v1::PermissionOption::new(
                     "allow-with-updates",
@@ -17942,7 +17942,7 @@ mod tests {
                 ),
             ],
         );
-        assert!(codeg_ask_auto_allow_option(&always_only).is_none());
+        assert!(dextra_ask_auto_allow_option(&always_only).is_none());
     }
 
     #[test]
@@ -18078,7 +18078,7 @@ mod tests {
             AgentType::Codex,
             Some("session_archived")
         ));
-        // A custom agent's history is codeg's own transcript, so it keeps the
+        // A custom agent's history is dextra's own transcript, so it keeps the
         // silent local recovery it has for the other classified failures.
         let custom = AgentType::custom("glm-acp-agent").expect("valid id");
         assert!(recovers_load_failure_locally(
@@ -18087,7 +18087,7 @@ mod tests {
         ));
     }
 
-    /// After a codex fork, the sibling row codeg creates to keep the pre-fork
+    /// After a codex fork, the sibling row dextra creates to keep the pre-fork
     /// history points at the PARENT thread — whose writer the forking process
     /// still holds, because `session/fork` only unsubscribes the child. Opening
     /// it must stop with a banner, never fall through to `session/new`: that
@@ -18146,9 +18146,9 @@ mod tests {
     }
 
     #[test]
-    fn agents_codeg_records_itself_absorb_a_forgotten_session() {
+    fn agents_dextra_records_itself_absorb_a_forgotten_session() {
         // The reported case: a custom agent keeps sessions in memory, so every
-        // restart makes session/load fail with "Session not found". codeg has
+        // restart makes session/load fail with "Session not found". dextra has
         // the turns in its own transcript, so it must recover silently instead
         // of blanking the conversation behind a load-failed banner.
         let custom = AgentType::custom("glm-acp-agent").expect("valid id");
@@ -18174,7 +18174,7 @@ mod tests {
         ] {
             assert!(
                 !recovers_load_failure_locally(builtin, Some("session_unavailable")),
-                "{builtin:?} has no codeg-side transcript to fall back on"
+                "{builtin:?} has no dextra-side transcript to fall back on"
             );
         }
     }
@@ -18372,10 +18372,10 @@ mod tests {
         let path = dir.path().join("settings.json");
         assert!(matches!(read_antigravity_settings(&path), Ok(None)));
 
-        // Hjson: the server accepts comments and trailing commas, codeg's
+        // Hjson: the server accepts comments and trailing commas, dextra's
         // parser does not — so this lands in the give-up branch instead of
         // being flattened into strict JSON with the comments (and anything
-        // else codeg misread) gone.
+        // else dextra misread) gone.
         std::fs::write(
             &path,
             "{\n  // my key\n  \"auth\": { \"type\": \"gemini-api-key\" },\n}\n",
@@ -18425,7 +18425,7 @@ mod tests {
         );
 
         // The FILE wins over the row, which is the whole reason this exists:
-        // the two can disagree (a hand edit, a sync codeg was refused) and only
+        // the two can disagree (a hand edit, a sync dextra was refused) and only
         // one of them is what the agent authenticates with.
         let mut disagreeing = antigravity_runtime("oauth-personal");
         disagreeing.extend(home());
@@ -18444,7 +18444,7 @@ mod tests {
         );
 
         // An `auth` block with no type, and a blank one, are both "no method" —
-        // still positive knowledge, because codeg read the file.
+        // still positive knowledge, because dextra read the file.
         std::fs::write(&path, r#"{"auth":{"scopes":[]}}"#).unwrap();
         assert_eq!(
             antigravity_effective_auth_type(&home()),
@@ -18456,7 +18456,7 @@ mod tests {
             AntigravityAuthType::Absent
         );
 
-        // Hjson: the server reads it and codeg does not, so the method is
+        // Hjson: the server reads it and dextra does not, so the method is
         // whatever that file says. NOT `Absent` — this is the distinction the
         // whole enum exists for. A caller that treated it as "nothing there"
         // would sign out of a `gemini-api-key` connection, clear nothing, and
@@ -18469,7 +18469,7 @@ mod tests {
         );
 
         // And a home that cannot be named at all is unknown for the same
-        // reason: there is a file somewhere, codeg just cannot say where.
+        // reason: there is a file somewhere, dextra just cannot say where.
         // Platform-native key, as in the path tests below: `child_home_dir`
         // reads `USERPROFILE` on Windows (`expanduser` never consults `HOME`
         // there), so blanking `HOME` removes nothing, the fallback lands on the
@@ -18558,7 +18558,7 @@ mod tests {
     #[test]
     fn antigravity_settings_merge_preserves_foreign_keys_and_skips_no_op_writes() {
         // The file is the USER's: the server parses it as Hjson and documents
-        // it as user-provided, so a codeg write may only touch `auth.type` and
+        // it as user-provided, so a dextra write may only touch `auth.type` and
         // the `gcp` block.
         let existing = serde_json::json!({
             "auth": { "type": "gemini-api-key" },
@@ -18613,13 +18613,13 @@ mod tests {
     fn antigravity_settings_merge_refuses_blocks_that_are_not_objects() {
         // The vendor's `_auth_block` logs "not editing %r because `auth` is not
         // an object" and gives up. Replacing that value with an object would
-        // delete whatever the user meant by it, so codeg refuses too.
+        // delete whatever the user meant by it, so dextra refuses too.
         let odd_auth = serde_json::json!({ "auth": "managed-elsewhere", "keep": 1 });
         assert!(merge_antigravity_settings(Some(odd_auth), "oauth-personal", GcpField::Keep, GcpField::Keep).is_err());
 
         // Same for `gcp` — but ONLY when there is actually something to write
         // into it. With no project or location supplied, a strange `gcp` is
-        // none of codeg's business and must not block the `auth.type` update.
+        // none of dextra's business and must not block the `auth.type` update.
         let odd_gcp = serde_json::json!({ "gcp": ["not", "an", "object"] });
         assert!(
             merge_antigravity_settings(
@@ -18701,7 +18701,7 @@ mod tests {
 
         // And a clear against a `gcp` that is not an object must not REFUSE the
         // edit: there is nothing there to remove, so it is the same "none of
-        // codeg's business" case as having nothing to say, and blocking would
+        // dextra's business" case as having nothing to say, and blocking would
         // take the `auth.type` update down with it — the one part of this file
         // the agent cannot start without.
         let odd = serde_json::json!({ "gcp": ["not", "an", "object"] });
@@ -18718,7 +18718,7 @@ mod tests {
 
     /// Which fields count as the panel's is decided by the METHOD, so a
     /// hand-written block under a method that never renders those inputs is
-    /// still none of codeg's business.
+    /// still none of dextra's business.
     #[test]
     fn antigravity_gcp_ownership_follows_the_recorded_method() {
         let empty = BTreeMap::new();
@@ -18744,22 +18744,22 @@ mod tests {
         ));
     }
 
-    /// A `GEMINI_HOME` that only codeg's OWN environment carries still names
+    /// A `GEMINI_HOME` that only dextra's OWN environment carries still names
     /// the directory the agent uses.
     ///
     /// `merge_agent_env` lists the variables a launch SETS; anything absent is
     /// inherited, and relocating the tree from a container's environment
     /// (`GEMINI_HOME=/data/gemini` in the image, nothing in the per-agent row)
-    /// is exactly that shape. Treating "absent" as "unset" sent codeg to
+    /// is exactly that shape. Treating "absent" as "unset" sent dextra to
     /// `~/.gemini` — so on a Docker deployment it wrote `auth.type` into
     /// `/root/.gemini` while the agent read the relocated file, and the panel
     /// named a token path that was never written. The same three-state
     /// distinction `child_home_dir` makes for `HOME`, for the same reason.
     #[test]
-    fn antigravity_settings_path_follows_a_gemini_home_codeg_only_inherits() {
+    fn antigravity_settings_path_follows_a_gemini_home_dextra_only_inherits() {
         // Platform-native, and HOME is pinned in the row rather than read from
         // the process: other tests relocate the real one through `temp_env`,
-        // and a read here would race them. codeg's own `GEMINI_HOME` is
+        // and a read here would race them. dextra's own `GEMINI_HOME` is
         // injected for the same reason — see
         // [`antigravity_acp_dir_with_inherited`].
         #[cfg(windows)]
@@ -18774,12 +18774,12 @@ mod tests {
             ("HOME", "/srv/agy", "/data/gemini", "/srv/row");
         let base = || BTreeMap::from([(home_key.to_string(), child_home.to_string())]);
 
-        let codegs_own = || Some(std::ffi::OsString::from(inherited));
+        let dextras_own = || Some(std::ffi::OsString::from(inherited));
 
-        // ABSENT from the row: the child inherits codeg's, so codeg's own value
+        // ABSENT from the row: the child inherits dextra's, so dextra's own value
         // is the exact answer.
         assert_eq!(
-            antigravity_acp_dir_with_inherited(&base(), codegs_own()).expect("nameable"),
+            antigravity_acp_dir_with_inherited(&base(), dextras_own()).expect("nameable"),
             PathBuf::from(inherited).join(ANTIGRAVITY_ACP_SUBDIR)
         );
 
@@ -18788,25 +18788,25 @@ mod tests {
         let mut overridden = base();
         overridden.insert("GEMINI_HOME".to_string(), from_row.to_string());
         assert_eq!(
-            antigravity_acp_dir_with_inherited(&overridden, codegs_own()).expect("nameable"),
+            antigravity_acp_dir_with_inherited(&overridden, dextras_own()).expect("nameable"),
             PathBuf::from(from_row).join(ANTIGRAVITY_ACP_SUBDIR)
         );
 
         // Present but EMPTY is a removal (the spawn layer reads a blank as
         // `env_remove`), and a removal is NOT the same as absent: the child then
         // sees no `GEMINI_HOME` at all and falls back to `~/.gemini` under its
-        // own home. Collapsing the two would send codeg to the inherited value
+        // own home. Collapsing the two would send dextra to the inherited value
         // for a launch that deliberately took it away.
         let mut removed = base();
         removed.insert("GEMINI_HOME".to_string(), String::new());
         assert_eq!(
-            antigravity_acp_dir_with_inherited(&removed, codegs_own()).expect("nameable"),
+            antigravity_acp_dir_with_inherited(&removed, dextras_own()).expect("nameable"),
             PathBuf::from(child_home)
                 .join(".gemini")
                 .join(ANTIGRAVITY_ACP_SUBDIR)
         );
 
-        // And codeg having none either is the plain default.
+        // And dextra having none either is the plain default.
         assert_eq!(
             antigravity_acp_dir_with_inherited(&base(), None).expect("nameable"),
             PathBuf::from(child_home)
@@ -18819,7 +18819,7 @@ mod tests {
     /// same thing here.
     ///
     /// Antigravity runs `os.path.expanduser` on the value
-    /// (`acp_server/paths.py`). codeg built the path with a bare
+    /// (`acp_server/paths.py`). dextra built the path with a bare
     /// `PathBuf::from`, so it created a directory literally named `~` under its
     /// own working directory and wrote `auth.type` into THAT — leaving
     /// `session/new` failing with `Authentication required` no matter how many
@@ -18835,7 +18835,7 @@ mod tests {
 
         // …and against the CHILD's home when the launch relocates it, since the
         // server runs its `expanduser` in that environment. Resolving against
-        // codeg's home wrote the auth file into a tree the agent never opens.
+        // dextra's home wrote the auth file into a tree the agent never opens.
         // Platform-native fixture: `child_home_dir` refuses a home that is not
         // absolute, and a unix-style `/srv/agy` has no drive prefix so Windows
         // does not consider it absolute. A shared literal would pass on unix
@@ -18883,7 +18883,7 @@ mod tests {
 
         // An absolute value is still taken verbatim, and an EXACTLY empty one
         // means the spawn layer removed the var, so the child falls back to its
-        // own default rather than to codeg's cwd.
+        // own default rather than to dextra's cwd.
         let absolute = BTreeMap::from([("GEMINI_HOME".to_string(), "/srv/gemini".to_string())]);
         assert_eq!(
             antigravity_acp_dir_for_env(&absolute).expect("nameable"),
@@ -18920,7 +18920,7 @@ mod tests {
     #[test]
     fn codex_env_policy_forces_mcp_filter_off_and_overrides_user_twin() {
         // Codex gets the flag injected so codex-acp never drops the injected
-        // `codeg-mcp` server on a config.toml name collision.
+        // `dextra-mcp` server on a config.toml name collision.
         let mut env = vec![("PATH".to_string(), "/usr/bin".to_string())];
         apply_codex_env_policy(AgentType::Codex, &mut env, None);
         assert!(env
@@ -18938,7 +18938,7 @@ mod tests {
             .filter(|(k, _)| k == "DISABLE_MCP_CONFIG_FILTERING")
             .collect();
         assert_eq!(hits.len(), 1, "no duplicate key");
-        assert_eq!(hits[0].1, "true", "codeg override wins over user twin");
+        assert_eq!(hits[0].1, "true", "dextra override wins over user twin");
     }
 
     #[test]
@@ -19232,11 +19232,11 @@ mod tests {
                 .expect("caps serialize")
         };
 
-        // #436: the whole point. An agent told codeg hosts neither channel
+        // #436: the whole point. An agent told dextra hosts neither channel
         // does its own reads and runs its own shell, so its OS sandbox — the
         // only control still working under `grok agent stdio` — covers them.
         // BOTH must go: leaving either advertised hands the agent a way back
-        // into codeg's unsandboxed process for the same file.
+        // into dextra's unsandboxed process for the same file.
         //
         // `ClientCapabilities` serializes its unset fields as explicit `false`
         // rather than omitting them, so assert THAT shape — not absence. The
@@ -19277,10 +19277,10 @@ mod tests {
 
     #[test]
     fn a_withheld_channel_is_refused_as_method_not_found() {
-        // Every channel codeg stops advertising must also stop being SERVED.
+        // Every channel dextra stops advertising must also stop being SERVED.
         // Advertisement is a declaration; an agent that calls the method anyway
         // (or a future adapter that ignores client capabilities) would otherwise
-        // land the operation back in codeg's unsandboxed process — the bug.
+        // land the operation back in dextra's unsandboxed process — the bug.
         for method in [
             "fs/read_text_file",
             "fs/write_text_file",
@@ -19294,7 +19294,7 @@ mod tests {
             assert_eq!(error.code, agent_client_protocol::Error::method_not_found().code);
             let text = error.to_string();
             // The knob has to be named: a bare "Method not found" on a channel
-            // that worked yesterday reads as a codeg bug, not as a setting.
+            // that worked yesterday reads as a dextra bug, not as a setting.
             assert!(text.contains(method), "{text}");
             assert!(text.contains(HOST_TOOLS_ENV), "{text}");
         }
@@ -19303,7 +19303,7 @@ mod tests {
     #[test]
     fn strict_fs_policy_is_only_a_boundary_once_the_terminal_is_withheld() {
         // Pins the condition behind the connect-time warning: `strict` gates
-        // reads, but that gate is walkable through a shell for as long as codeg
+        // reads, but that gate is walkable through a shell for as long as dextra
         // serves one. The two knobs are orthogonal — this asserts the predicate
         // pair the warning keys off, so the warning can't silently stop firing.
         let strict = FsAccessPolicy::strict(Path::new("/workspace"));
@@ -19649,7 +19649,7 @@ mod tests {
 
     #[test]
     fn final_agent_boundary_appends_routes_for_every_agent_holding_a_snapshot() {
-        let visible = "ask [@Antigravity](codeg://agent/antigravity) to build";
+        let visible = "ask [@Antigravity](dextra://agent/antigravity) to build";
         let blocks = vec![PromptInputBlock::Text {
             text: visible.into(),
         }];
@@ -19670,7 +19670,7 @@ mod tests {
             assert!(matches!(
                 &prompt[1],
                 ContentBlock::Text(text)
-                    if text.text.contains("Codeg composer routing metadata (authoritative)")
+                    if text.text.contains("Dextra composer routing metadata (authoritative)")
                         && text.text.contains(r#""agentType":"antigravity""#)
             ));
         }
@@ -20279,7 +20279,7 @@ mod tests {
         };
 
         let claude = session_notice(&from_wire(
-            r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"f11ac967-067f-480a-8acc-a3c689b40bb3","update":{"sessionUpdate":"notice","severity":"warning","title":"UserPromptSubmit operation blocked by hook:","description":"[echo 'Blocked by the codeg probe hook: prompts are not allowed in this folder.' >&2; exit 2]: Blocked by the codeg probe hook: prompts are not allowed in this folder.\n\n\nOriginal prompt: say hi"}}}"#,
+            r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"f11ac967-067f-480a-8acc-a3c689b40bb3","update":{"sessionUpdate":"notice","severity":"warning","title":"UserPromptSubmit operation blocked by hook:","description":"[echo 'Blocked by the dextra probe hook: prompts are not allowed in this folder.' >&2; exit 2]: Blocked by the dextra probe hook: prompts are not allowed in this folder.\n\n\nOriginal prompt: say hi"}}}"#,
         ))
         .expect("claude notice");
         assert_eq!(claude.severity, "warning");
@@ -20290,11 +20290,11 @@ mod tests {
             .is_some_and(|d| d.ends_with("\n\n\nOriginal prompt: say hi")));
 
         let codex = session_notice(&from_wire(
-            r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"01a0cc1b-7aa2-78e3-8e55-c9ab3b7f506e","update":{"sessionUpdate":"notice","severity":"warning","title":"Model metadata for `codeg-probe-unknown-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}}"#,
+            r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"01a0cc1b-7aa2-78e3-8e55-c9ab3b7f506e","update":{"sessionUpdate":"notice","severity":"warning","title":"Model metadata for `dextra-probe-unknown-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."}}}"#,
         ))
         .expect("codex notice");
         assert_eq!(codex.severity, "warning");
-        assert!(codex.title.starts_with("Model metadata for `codeg-probe-unknown-model`"));
+        assert!(codex.title.starts_with("Model metadata for `dextra-probe-unknown-model`"));
         assert_eq!(codex.description, None);
 
         let codex_multiline = session_notice(&from_wire(
@@ -20461,7 +20461,7 @@ mod tests {
 
     /// The retained summary is the one thing the legacy presentation could
     /// never carry. It rides `raw_output` — the streamed chunks APPEND — and
-    /// every translated update claims that channel with the codeg marker the
+    /// every translated update claims that channel with the dextra marker the
     /// card expands on, because a bare `raw_output` is exactly what a legacy
     /// call fills with its metadata object.
     #[test]
@@ -20562,7 +20562,7 @@ mod tests {
             AgentType::OpenCode,
             // A custom agent wrapping either adapter is deliberately NOT
             // advertised to: the id it resolves through is the user's, so
-            // codeg cannot know what binary is behind it.
+            // dextra cannot know what binary is behind it.
             AgentType::Custom("my-agent"),
         ] {
             assert_eq!(
@@ -20606,7 +20606,7 @@ mod tests {
 
     /// Progress and state frames revise an announced task. They must NOT read as
     /// creates — `spawned` is what lets `apply_event` refuse to invent a row for
-    /// an announcement codeg failed to read.
+    /// an announcement dextra failed to read.
     #[test]
     fn async_task_progress_and_state_frames_are_not_creates() {
         let progress = air_async_task_delta(&async_task_notif(serde_json::json!({
@@ -20704,7 +20704,7 @@ mod tests {
         for payload in [
             // Observed live: a `~/.codex/config.toml` selecting a custom provider.
             serde_json::json!({"authStatus": {
-                "kind": "gateway", "label": "Custom model gateway", "detail": "codeg"
+                "kind": "gateway", "label": "Custom model gateway", "detail": "dextra"
             }}),
             serde_json::json!({"authStatus": {
                 "kind": "account", "label": "ChatGPT Pro",
@@ -20973,7 +20973,7 @@ mod tests {
     }
 
     /// The read loop drops at most one update per notification, so an agent
-    /// speaking a protocol codeg can't decode used to put a WARN on the
+    /// speaking a protocol dextra can't decode used to put a WARN on the
     /// per-streaming-chunk path — under the DEFAULT level, which is how a field
     /// report ended up writing 34GB in 8.8h (issue #427). The throttle collapses
     /// the burst; this pins the part that must survive it, the tally.
@@ -21272,7 +21272,7 @@ mod tests {
 
     #[test]
     fn build_new_session_request_sets_claude_raw_meta() {
-        let cwd = std::path::PathBuf::from("/tmp/codeg");
+        let cwd = std::path::PathBuf::from("/tmp/dextra");
         let req = build_new_session_request(AgentType::ClaudeCode, &cwd, Vec::new());
 
         assert_eq!(
@@ -21349,7 +21349,7 @@ mod tests {
     /// user would sit on a dead session with no teardown to recover from.
     #[test]
     fn a_rejection_that_reports_a_dead_session_still_tears_the_connection_down() {
-        // The agent has no record of the id codeg just prompted on.
+        // The agent has no record of the id dextra just prompted on.
         assert!(prompt_rejection_is_terminal(
             &agent_client_protocol::Error::resource_not_found(None)
         ));
@@ -21366,7 +21366,7 @@ mod tests {
         assert!(prompt_rejection_is_terminal(&dropped), "{dropped}");
     }
 
-    /// Plays an agent over the raw pipe: waits for codeg's first frame (the
+    /// Plays an agent over the raw pipe: waits for dextra's first frame (the
     /// prompt), then dies with it unanswered — its output ends mid-prompt, the
     /// way it does when the process exits. Fires `exited` once the pipe is gone.
     fn agent_that_dies_on_the_prompt(
@@ -21409,7 +21409,7 @@ mod tests {
         agent.await.unwrap();
     }
 
-    /// Codeg's end of a pipe to an agent that crashes the way `AcpAgent`
+    /// Dextra's end of a pipe to an agent that crashes the way `AcpAgent`
     /// reports it: the agent's output ends first, and only a moment later does
     /// the child monitor come back with the exit status, as the transport's
     /// own result.
@@ -21623,7 +21623,7 @@ mod tests {
             None,
             // Version missing / below the floor / not an integer: the same
             // gate `air_session_failure` applies, mirroring what the adapters
-            // run on codeg's own advertisement.
+            // run on dextra's own advertisement.
             Some(serde_json::json!({
                 "jetbrains": {"air": {"recommendedValue": "gpt-6-astra"}}
             })),
@@ -21668,7 +21668,7 @@ mod tests {
 
     #[test]
     fn build_load_session_request_skips_meta_for_non_claude() {
-        let cwd = std::path::PathBuf::from("/tmp/codeg");
+        let cwd = std::path::PathBuf::from("/tmp/dextra");
         let req = build_load_session_request(
             AgentType::Codex,
             SessionId::new("abc".to_string()),
@@ -21684,13 +21684,13 @@ mod tests {
     // that field on NewSessionRequest/LoadSessionRequest, so it always
     // serializes as `[]`; every agent (OpenClaw included) already receives
     // `mcpServers: []` on a fresh install with no servers configured and
-    // codeg-mcp off — the known-good payload. The connection-layer gate
+    // dextra-mcp off — the known-good payload. The connection-layer gate
     // (`supports_mcp == false`) forces OpenClaw onto that empty payload
     // unconditionally. This pins the wire contract: both builders emit an
     // empty list, so no server entry can ever reach OpenClaw.
     #[test]
     fn openclaw_session_requests_carry_no_mcp_servers() {
-        let cwd = std::path::PathBuf::from("/tmp/codeg");
+        let cwd = std::path::PathBuf::from("/tmp/dextra");
 
         let new_req = build_new_session_request(AgentType::OpenClaw, &cwd, Vec::new());
         assert!(
@@ -21733,7 +21733,7 @@ mod tests {
     // be wrong: a custom agent that was handed server entries.
     #[test]
     fn mcp_suspect_tags_only_custom_agents_with_servers() {
-        let servers = vec![stdio_server("codeg")];
+        let servers = vec![stdio_server("dextra")];
 
         let tagged = tag_mcp_suspect(
             agent_client_protocol::util::internal_error("session/new failed: unknown field `mcpServers`"),
@@ -21777,7 +21777,7 @@ mod tests {
         let raw = tag_mcp_suspect(
             agent_client_protocol::util::internal_error("Unsupported parameter: mcpServers"),
             AgentType::Custom("my-agent"),
-            &[stdio_server("codeg")],
+            &[stdio_server("dextra")],
         )
         .to_string();
 
@@ -21797,7 +21797,7 @@ mod tests {
 
     // The reported cursor-agent failure: `session/new` answered -32000 with
     // `Please run 'agent login' first` — advice the user cannot take, since
-    // `agent` is not a command and codeg's managed `cursor-agent` is not on
+    // `agent` is not a command and dextra's managed `cursor-agent` is not on
     // PATH. The typed code is the only place that reading is available, so it
     // has to be classified here and not from the wire text.
     #[test]
@@ -21813,7 +21813,7 @@ mod tests {
         let tagged = tag_new_session_failure(
             refusal,
             AgentType::Custom("my-agent"),
-            &[stdio_server("codeg")],
+            &[stdio_server("dextra")],
         )
         .to_string();
         assert!(tagged.contains(AUTH_REQUIRED_SENTINEL));
@@ -21839,7 +21839,7 @@ mod tests {
         let tagged = tag_new_session_failure(
             agent_client_protocol::util::internal_error("session/new failed: unknown field `mcpServers`"),
             AgentType::Custom("my-agent"),
-            &[stdio_server("codeg")],
+            &[stdio_server("dextra")],
         )
         .to_string();
         assert!(tagged.contains(MCP_SUSPECT_SENTINEL));
@@ -21848,7 +21848,7 @@ mod tests {
 
     #[test]
     fn build_resume_session_request_sets_claude_raw_meta() {
-        let cwd = std::path::PathBuf::from("/tmp/codeg");
+        let cwd = std::path::PathBuf::from("/tmp/dextra");
         let req = build_resume_session_request(
             AgentType::ClaudeCode,
             SessionId::new("abc".to_string()),
@@ -21868,7 +21868,7 @@ mod tests {
 
     #[test]
     fn build_resume_session_request_skips_meta_for_non_claude() {
-        let cwd = std::path::PathBuf::from("/tmp/codeg");
+        let cwd = std::path::PathBuf::from("/tmp/dextra");
         let req = build_resume_session_request(
             AgentType::Codex,
             SessionId::new("abc".to_string()),
@@ -21889,7 +21889,7 @@ mod tests {
     // documented wire-shape divergence here.
     #[test]
     fn openclaw_resume_request_carries_no_mcp_servers() {
-        let cwd = std::path::PathBuf::from("/tmp/codeg");
+        let cwd = std::path::PathBuf::from("/tmp/dextra");
         let req = build_resume_session_request(
             AgentType::OpenClaw,
             SessionId::new("openclaw-session".to_string()),
@@ -22061,7 +22061,7 @@ mod tests {
     // ── config-option verdicts ──────────────────────────────────────────────
     //
     // `session/set_config_option` is advisory: the agent answers with the option
-    // list it adopted, and codeg renders that verbatim — so a refused pick reads
+    // list it adopted, and dextra renders that verbatim — so a refused pick reads
     // in the composer as the selector springing back for no reason. Only this
     // side can tell a request's answer from an unsolicited update, so the
     // comparison has to be exactly right here.
@@ -22194,7 +22194,7 @@ mod tests {
     }
 
     /// The claude model selector, as a live adapter advertises it with and
-    /// without codeg's AIR `recommendedValue` opt-in: 0.76.0+ removes the
+    /// without dextra's AIR `recommendedValue` opt-in: 0.76.0+ removes the
     /// `default` row for a client that asks, every older build keeps it.
     fn claude_model_option(offers_default: bool) -> SessionConfigOption {
         let mut options = vec![serde_json::json!({"value": "opus[1m]", "name": "Opus 5"})];
@@ -22216,7 +22216,7 @@ mod tests {
 
     #[test]
     fn config_option_rejects_a_value_the_select_no_longer_offers() {
-        // The `default` pick a user saved before codeg advertised
+        // The `default` pick a user saved before dextra advertised
         // `recommendedValue`. Replaying it can only error, and it would do so
         // on every connect for good: the row that would let the user overwrite
         // the preference is exactly the one that went away.
@@ -22227,7 +22227,7 @@ mod tests {
 
     #[test]
     fn config_option_keeps_a_value_an_older_adapter_still_offers() {
-        // The registry pin only governs what codeg INSTALLS —
+        // The registry pin only governs what dextra INSTALLS —
         // `resolve_npx_command` launches whatever `claude-agent-acp` is on
         // PATH. So the same built-in agent id may be speaking to a pre-0.76
         // adapter, where `default` is still a real row and dropping the
@@ -22690,7 +22690,7 @@ mod tests {
         assert_eq!(grok_live_tool_output(&None, &None), None);
     }
 
-    /// The captured opencode 1.18.23 completion envelope for a codeg-mcp
+    /// The captured opencode 1.18.23 completion envelope for a dextra-mcp
     /// `ask_user_question` — the clean answer text on both channels, the
     /// `rawOutput` one wrapped in `{output, metadata}`.
     fn opencode_ask_raw_output() -> serde_json::Value {
@@ -22923,7 +22923,7 @@ mod tests {
     }
 
     /// End-to-end over the frames opencode 1.18.23 actually put on the wire for a
-    /// codeg-mcp `ask_user_question` (captured by driving `opencode acp` against a
+    /// dextra-mcp `ask_user_question` (captured by driving `opencode acp` against a
     /// stub MCP server). The card reconstructs the answer from the result TEXT —
     /// opencode drops the MCP `structuredContent` — so the completion must hand
     /// the frontend that text, not the `{output, metadata}` blob that shadows it
@@ -22940,7 +22940,7 @@ mod tests {
             serde_json::json!({
                 "sessionUpdate": "tool_call",
                 "toolCallId": "call_probe_1",
-                "title": "codeg-mcp_ask_user_question",
+                "title": "dextra-mcp_ask_user_question",
                 "kind": "other",
                 "status": "pending",
                 "locations": [],
@@ -23485,7 +23485,7 @@ mod tests {
         })
     }
 
-    /// codex has pi's #519 shape too: it names a terminal codeg never created,
+    /// codex has pi's #519 shape too: it names a terminal dextra never created,
     /// so the `[Terminal: …]` placeholder can never be superseded from the
     /// terminal channel. Its own `rawInput` must survive untouched.
     #[tokio::test]
@@ -23514,7 +23514,7 @@ mod tests {
 
     /// The win: codex streams the command's output live over
     /// `_meta.terminal_output_delta` (its DEFAULT mode, no capability involved),
-    /// and codeg used to drop every one of those frames — the card sat on the
+    /// and dextra used to drop every one of those frames — the card sat on the
     /// placeholder until the command ended.
     #[tokio::test]
     async fn codex_terminal_output_delta_streams_as_raw_output() {
@@ -23637,7 +23637,7 @@ mod tests {
 
     /// codex streams `item/commandExecution/outputDelta` for EVERY command it
     /// runs, search / listFiles / read included (`createCommandOutputDeltaEvent`
-    /// has no action filter). So a search that printed something reaches codeg as
+    /// has no action filter). So a search that printed something reaches dextra as
     /// plain-text deltas while it runs — no `terminal_info` needed — and the card
     /// fills in live. Once a delta has spoken, the completion's aggregated
     /// `rawOutput` is the same text again, and must not be appended a second
@@ -24085,7 +24085,7 @@ mod tests {
 
     // ---- claude file-tool argument aliases (CLI 2.1.280, adapter 0.81.1) ----
 
-    /// A Write the model spelled with the text-editor names reaches codeg as
+    /// A Write the model spelled with the text-editor names reaches dextra as
     /// raw `rawInput`; the card must still get `file_path` / `content`. Both
     /// frame kinds carry input — the opening `tool_call` and the refining
     /// `tool_call_update` the streamed `tool_use` produces — and the update
@@ -24441,7 +24441,7 @@ mod tests {
     /// title. Titles below are the tools' own `getDisplayTitle()` in 0.60.0.
     ///
     /// The negative half is the point of the whitelist: synthesizing the wrong
-    /// shape is worse than synthesizing nothing, because codeg classifies on
+    /// shape is worse than synthesizing nothing, because dextra classifies on
     /// shape and would render a card that names the wrong tool.
     #[test]
     fn gemini_tool_input_is_synthesized_only_from_identifying_titles() {
@@ -24637,7 +24637,7 @@ mod tests {
     }
 
     /// The invariant that keeps the renderer and the empty-turn diagnosis in
-    /// agreement: a chunk codeg does not render must not count as the agent
+    /// agreement: a chunk dextra does not render must not count as the agent
     /// having produced output, or a status-only turn ends blank AND successful.
     #[test]
     fn pi_status_chunks_do_not_count_as_agent_output() {
@@ -24748,11 +24748,11 @@ mod tests {
     fn unwrap_grok_use_tool_peels_mcp_envelope() {
         // Grok's `use_tool` envelope nests the real MCP tool name + args.
         let raw = serde_json::json!({
-            "tool_name": "codeg-mcp__delegate_to_agent",
+            "tool_name": "dextra-mcp__delegate_to_agent",
             "tool_input": {"agent_type": "codex", "task": "build", "working_dir": "/w"},
         });
         let (name, input) = unwrap_grok_use_tool(Some(&raw)).expect("envelope peels");
-        assert_eq!(name, "codeg-mcp__delegate_to_agent");
+        assert_eq!(name, "dextra-mcp__delegate_to_agent");
         assert_eq!(input.get("task").and_then(|v| v.as_str()), Some("build"));
         assert_eq!(
             input.get("agent_type").and_then(|v| v.as_str()),
@@ -24819,11 +24819,11 @@ mod tests {
                    Call get_delegation_status with this id in the task_ids array.";
         assert_eq!(
             cursor_companion_title_from_content(Some(ack)),
-            Some("codeg-mcp__delegate_to_agent")
+            Some("dextra-mcp__delegate_to_agent")
         );
         assert_eq!(
             cursor_companion_title_from_content(Some(&format!("  {ack}"))),
-            Some("codeg-mcp__delegate_to_agent")
+            Some("dextra-mcp__delegate_to_agent")
         );
     }
 
@@ -24833,13 +24833,13 @@ mod tests {
         let report = r#"{"tasks":[{"agent_type":"claude_code","child_conversation_id":1576,"duration_ms":27288,"status":"completed","task_id":"799467c7-0188-4e7a-b5ef-241d4b141a83","text":"done"}]}"#;
         assert_eq!(
             cursor_companion_title_from_content(Some(report)),
-            Some("codeg-mcp__get_delegation_status")
+            Some("dextra-mcp__get_delegation_status")
         );
         // Mixed batch with a running item still resolves.
         let mixed = r#"{"tasks":[{"task_id":"a","status":"running"},{"task_id":"b","status":"unknown"}]}"#;
         assert_eq!(
             cursor_companion_title_from_content(Some(mixed)),
-            Some("codeg-mcp__get_delegation_status")
+            Some("dextra-mcp__get_delegation_status")
         );
     }
 
@@ -24876,7 +24876,7 @@ mod tests {
         let raw = Some(serde_json::json!({
             "type": "MCP",
             "tool_name": "delegate_to_agent",
-            "server_name": "codeg-mcp",
+            "server_name": "dextra-mcp",
             "output": {"OkayOutput": "Delegation successful. task_id=2dc85849-5426."},
         }));
         assert_eq!(
@@ -24912,7 +24912,7 @@ mod tests {
             "toolCallId": "call-d",
             "title": "use_tool",
             "rawInput": {
-                "tool_name": "codeg-mcp__delegate_to_agent",
+                "tool_name": "dextra-mcp__delegate_to_agent",
                 "tool_input": {"agent_type": "codex", "working_dir": "/w", "task": "run build"},
             },
         }))
@@ -24940,7 +24940,7 @@ mod tests {
             "rawOutput": {
                 "type": "MCP",
                 "tool_name": "delegate_to_agent",
-                "server_name": "codeg-mcp",
+                "server_name": "dextra-mcp",
                 "output": {"OkayOutput": "Delegation successful. task_id=2dc85849-5426-44f7."},
             },
         }))
@@ -24970,7 +24970,7 @@ mod tests {
                 _ => None,
             })
             .expect("a tool_call event is emitted");
-        assert_eq!(title, "codeg-mcp__delegate_to_agent");
+        assert_eq!(title, "dextra-mcp__delegate_to_agent");
         let raw_input = raw_input.expect("raw_input present after unwrap");
         assert!(
             raw_input.contains("\"agent_type\":\"codex\""),
@@ -25003,7 +25003,7 @@ mod tests {
         );
         assert_eq!(
             upd_title.as_deref(),
-            Some("codeg-mcp__delegate_to_agent"),
+            Some("dextra-mcp__delegate_to_agent"),
             "the sparse-update wrapper title is overridden by the recorded name"
         );
         // No emitted event ever ships the generic `use_tool` wrapper title.
@@ -25042,7 +25042,7 @@ mod tests {
             "title": "use_tool",
             "status": "in_progress",
             "rawInput": {
-                "tool_name": "codeg-mcp__cancel_delegation",
+                "tool_name": "dextra-mcp__cancel_delegation",
                 "tool_input": {"task_id": "abc-123"},
             },
         }))
@@ -25069,7 +25069,7 @@ mod tests {
                 _ => None,
             })
             .expect("a tool_call_update event is emitted");
-        assert_eq!(title.as_deref(), Some("codeg-mcp__cancel_delegation"));
+        assert_eq!(title.as_deref(), Some("dextra-mcp__cancel_delegation"));
         let raw_input = raw_input.expect("raw_input present after unwrap");
         assert!(
             raw_input.contains("\"task_id\":\"abc-123\""),
@@ -25364,7 +25364,7 @@ mod tests {
     /// `TEMP` (Windows `GetTempPathW`). If a per-agent `env_json` `TMP` were
     /// allowed to win — which it would under the ordinary `runtime_env`-last
     /// rule every other variable follows — the extraction would land wherever
-    /// that points while codeg deleted an empty scratch directory and reported
+    /// that points while dextra deleted an empty scratch directory and reported
     /// the leak fixed. The whole fix is this one ordering, so it gets a test.
     #[test]
     fn scratch_dir_outranks_a_per_agent_temp_override() {
@@ -25372,21 +25372,21 @@ mod tests {
         for key in crate::acp::scratch_dir::TEMP_ENV_KEYS {
             runtime_env.insert(key.to_string(), "/somewhere/the/user/picked".to_string());
         }
-        let scratch = Path::new("/scratch/codeg-acp/123-deadbeef");
+        let scratch = Path::new("/scratch/dextra-acp/123-deadbeef");
 
         let merged = merge_agent_env_with_color(false, &[], &runtime_env, Some(scratch));
 
         for key in crate::acp::scratch_dir::TEMP_ENV_KEYS {
             assert_eq!(
                 merged_value(&merged, key),
-                Some("/scratch/codeg-acp/123-deadbeef"),
+                Some("/scratch/dextra-acp/123-deadbeef"),
                 "{key} must point at the scratch dir, not the per-agent override"
             );
         }
     }
 
     /// All three names, every time. Setting only `TMPDIR` would leave `TMP`
-    /// inherited from codeg's own environment, and `GetTempPathW` reads `TMP`
+    /// inherited from dextra's own environment, and `GetTempPathW` reads `TMP`
     /// first.
     #[test]
     fn scratch_dir_sets_every_temp_variable_the_child_might_read() {
@@ -25623,26 +25623,26 @@ mod tests {
     fn deferred_unwraps_codebuddy_mcp_tool_name() {
         // CodeBuddy wraps MCP calls as `{toolName, params}` via DeferExecuteTool.
         let input = Some(
-            r#"{"params":{"agent_type":"codex","task":"build"},"toolName":"mcp__codeg-mcp__delegate_to_agent"}"#
+            r#"{"params":{"agent_type":"codex","task":"build"},"toolName":"mcp__dextra-mcp__delegate_to_agent"}"#
                 .to_string(),
         );
         assert_eq!(
             codebuddy_deferred_tool_name(AgentType::CodeBuddy, &input).as_deref(),
-            Some("mcp__codeg-mcp__delegate_to_agent")
+            Some("mcp__dextra-mcp__delegate_to_agent")
         );
     }
 
     #[test]
     fn deferred_gates_on_codebuddy_and_shape() {
         let wrapped = Some(
-            r#"{"params":{"task_id":"a"},"toolName":"mcp__codeg-mcp__cancel_delegation"}"#
+            r#"{"params":{"task_id":"a"},"toolName":"mcp__dextra-mcp__cancel_delegation"}"#
                 .to_string(),
         );
         // Only CodeBuddy is unwrapped.
         assert!(codebuddy_deferred_tool_name(AgentType::OpenCode, &wrapped).is_none());
         // Missing `params`, missing/blank `toolName`, or non-wrapper shapes → None.
         for raw in [
-            r#"{"toolName":"mcp__codeg-mcp__delegate_to_agent"}"#, // no params
+            r#"{"toolName":"mcp__dextra-mcp__delegate_to_agent"}"#, // no params
             r#"{"params":{"x":1},"toolName":""}"#,                 // blank toolName
             r#"{"params":{"x":1}}"#,                               // no toolName
             r#"{"command":"ls"}"#,                                 // plain tool
@@ -25735,18 +25735,18 @@ mod tests {
         );
         // Deferred MCP tool: inner name recorded, then re-asserted on a bare update.
         let deferred = Some(
-            r#"{"params":{"agent_type":"codex","task":"x"},"toolName":"mcp__codeg-mcp__delegate_to_agent"}"#
+            r#"{"params":{"agent_type":"codex","task":"x"},"toolName":"mcp__dextra-mcp__delegate_to_agent"}"#
                 .to_string(),
         );
         assert_eq!(
             resolve_rewritten_title(AgentType::CodeBuddy, &deferred, "tc3", false, false, &mut overrides)
                 .as_deref(),
-            Some("mcp__codeg-mcp__delegate_to_agent")
+            Some("mcp__dextra-mcp__delegate_to_agent")
         );
         assert_eq!(
             resolve_rewritten_title(AgentType::CodeBuddy, &None, "tc3", true, false, &mut overrides)
                 .as_deref(),
-            Some("mcp__codeg-mcp__delegate_to_agent")
+            Some("mcp__dextra-mcp__delegate_to_agent")
         );
         // Non-CodeBuddy agent with no prior classification: never rewritten.
         assert_eq!(
@@ -25808,7 +25808,7 @@ mod tests {
         );
         // DeferExecuteTool still wins over the meta path (distinct mechanism).
         let deferred = Some(
-            r#"{"params":{"agent_type":"codex","task":"x"},"toolName":"mcp__codeg-mcp__delegate_to_agent"}"#
+            r#"{"params":{"agent_type":"codex","task":"x"},"toolName":"mcp__dextra-mcp__delegate_to_agent"}"#
                 .to_string(),
         );
         assert_eq!(
@@ -25821,7 +25821,7 @@ mod tests {
                 &mut overrides
             )
             .as_deref(),
-            Some("mcp__codeg-mcp__delegate_to_agent")
+            Some("mcp__dextra-mcp__delegate_to_agent")
         );
     }
 
@@ -26020,7 +26020,7 @@ mod tests {
                 .collect()
         };
 
-        // The BYO case: codeg exports the provider, so cline refuses every
+        // The BYO case: dextra exports the provider, so cline refuses every
         // choice the selector offers.
         assert_eq!(
             env_pinned_config_option_ids(
@@ -26156,7 +26156,7 @@ mod tests {
         DelegationInjection {
             broker,
             tokens: Arc::new(TokenRegistry::default()),
-            socket_path: std::path::PathBuf::from("/tmp/codeg-mcp.sock"),
+            socket_path: std::path::PathBuf::from("/tmp/dextra-mcp.sock"),
             agent_availability,
             feedback: crate::acp::feedback::FeedbackRuntimeConfig::new(),
             ask: crate::acp::question::QuestionRuntimeConfig::new(),
@@ -26170,17 +26170,17 @@ mod tests {
         }
     }
 
-    // ─── inject_codeg_mcp: enabled=false short-circuit ──────────
+    // ─── inject_dextra_mcp: enabled=false short-circuit ──────────
     //
     // Guards the "default off" product contract: when the broker config has
     // `enabled: false` (the new production default for fresh installs), the
     // delegate-MCP injection must not push a server entry and must not
     // register a per-launch token. The early return at the top of
-    // `inject_codeg_mcp` is the single chokepoint that keeps a
-    // codeg-mcp stdio MCP out of every ACP session until the user
+    // `inject_dextra_mcp` is the single chokepoint that keeps a
+    // dextra-mcp stdio MCP out of every ACP session until the user
     // opts in via the settings panel.
     #[tokio::test]
-    async fn inject_codeg_delegate_skipped_when_broker_disabled() {
+    async fn inject_dextra_delegate_skipped_when_broker_disabled() {
         // No set_config call: broker carries its default config, which is
         // `enabled: false` after the product-default flip. This is the
         // exact state a fresh install reaches before the user touches the
@@ -26191,7 +26191,7 @@ mod tests {
         );
 
         let mut servers: Vec<McpServer> = Vec::new();
-        let result = inject_codeg_mcp(
+        let result = inject_dextra_mcp(
             &mut servers,
             &injection,
             "parent-conn",
@@ -26279,11 +26279,11 @@ mod tests {
     #[test]
     fn host_tools_agent_also_withholds_the_delegation_group() {
         // `delegate_to_agent` is the third door into the room `fs/*` and
-        // `terminal/*` open: it has codeg spawn a SECOND agent, in codeg's
+        // `terminal/*` open: it has dextra spawn a SECOND agent, in dextra's
         // process tree under that agent's own policy, and relays its output
         // back. Without this gate a sandboxed agent that cannot read `.env`
         // itself just asks a sibling to read it, and the switch's promise is
-        // false. This pins the exact boolean `inject_codeg_mcp` computes.
+        // false. This pins the exact boolean `inject_dextra_mcp` computes.
         let delegation_for = |broker_enabled: bool, host_tools: HostToolsPolicy| {
             broker_enabled && host_tools.hosts_channels()
         };
@@ -26302,7 +26302,7 @@ mod tests {
         };
         assert_eq!(companion_features_arg(flags), None);
 
-        // But the groups that only surface codeg's OWN state keep working —
+        // But the groups that only surface dextra's OWN state keep working —
         // they execute nothing on the user's machine, so withholding them
         // would cost function for no boundary.
         flags.ask = true;
@@ -26389,7 +26389,7 @@ mod tests {
 
     // ── Boolean config options (cline 3.0.50 `auto_approve`) ──
 
-    /// The exact `configOptions` entry cline 3.0.50 ships. Before codeg's schema
+    /// The exact `configOptions` entry cline 3.0.50 ships. Before dextra's schema
     /// could parse boolean options (then behind `unstable_boolean_config`,
     /// stable in the 1.x schema) this failed to deserialize with
     /// `unknown variant 'boolean', expected 'select'` — and because
@@ -26490,7 +26490,7 @@ mod tests {
     /// An option kind newer than this build must cost its own selector, never
     /// the whole response — a failed `session/new` parse would leave the agent
     /// unusable. The schema (1.9+) guarantees that on every channel options
-    /// arrive on (`configOptions` skips an undecodable entry), and codeg relies
+    /// arrive on (`configOptions` skips an undecodable entry), and dextra relies
     /// on it rather than sanitizing the raw JSON first, as it once had to. This
     /// pins that guarantee through a schema bump: all five responses (new, load,
     /// resume, fork, set_config_option) and the `config_option_update` push must
@@ -26547,7 +26547,7 @@ mod tests {
     /// on the request, so this pins the payload rather than the mechanism.
     #[test]
     fn untyped_new_session_carries_the_typed_request_payload() {
-        let cwd = std::path::PathBuf::from("/tmp/codeg");
+        let cwd = std::path::PathBuf::from("/tmp/dextra");
         let req = build_new_session_request(AgentType::Cline, &cwd, Vec::new());
         let expected = serde_json::to_value(&req).unwrap();
 
@@ -26631,7 +26631,7 @@ mod tests {
         assert_eq!(ordered, vec!["llm", "effort"]);
 
         // Nothing model-shaped: the order is untouched, and an id the agent
-        // never advertised is still replayed (it is not codeg's call to drop).
+        // never advertised is still replayed (it is not dextra's call to drop).
         let preferred = BTreeMap::from([
             ("a_thing".to_string(), "1".to_string()),
             ("z_thing".to_string(), "2".to_string()),
@@ -26683,7 +26683,7 @@ mod tests {
         Arc::new(RwLock::new(st))
     }
 
-    /// The fork symptom in miniature: codeg applies the parent's `sonnet[1m]`,
+    /// The fork symptom in miniature: dextra applies the parent's `sonnet[1m]`,
     /// claude answers OK, then ~2ms later pushes its own re-pin. Effort rides
     /// along because a model switch re-scopes it — one push, two reverted
     /// options, and BOTH have to come back.
@@ -26708,7 +26708,7 @@ mod tests {
                 ("model".to_string(), "sonnet[1m]".to_string()),
                 ("effort".to_string(), "high".to_string()),
             ],
-            "both reverted options come back, at the values codeg applied, model first"
+            "both reverted options come back, at the values dextra applied, model first"
         );
     }
 

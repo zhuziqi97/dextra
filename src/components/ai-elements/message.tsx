@@ -31,7 +31,7 @@ import {
 import { markdownLinkComponents } from "./markdown-link"
 import { maskLiteralSpans } from "./markdown-mask"
 import { mermaidComponents } from "./mermaid-block"
-import { rehypePluginsAllowingCodeg } from "./rehype-allow-codeg"
+import { rehypePluginsAllowingDextra } from "./rehype-allow-dextra"
 import { remarkTrimCjkAutolinkTail } from "./remark-cjk-autolink-tail"
 import { remarkRewriteFileUriLinks } from "./remark-file-uri-links"
 import { remarkRestoreWindowsPaths } from "./remark-windows-paths"
@@ -474,10 +474,10 @@ const remarkPlugins = [
   remarkTrimCjkAutolinkTail,
 ]
 
-// Streamdown's default rehype pipeline strips `codeg://` reference hrefs in
+// Streamdown's default rehype pipeline strips `dextra://` reference hrefs in
 // sanitization (rendering them as "[blocked]"); re-derive it so they survive to
-// MarkdownLink → ReferenceBadge. See rehype-allow-codeg for the full rationale.
-const rehypePlugins = rehypePluginsAllowingCodeg(defaultRehypePlugins)
+// MarkdownLink → ReferenceBadge. See rehype-allow-dextra for the full rationale.
+const rehypePlugins = rehypePluginsAllowingDextra(defaultRehypePlugins)
 
 /**
  * How finished Markdown renders. Streamdown defaults to `mode="streaming"` +

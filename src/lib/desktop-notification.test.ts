@@ -68,12 +68,12 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const PAYLOAD = { title: "proj - Codeg", body: "Claude has finished" }
+const PAYLOAD = { title: "proj - Dextra", body: "Claude has finished" }
 
 describe("preference gates", () => {
   it("delivers when everything is on", async () => {
     await expect(notifyDesktop("turn_complete", PAYLOAD)).resolves.toBe(true)
-    expect(deliver).toHaveBeenCalledWith("proj - Codeg", "Claude has finished")
+    expect(deliver).toHaveBeenCalledWith("proj - Dextra", "Claude has finished")
   })
 
   it("drops everything when the master switch is off", async () => {
@@ -143,7 +143,7 @@ describe("hidden contents", () => {
 
     await notifyDesktop("turn_complete", PAYLOAD)
 
-    expect(deliver).toHaveBeenCalledWith("proj - Codeg", "Claude has finished")
+    expect(deliver).toHaveBeenCalledWith("proj - Dextra", "Claude has finished")
   })
 })
 

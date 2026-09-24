@@ -1,10 +1,10 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Code Agent when working with code in this repository.
 
 ## 项目概述
 
-Codeg（Code Generation）是一个多智能体编码工作台，它将多个智能体（Claude Code、Codex CLI、OpenCode、Gemini CLI、OpenClaw、Cline 等）统一到一个工作区中，支持会话聚合和多智能体协作，支持桌面安装，服务器/Docker 部署。
+Dextra 是基于 Codeg 的多智能体桌面客户端，统一多个智能体的会话与协作。`dextra-server` 和 Docker 构建仅用于隔离集成验收，不是当前提供给用户的部署形态。桌面应用保留 Codeg 手机端使用的 HTTP、WebSocket 协议值与载荷。
 
 ## 技术栈
 
@@ -22,6 +22,7 @@ Codeg（Code Generation）是一个多智能体编码工作台，它将多个智
 
 ```bash
 pnpm lint .                    # lint
+pnpm check:branding            # 上游合并后检查 Dextra 身份和 Codeg 手机协议值
 pnpm test                      # vitest 全跑（CI 用同一条命令）
 pnpm test:watch                # 开发时增量重跑
 pnpm test:coverage             # 覆盖率报告（输出到 coverage/index.html）
@@ -37,13 +38,13 @@ cargo test --features test-utils
 cargo clippy --all-targets --features test-utils -- -D warnings
 
 # 服务器模式
-cargo check --no-default-features --bin codeg-server
-cargo test --no-default-features --bin codeg-server --lib
-cargo clippy --no-default-features --bin codeg-server --lib -- -D warnings
+cargo check --no-default-features --bin dextra-server
+cargo test --no-default-features --bin dextra-server --lib
+cargo clippy --no-default-features --bin dextra-server --lib -- -D warnings
 
-# codeg-mcp 协作伴生进程（多智能体委托）
-cargo check --no-default-features --bin codeg-mcp
-cargo clippy --no-default-features --bin codeg-mcp -- -D warnings
+# dextra-mcp 协作伴生进程（多智能体委托）
+cargo check --no-default-features --bin dextra-mcp
+cargo clippy --no-default-features --bin dextra-mcp -- -D warnings
 
 # 解析器快照评审（输出变化时）
 cargo insta review
@@ -56,9 +57,9 @@ INSTA_UPDATE=auto cargo test --features test-utils     # 自动写新 .snap
 
 项目通过 Cargo feature flags 支持三种二进制：
 
-- **`codeg`**（`tauri-runtime`，默认）：完整桌面应用，包含 Tauri 窗口管理、系统通知、自动更新等
-- **`codeg-server`**（无 feature，`--no-default-features`）：独立服务器模式，仅编译 Axum HTTP API + WebSocket
-- **`codeg-mcp`**（无 feature）：per-launch stdio MCP 伴生进程，被注入到代理 CLI 的 MCP 配置中，向 LLM 暴露**异步**子智能体委托工具。
+- **`dextra`**（`tauri-runtime`，默认）：完整桌面应用，包含 Tauri 窗口管理、系统通知、自动更新等
+- **`dextra-server`**（无 feature，`--no-default-features`）：独立服务器模式，仅编译 Axum HTTP API + WebSocket
+- **`dextra-mcp`**（无 feature）：per-launch stdio MCP 伴生进程，被注入到代理 CLI 的 MCP 配置中，向 LLM 暴露**异步**子智能体委托工具。
 
 ### 共享核心
 
@@ -110,7 +111,7 @@ INSTA_UPDATE=auto cargo test --features test-utils     # 自动写新 .snap
 
 - **仅支持静态导出**：`next.config.ts` 设置 `output: "export"`，不支持动态路由（`[param]`），必须使用查询参数替代
 - **路径别名**：`@/*` 映射到 `./src/*`，导入写法为 `@/lib/utils`、`@/components/ui/button`
-- **服务器部署**：通过环境变量配置（`CODEG_PORT`、`CODEG_HOST`、`CODEG_TOKEN`、`CODEG_DATA_DIR`、`CODEG_STATIC_DIR`）
+- **服务器部署**：通过环境变量配置（`DEXTRA_PORT`、`DEXTRA_HOST`、`DEXTRA_TOKEN`、`DEXTRA_DATA_DIR`、`DEXTRA_STATIC_DIR`）
 - **Docker 支持**：多阶段构建（Node.js + Rust），支持 `docker-compose` 一键部署
 
 ## 代码风格

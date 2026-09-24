@@ -21,7 +21,7 @@ export function sessionKey(session: {
 
 /** Whether a scanned session can be checked for the next import run.
  *
- *  `new` always is. `deleted` is only reachable behind `includeDeleted`: codeg
+ *  `new` always is. `deleted` is only reachable behind `includeDeleted`: dextra
  *  soft-deletes, so importing such a session restores the existing row rather
  *  than inserting a duplicate — but a deletion was deliberate, so it takes an
  *  explicit opt-in before select-all and the folder tri-state can sweep it up.

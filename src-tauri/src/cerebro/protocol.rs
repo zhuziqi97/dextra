@@ -22,7 +22,7 @@ fn envelope(runner_id: impl Into<String>, kind: &'static str, payload: Value) ->
 }
 
 pub fn runner_hello(runner_id: impl Into<String>, build_id: impl Into<String>) -> Envelope {
-    envelope(runner_id, "HELLO", json!({"RUNNER_BUILD_ID": build_id.into(), "CODEG_API_REVISION": 1, "CODEG_UPSTREAM_VERSION": concat!("v", env!("CARGO_PKG_VERSION"))}))
+    envelope(runner_id, "HELLO", json!({"RUNNER_BUILD_ID": build_id.into(), "DEXTRA_API_REVISION": 1, "DEXTRA_VERSION": concat!("v", env!("CARGO_PKG_VERSION"))}))
 }
 
 pub fn runner_heartbeat(runner_id: impl Into<String>) -> Envelope {

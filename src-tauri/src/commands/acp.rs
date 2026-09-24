@@ -198,11 +198,11 @@ fn apply_custom_version_to_url(url: &str, registry_version: &str, custom_version
 /// runs whatever is installed, and nothing polls npm in the background.
 ///
 /// Exactly the value `latest` opts in; absence or any other value stays on the
-/// pin. Unlike `CODEG_ACP_HOST_TOOLS` there is no process-env second layer to
+/// pin. Unlike `DEXTRA_ACP_HOST_TOOLS` there is no process-env second layer to
 /// make "absent" ambiguous, so the settings control may delete the key for the
 /// pinned default — both readers (this one and `adapterChannelFromEnvText` in
 /// acp-agent-settings.tsx) treat absent as pinned.
-pub(crate) const ADAPTER_CHANNEL_ENV: &str = "CODEG_ADAPTER_CHANNEL";
+pub(crate) const ADAPTER_CHANNEL_ENV: &str = "DEXTRA_ADAPTER_CHANNEL";
 const ADAPTER_CHANNEL_LATEST: &str = "latest";
 
 /// Whether a resolved per-agent env opts into the `latest` adapter channel.
@@ -278,7 +278,7 @@ pub(crate) fn resolve_system_agent_binary(cmd: &str) -> Option<PathBuf> {
 /// The agent-aware form exists because a vendor installer can target a
 /// directory that is neither on PATH nor `~/.local/bin` — OpenCode's is
 /// `~/.opencode/bin` — and appending it to the shell rc does not help a desktop
-/// app launched from Finder or the Dock. Ordered last, so a codeg-managed copy
+/// app launched from Finder or the Dock. Ordered last, so a dextra-managed copy
 /// and anything genuinely on PATH still win.
 pub(crate) fn resolve_system_agent_binary_for(agent_type: AgentType, cmd: &str) -> Option<PathBuf> {
     if let Some(path) = resolve_system_agent_binary(cmd) {
@@ -297,7 +297,7 @@ pub(crate) fn resolve_system_agent_binary_for(agent_type: AgentType, cmd: &str) 
 }
 
 /// Resolve the VENDOR CLI wrapped by an ACP adapter agent (`claude`, `codex`
-/// — see [`registry::acp_adapter_relation`]). codeg never launches this: it is
+/// — see [`registry::acp_adapter_relation`]). dextra never launches this: it is
 /// probed purely so preflight/diagnostics can say "we found your own CLI, but
 /// it doesn't speak ACP" instead of a bare "not installed".
 ///
@@ -326,7 +326,7 @@ pub(crate) async fn resolve_vendor_cli(cmd: &str, extra_dirs: &[&str]) -> Option
 
 /// Resolve the `uvx` (uv tool runner) executable used to launch Python ACP
 /// agents (e.g. Hermes). Checks PATH first (respecting a user's own `uv`),
-/// then codeg's managed uv cache, then the common install locations the
+/// then dextra's managed uv cache, then the common install locations the
 /// official `uv` installer / cargo use (`~/.local/bin`, `~/.cargo/bin`).
 pub(crate) fn resolve_uvx_command() -> Option<PathBuf> {
     if let Some(path) = resolve_command_on_path("uvx") {
@@ -347,7 +347,7 @@ pub(crate) fn resolve_uvx_command() -> Option<PathBuf> {
 }
 
 /// Whether a `Uvx` agent can actually be launched on this machine right now:
-/// the `uvx` runner is resolvable (codeg auto-provisions it on install, so this
+/// the `uvx` runner is resolvable (dextra auto-provisions it on install, so this
 /// holds post-prepare), or the agent's own CLI is on PATH (system fallback).
 /// The connect gate (`verify_agent_installed`) and the Settings status/list
 /// paths all use this so they agree on readiness. Note: the prepared-version
@@ -372,7 +372,7 @@ pub(crate) fn uvx_python_args(python: Option<&str>) -> Vec<String> {
 }
 
 /// The version to display for a `Uvx` agent, shared by `detect_local_version`
-/// and the status/list paths so they can't disagree: codeg's prepared marker
+/// and the status/list paths so they can't disagree: dextra's prepared marker
 /// first, then the package's console script on PATH, then the system-fallback
 /// command a launch would actually use (a pipx / `uv tool install` CLI).
 async fn uvx_displayed_version(
@@ -633,7 +633,7 @@ pub(crate) async fn verify_agent_installed(agent_type: AgentType) -> Result<(), 
             Ok(())
         }
         registry::AgentDistribution::Uvx { system_cmd, .. } => {
-            // Launchable when uvx is resolvable (codeg auto-provisions it on
+            // Launchable when uvx is resolvable (dextra auto-provisions it on
             // install, so this holds post-prepare) or the agent's own CLI is on
             // PATH. Kept consistent with the Settings status/list paths via the
             // shared helper, so connect and the UI never disagree on readiness.
@@ -653,7 +653,7 @@ pub(crate) async fn verify_agent_installed(agent_type: AgentType) -> Result<(), 
 /// `npm list -g <package_name> --json` and parsing the JSON output.
 ///
 /// Checks both the system global prefix and the user-local prefix
-/// (`~/.codeg/npm-global/`) so packages installed via the EACCES fallback are
+/// (`~/.dextra/npm-global/`) so packages installed via the EACCES fallback are
 /// found as well.
 ///
 /// `pub(crate)` so env diagnostics can report the installed version it sees
@@ -731,7 +731,7 @@ async fn detect_local_version(agent_type: AgentType) -> Option<String> {
             if cached.is_some() {
                 return cached;
             }
-            // A user-installed CLI (no codeg cache) still reports a version
+            // A user-installed CLI (no dextra cache) still reports a version
             // via `<cmd> --version` (e.g. cursor-agent → "2026.07.20-8cc9c0b").
             // Mirrors the status/list paths — missing a fallback here would
             // CLEAR the persisted system version below and the next list
@@ -839,7 +839,7 @@ struct AgentDiag {
     resolve_npx: Option<String>,
     /// `<npm prefix -g>/bin/<cmd>` when it exists.
     system_prefix_bin: Option<String>,
-    /// `~/.codeg/npm-global/bin/<cmd>` (EACCES fallback) when it exists.
+    /// `~/.dextra/npm-global/bin/<cmd>` (EACCES fallback) when it exists.
     user_prefix_bin: Option<String>,
     /// Homebrew global bin (`/opt/homebrew/bin/<cmd>` etc.) when it exists (macOS).
     homebrew_bin: Option<String>,
@@ -848,13 +848,13 @@ struct AgentDiag {
     /// `agent_setting.installed_version` recorded in the DB.
     db_version: Option<String>,
     /// Set only for ACP *adapter* agents (Claude Code, Codex): the vendor CLI
-    /// the user probably already installed, which codeg does NOT launch. See
+    /// the user probably already installed, which dextra does NOT launch. See
     /// [`registry::acp_adapter_relation`].
     adapter: Option<AdapterProbe>,
 }
 
 /// The vendor CLI behind an adapter agent, probed so the report can say "we
-/// found your own `claude`, but codeg launches `claude-agent-acp`" instead of a
+/// found your own `claude`, but dextra launches `claude-agent-acp`" instead of a
 /// bare "not installed" the user reads as plain wrong.
 #[derive(Default, Clone)]
 struct AdapterProbe {
@@ -952,7 +952,7 @@ async fn diag_terminal_probe(cmd: &str, app_path: &[String]) -> TerminalProbe {
     };
     // `cmd` is a static registry command name — no shell metacharacters.
     let script =
-        format!("printf 'CODEG_PATH=%s\\n' \"$PATH\"; command -v {cmd} 2>/dev/null || true");
+        format!("printf 'DEXTRA_PATH=%s\\n' \"$PATH\"; command -v {cmd} 2>/dev/null || true");
     let mut c = crate::process::tokio_command(&shell);
     c.arg("-lic").arg(&script).kill_on_drop(true);
     let out = match tokio::time::timeout(DIAG_PROBE_TIMEOUT, c.output()).await {
@@ -966,7 +966,7 @@ async fn diag_terminal_probe(cmd: &str, app_path: &[String]) -> TerminalProbe {
     let stdout = String::from_utf8_lossy(&out.stdout);
     let mut term_path: Option<String> = None;
     for line in stdout.lines() {
-        if let Some(p) = line.strip_prefix("CODEG_PATH=") {
+        if let Some(p) = line.strip_prefix("DEXTRA_PATH=") {
             term_path = Some(p.to_string());
         } else if line.starts_with('/') && probe.cmd_resolved.is_none() {
             probe.cmd_resolved = Some(line.trim().to_string());
@@ -1284,7 +1284,7 @@ fn compute_verdict(inp: &DiagInputs) -> DiagnosticsVerdict {
     if agent.resolve_npx.is_none() {
         // An ACP adapter agent that was never installed is the single most
         // reported "bug": the user has the vendor CLI and reads "not installed"
-        // as codeg failing to see it. Answer the question they're actually
+        // as dextra failing to see it. Answer the question they're actually
         // asking, before the generic not-installed verdict. Node problems above
         // still win — those block the adapter install itself.
         if let Some(adapter) = &agent.adapter {
@@ -1293,13 +1293,13 @@ fn compute_verdict(inp: &DiagInputs) -> DiagnosticsVerdict {
                     diag_verdict(
                         DiagLevel::Info,
                         "adapter_missing_native_present",
-                        "Your own vendor CLI is installed, but codeg launches a separate ACP adapter, which is not.",
+                        "Your own vendor CLI is installed, but Dextra launches a separate ACP adapter, which is not.",
                     )
                 } else {
                     diag_verdict(
                         DiagLevel::Info,
                         "adapter_missing",
-                        "codeg launches a separate ACP adapter for this agent, which is not installed.",
+                        "Dextra launches a separate ACP adapter for this agent, which is not installed.",
                     )
                 };
             }
@@ -1309,7 +1309,7 @@ fn compute_verdict(inp: &DiagInputs) -> DiagnosticsVerdict {
                 return diag_verdict(
                     DiagLevel::Fail,
                     "user_prefix_not_on_path",
-                    "Installed into the EACCES fallback prefix (~/.codeg/npm-global), which is not on the app's PATH.",
+                    "Installed into the EACCES fallback prefix (~/.dextra/npm-global), which is not on the app's PATH.",
                 );
             }
             if agent.homebrew_bin.is_some() {
@@ -1453,7 +1453,7 @@ fn build_report(
                 None,
             ));
             checks.push(diag_check(
-                "~/.codeg/npm-global/bin/<cmd>",
+                "~/.dextra/npm-global/bin/<cmd>",
                 a.user_prefix_bin.as_deref().unwrap_or("absent"),
                 if a.user_prefix_bin.is_some() { DiagLevel::Warn } else { DiagLevel::Info },
                 a.user_prefix_bin.as_ref().map(|_| "EACCES fallback dir — reached by the connect gate only if it's on PATH"),
@@ -1486,7 +1486,7 @@ fn build_report(
                 },
                 DiagLevel::Info,
                 Some(
-                    "codeg never launches this — it launches the ACP adapter above, \
+                    "dextra never launches this — it launches the ACP adapter above, \
                      a separate package that shares the same config dir",
                 ),
             ));
@@ -1604,7 +1604,7 @@ fn render_plain_text(
         DiagLevel::Info => "--  ",
     };
     let mut out = String::new();
-    out.push_str("===== Codeg environment diagnostics =====\n");
+    out.push_str("===== Dextra environment diagnostics =====\n");
     out.push_str(&format!("generated: {generated_at}\n"));
     if let Some(at) = agent_type {
         out.push_str(&format!("agent: {at:?}\n"));
@@ -1714,7 +1714,7 @@ mod diagnostics_tests {
     fn verdict_user_prefix_not_on_path() {
         let mut inp = base_inputs();
         let mut a = agent_installed_unresolved();
-        a.user_prefix_bin = Some("/home/u/.codeg/npm-global/bin/codex-acp".to_string());
+        a.user_prefix_bin = Some("/home/u/.dextra/npm-global/bin/codex-acp".to_string());
         inp.agent = Some(a);
         let v = compute_verdict(&inp);
         assert_eq!(v.code, "user_prefix_not_on_path");
@@ -1844,7 +1844,7 @@ mod diagnostics_tests {
     }
 
     // The canonical support ticket: `codex` is on the machine, the adapter is
-    // not. The generic "not installed" verdict reads as codeg being wrong, so
+    // not. The generic "not installed" verdict reads as dextra being wrong, so
     // this case gets its own code.
     #[test]
     fn verdict_adapter_missing_while_vendor_cli_present() {
@@ -1930,7 +1930,7 @@ mod diagnostics_tests {
         let inp = base_inputs();
         let r = build_report(&inp, "FIXED-TS".to_string(), None);
         assert_eq!(r.generated_at, "FIXED-TS");
-        assert!(r.plain_text.contains("Codeg environment diagnostics"));
+        assert!(r.plain_text.contains("Dextra environment diagnostics"));
         assert!(r.plain_text.contains("verdict [ok]"));
         assert!(!r.sections.is_empty());
     }
@@ -2060,7 +2060,7 @@ async fn probe_cli_version_token(bin: &std::path::Path, args: &[String]) -> Opti
 }
 
 /// Version of an agent's SYSTEM install (the user's own `npm -g`, bun, brew,
-/// installer script, …), for the status/list paths when codeg has no managed
+/// installer script, …), for the status/list paths when dextra has no managed
 /// install record. Works for built-ins and custom agents alike — a declared
 /// `version_probe` only exists on custom definitions, so built-ins always
 /// take the convention path. Cached per (binary, probe, package) (see
@@ -2163,7 +2163,7 @@ const NPM_INCLUDE_OPTIONAL: &str = "--include=optional";
 /// npm ≥7 hides lifecycle-script output by default. hermes-agent's postinstall
 /// runs a multi-minute runtime bootstrap (pinned upstream checkout + isolated
 /// venv sync); without this flag the install log goes silent for the whole
-/// bootstrap, which reads as a hang (codeg imposes no timeout on npm). Other
+/// bootstrap, which reads as a hang (dextra imposes no timeout on npm). Other
 /// agents' packages have no meaningful install scripts, so this only adds
 /// their (empty) script output.
 const NPM_FOREGROUND_SCRIPTS: &str = "--foreground-scripts";
@@ -2201,7 +2201,7 @@ fn npm_package_requires_scripts(package: &str) -> bool {
 
 /// Name the proxy when a bootstrap package's install died inside the wrapper's
 /// own downloads. `NODE_ENV_PROXY_VAR` covers Node ≥24; what remains is a
-/// proxied machine on an older Node, where nothing codeg can pass makes that
+/// proxied machine on an older Node, where nothing dextra can pass makes that
 /// `fetch` go through — worth spelling out, because npm reports it as a bare
 /// `fetch failed` that says nothing about a proxy.
 fn annotate_npm_bootstrap_failure(package: &str, err: AcpError) -> AcpError {
@@ -2220,7 +2220,7 @@ fn annotate_npm_bootstrap_failure(package: &str, err: AcpError) -> AcpError {
     AcpError::Protocol(format!(
         "{message}\n\nThe bootstrap downloads its runtime from github.com with Node's own \
          fetch, which reads HTTP(S)_PROXY only on Node 24+. Behind a proxy on an older \
-         Node, upgrade Node or run the official installer — codeg picks up a `hermes` \
+         Node, upgrade Node or run the official installer — dextra picks up a `hermes` \
          on PATH."
     ))
 }
@@ -2230,7 +2230,7 @@ fn annotate_npm_bootstrap_failure(package: &str, err: AcpError) -> AcpError {
 /// npm resolves `HTTP(S)_PROXY` with WHATWG `new URL()`, where a scheme may not
 /// start with a digit, so a bare `127.0.0.1:7890` aborts the install with a
 /// context-free `ERR_INVALID_URL` before any network I/O — no mention of a
-/// proxy, no mention of which variable. codeg normalizes the address it exports
+/// proxy, no mention of which variable. dextra normalizes the address it exports
 /// from Settings, so what reaches here is an externally-provided value (docker
 /// `-e`, a shell export) that the startup contract leaves untouched.
 fn annotate_npm_proxy_url_failure(err: AcpError) -> AcpError {
@@ -2246,7 +2246,7 @@ fn annotate_npm_proxy_url_failure(err: AcpError) -> AcpError {
     }
     AcpError::Protocol(format!(
         "{message}\n\nnpm could not parse the proxy address in {} — it has no scheme. \
-         npm requires one (codeg's own HTTP client does not, which is why updates still \
+         npm requires one (dextra's own HTTP client does not, which is why updates still \
          work). Set it to a full URL, e.g. `http://127.0.0.1:7890`.",
         offenders.join(", ")
     ))
@@ -2444,7 +2444,7 @@ async fn install_npm_global_package_streaming_inner(
     Ok(())
 }
 
-/// Fallback: install an npm package into a user-local prefix (`~/.codeg/npm-global/`)
+/// Fallback: install an npm package into a user-local prefix (`~/.dextra/npm-global/`)
 /// when the system global prefix is not writable (EACCES).
 async fn install_npm_to_user_prefix_streaming(
     package: &str,
@@ -2590,7 +2590,7 @@ async fn uninstall_npm_global_package(package: &str) -> Result<(), AcpError> {
     Ok(())
 }
 
-/// Uninstall an npm package from the user-local prefix (`~/.codeg/npm-global/`).
+/// Uninstall an npm package from the user-local prefix (`~/.dextra/npm-global/`).
 async fn uninstall_npm_from_user_prefix(package_name: &str) -> Result<(), AcpError> {
     let prefix = match crate::process::user_npm_prefix() {
         Some(p) if p.exists() => p,
@@ -2727,10 +2727,10 @@ fn codex_provider_uses_actor_authorization(
         })
 }
 
-/// Supply codeg's `requires_openai_auth` default without clobbering the user.
+/// Supply dextra's `requires_openai_auth` default without clobbering the user.
 ///
 /// Codex defaults the field to `false` and only reads credentials from
-/// `auth.json` when it is `true`, so `true` is correct for a provider codeg
+/// `auth.json` when it is `true`, so `true` is correct for a provider dextra
 /// provisioned itself (key in auth.json, no `env_key`) — and wrong for one the
 /// user configured. Worse, codex's `uses_openai_actor_authorization()` requires
 /// `!requires_openai_auth`, so forcing `true` silently disables that auth path.
@@ -2750,11 +2750,11 @@ fn ensure_codex_provider_auth_default(provider_table: &mut toml::map::Map<String
 
 /// OpenCode reads config from `$XDG_CONFIG_HOME/opencode` (falling back to
 /// `~/.config/opencode`) and credentials from `$XDG_DATA_HOME/opencode`
-/// (falling back to `~/.local/share/opencode`) on every platform. codeg must
+/// (falling back to `~/.local/share/opencode`) on every platform. dextra must
 /// write where OpenCode reads, so these reuse the same XDG resolution as
 /// `opencode_plugins` (config) and `parsers::opencode` (data) — otherwise a
 /// user with XDG dirs set would get credentials written where OpenCode never
-/// looks, and codeg's own plugin/connect paths would diverge.
+/// looks, and dextra's own plugin/connect paths would diverge.
 fn opencode_config_dir() -> PathBuf {
     crate::acp::opencode_plugins::xdg_config_home()
         .unwrap_or_else(|| home_dir_or_default().join(".config"))
@@ -2805,7 +2805,7 @@ fn load_opencode_auth_json_raw() -> Option<String> {
 //     legacy pair into `providers.json` on startup — but that migration is
 //     PER-PROVIDER AND ONE-SHOT (`if (H.providers[R]) continue;`). Once a
 //     provider has an entry, later edits to `globalState.json`/`secrets.json`
-//     are read by nobody. codeg used to write only the legacy pair, so the
+//     are read by nobody. dextra used to write only the legacy pair, so the
 //     Cline settings panel silently stopped taking effect after the first
 //     launch — hence [`persist_cline_provider_settings_at`] writing the native
 //     store directly. The legacy pair is still READ as a fallback so a user
@@ -2821,7 +2821,7 @@ fn load_opencode_auth_json_raw() -> Option<String> {
 //     a non-`Z` timestamp or a malformed base URL does not degrade — it wipes
 //     the whole file's effect. [`persist_cline_provider_settings_at`],
 //     [`cline_timestamp_now`] and [`validate_cline_base_url`] exist to keep
-//     codeg on the valid side of that cliff.
+//     dextra on the valid side of that cliff.
 //
 // (c) `models.json` is what makes a CUSTOM model id selectable. Without it the
 //     agent falls back to the provider's built-in default (`gpt-4o` for
@@ -2887,7 +2887,7 @@ const CLINE_CUSTOM_MODEL_PROVIDER: &str = "openai-compatible";
 /// the legacy config carried no `openAiModelInfo` (`pc0` in the 3.0.62 bundle).
 const CLINE_CUSTOM_MODEL_CONTEXT_WINDOW: u64 = 128_000;
 
-/// Map the ids codeg (and the VSCode extension before it) used onto the ids the
+/// Map the ids dextra (and the VSCode extension before it) used onto the ids the
 /// CLI's provider registry actually keys on.
 ///
 /// Only `openai` is genuinely renamed — but it matters: `cline auth` silently
@@ -2916,7 +2916,7 @@ fn cline_provider_is_keyless(provider: &str) -> bool {
 /// Their credential is an OAuth token cline obtains through a device-code flow
 /// (`cline auth <id>`, or the ACP `authenticate` request, which prints a code
 /// and a `authkit.cline.bot/device` URL and blocks until the browser half
-/// finishes) and stores itself. codeg neither holds nor refreshes it, which has
+/// finishes) and stores itself. dextra neither holds nor refreshes it, which has
 /// two consequences it must respect: never write over these entries' secrets,
 /// and never export `CLINE_PROVIDER`/`CLINE_API_KEY` for them — the env would
 /// shadow the very credential `tryRestoreAuth` is meant to find, and would
@@ -2978,7 +2978,7 @@ fn cline_model_id_keys_for_provider(provider: &str) -> (&'static str, &'static s
     }
 }
 
-/// Project cline's native `providers.json` into codeg's unified config shape
+/// Project cline's native `providers.json` into dextra's unified config shape
 /// (`apiProvider` / `model` / `apiKey` / `apiBaseUrl`).
 ///
 /// Picks `lastUsedProvider` when it names a present entry — that is the provider
@@ -3027,7 +3027,7 @@ fn load_cline_provider_settings_at(path: &Path) -> Option<serde_json::Map<String
 ///
 /// Reads cline's native `providers.json` first and only falls back to the legacy
 /// `globalState.json` + `secrets.json` pair when that store holds nothing usable
-/// — the legacy pair is what a pre-3.x install (or an older codeg) left behind,
+/// — the legacy pair is what a pre-3.x install (or an older dextra) left behind,
 /// and surfacing it keeps those users' settings visible until their first save
 /// promotes them into the native store.
 fn load_cline_local_config_json() -> Option<String> {
@@ -3163,7 +3163,7 @@ fn persist_cline_local_config(config_patch_json: Option<&str>) -> Result<(), Acp
 /// be tested without a `$HOME`.
 ///
 /// Merge-preserving on both files: other providers keep their entries, and the
-/// edited provider keeps every `settings` field codeg does not own (`reasoning`,
+/// edited provider keeps every `settings` field dextra does not own (`reasoning`,
 /// `aws`, `headers`, an OAuth `auth` block, …) so a `cline auth` login survives
 /// a save from the panel.
 fn persist_cline_provider_settings_at(
@@ -3222,10 +3222,10 @@ fn persist_cline_provider_settings_at(
         "provider".to_string(),
         serde_json::Value::String(provider.to_string()),
     );
-    // Credentials for a sign-in provider belong to `cline auth`, not to codeg:
+    // Credentials for a sign-in provider belong to `cline auth`, not to dextra:
     // the panel offers no key or endpoint field for them, so there is no user
     // intent to write — and clearing what is not shown would log the user out.
-    // `tokenSource: "oauth"` is the same statement made by an entry codeg does
+    // `tokenSource: "oauth"` is the same statement made by an entry dextra does
     // not otherwise recognize, and is honoured for the same reason.
     let agent_managed_credential =
         cline_provider_is_agent_managed(provider) || token_source == "oauth";
@@ -3304,7 +3304,7 @@ fn persist_cline_models_catalog_at(
         .ok_or_else(|| AcpError::protocol("cline models.json `providers` must be an object"))?;
 
     // Keep any extra models the user registered through `cline auth`, but retire
-    // a previously-written entry for the model codeg is replacing.
+    // a previously-written entry for the model dextra is replacing.
     let mut models = providers
         .get(provider)
         .and_then(|entry| entry.get("models"))
@@ -3374,12 +3374,12 @@ fn load_codex_config_toml_raw() -> Option<String> {
 /// api-key mode, where no DB provider owns it.
 fn load_codex_model_catalog_source_raw() -> Option<String> {
     let home = codex_home_dir();
-    // 1. codeg's own source sidecar → an exact, byte-stable round-trip.
+    // 1. dextra's own source sidecar → an exact, byte-stable round-trip.
     if let Ok(raw) = fs::read_to_string(home.join(crate::acp::codex_model_catalog::SOURCE_REL)) {
         return Some(raw);
     }
     // 2. No sidecar: adopt a pre-existing `model_catalog_json` the user (or an
-    //    older codeg) wrote by hand, so the editor shows those models instead of
+    //    older dextra) wrote by hand, so the editor shows those models instead of
     //    appearing empty — and the next save reproduces them rather than dropping
     //    the reference.
     import_existing_codex_catalog_source(&home)
@@ -3404,7 +3404,7 @@ fn resolve_codex_home_relative(value: &str, codex_home: &Path) -> PathBuf {
 }
 
 /// Read a pre-existing `model_catalog_json` catalog referenced by
-/// `~/.codex/config.toml` and project it into codeg's compact source shape.
+/// `~/.codex/config.toml` and project it into dextra's compact source shape.
 /// Returns `None` when there is no reference, the file is missing/oversized/not
 /// valid JSON, or it yields no usable models.
 fn import_existing_codex_catalog_source(codex_home: &Path) -> Option<String> {
@@ -3535,7 +3535,7 @@ fn codex_config_projection_from_toml(raw_toml: &str) -> serde_json::Map<String, 
     }
 
     // `[features].default_mode_request_user_input` — the flag that lets codex
-    // call `request_user_input` outside Plan mode, i.e. whether codeg's
+    // call `request_user_input` outside Plan mode, i.e. whether dextra's
     // question cards can appear in an ordinary turn at all
     // (openai/codex#24750). Feature flags are resolved when the thread is
     // created, so flipping this only reaches a session that starts afterwards;
@@ -3664,7 +3664,7 @@ fn persist_codex_local_config(config_patch_json: Option<&str>) -> Result<(), Acp
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
-        .unwrap_or_else(|| "codeg".to_string());
+        .unwrap_or_else(|| "dextra".to_string());
     table.insert(
         "model_provider".to_string(),
         toml::Value::String(provider_name.clone()),
@@ -3696,8 +3696,8 @@ fn persist_codex_local_config(config_patch_json: Option<&str>) -> Result<(), Acp
             provider_table.remove("base_url");
         }
     }
-    if provider_name == "codeg" {
-        provider_table.insert("name".to_string(), toml::Value::String("codeg".to_string()));
+    if provider_name == "dextra" {
+        provider_table.insert("name".to_string(), toml::Value::String("dextra".to_string()));
         provider_table.insert(
             "wire_api".to_string(),
             toml::Value::String("responses".to_string()),
@@ -3938,13 +3938,13 @@ fn is_absolute_config_path(value: &str) -> bool {
     }
 }
 
-/// Whether a `model_catalog_json` value points at the file codeg generates.
+/// Whether a `model_catalog_json` value points at the file dextra generates.
 /// Anything else is the user's OWN catalog — hand-written, or authored in the
-/// advanced config.toml editor — and codeg must never delete it. Resolved the
-/// way codex resolves the key, so an absolute path to codeg's own file counts
-/// as codeg-owned too. Unresolvable/foreign values answer `false`, which is the
+/// advanced config.toml editor — and dextra must never delete it. Resolved the
+/// way codex resolves the key, so an absolute path to dextra's own file counts
+/// as dextra-owned too. Unresolvable/foreign values answer `false`, which is the
 /// safe direction (leave the key alone).
-fn is_codeg_owned_catalog_ref(value: &str, codex_home: &Path) -> bool {
+fn is_dextra_owned_catalog_ref(value: &str, codex_home: &Path) -> bool {
     let value = value.trim();
     if value.is_empty() {
         return false;
@@ -3955,11 +3955,11 @@ fn is_codeg_owned_catalog_ref(value: &str, codex_home: &Path) -> bool {
 
 /// Remove the root `model_catalog_json` key from codex's config.toml, keeping
 /// comments and every other key byte-identical. Returns `None` (no write) when
-/// the key is absent **or** points at a catalog codeg does not own, so this is
+/// the key is absent **or** points at a catalog dextra does not own, so this is
 /// safe to call on every save.
 ///
 /// Pairs with [`crate::acp::codex_model_catalog::write_catalog_files`] returning
-/// `None`: codeg's generated files and the reference to them must appear and
+/// `None`: dextra's generated files and the reference to them must appear and
 /// vanish together — codex refuses to start on a dangling `model_catalog_json`.
 fn remove_codex_catalog_key(
     base_toml: &str,
@@ -3971,7 +3971,7 @@ fn remove_codex_catalog_key(
     let owned = doc
         .get("model_catalog_json")
         .and_then(|v| v.as_str())
-        .map(|v| is_codeg_owned_catalog_ref(v, codex_home))
+        .map(|v| is_dextra_owned_catalog_ref(v, codex_home))
         .unwrap_or(false);
     if !owned {
         return Ok(None);
@@ -3980,9 +3980,9 @@ fn remove_codex_catalog_key(
     Ok(Some(doc.to_string()))
 }
 
-/// Drop codeg's own `model_catalog_json` reference from the config.toml on disk,
+/// Drop dextra's own `model_catalog_json` reference from the config.toml on disk,
 /// if it carries one. Reads fresh so it also cleans up a key written by an
-/// earlier codeg version or by another window since the panel opened.
+/// earlier dextra version or by another window since the panel opened.
 fn drop_codex_catalog_reference() -> Result<(), AcpError> {
     let base = read_codex_config_or_empty()?;
     if let Some(next) = remove_codex_catalog_key(&base, &codex_home_dir())? {
@@ -4239,7 +4239,7 @@ fn parse_grok_settings(raw_toml: &str) -> GrokSettings {
             .as_integer()
     };
 
-    // The codeg-managed custom model = `[models].default`, but only when a
+    // The dextra-managed custom model = `[models].default`, but only when a
     // matching `[model.<default>]` table exists — a hand-set stock default that
     // has no `[model.*]` block is left untracked (the panel shows it empty).
     let custom_model_id = get("models", "default").filter(|id| {
@@ -4284,7 +4284,7 @@ fn parse_grok_settings(raw_toml: &str) -> GrokSettings {
 }
 
 /// grok's real `--permission-mode` enum (docs.x.ai / verified against the
-/// 0.2.99 binary). codeg historically wrote a codeg-invented
+/// 0.2.99 binary). dextra historically wrote a dextra-invented
 /// `permission_mode = "always-approve"` / `"ask"` into `~/.grok/config.toml`,
 /// neither of which grok accepts — `grok --permission-mode always-approve`
 /// errors out. `migrate_grok_permission_mode` maps those legacy markers onto the
@@ -4312,8 +4312,8 @@ fn migrate_grok_permission_mode(value: &str) -> &str {
 
 /// Pure helper: the `--permission-mode` value this Grok `config.toml` should hand
 /// the ACP launch, or `None` to pass no flag. `default` (grok's own default —
-/// ACP permission requests flow to codeg's UI) and unset/unrecognized values map
-/// to `None`, preserving the historical "ask" behaviour where codeg prompts.
+/// ACP permission requests flow to dextra's UI) and unset/unrecognized values map
+/// to `None`, preserving the historical "ask" behaviour where dextra prompts.
 fn grok_config_permission_mode(config_toml: &str) -> Option<String> {
     parse_grok_settings(config_toml)
         .permission_mode
@@ -4323,7 +4323,7 @@ fn grok_config_permission_mode(config_toml: &str) -> Option<String> {
 /// The `--permission-mode <value>` Grok's ACP launch should carry, read from the
 /// global `~/.grok/config.toml` `[ui].permission_mode` (legacy-migrated by
 /// `parse_grok_settings`). Best-effort: a missing/unreadable/`default` config
-/// yields `None`, so the default preserves codeg's ability to prompt for approvals.
+/// yields `None`, so the default preserves dextra's ability to prompt for approvals.
 pub(crate) fn grok_launch_permission_mode() -> Option<String> {
     load_grok_config_toml_raw().and_then(|raw| grok_config_permission_mode(&raw))
 }
@@ -4337,7 +4337,7 @@ pub(crate) fn grok_launch_permission_mode() -> Option<String> {
 /// `runTurn`, taken from an `AgentMode` seeded once per session from
 /// `INITIAL_AGENT_MODE` (default `agent` = `on-request` + `workspace-write`).
 /// So `approval_policy` / `sandbox_mode` in `config.toml` are **dead** for any
-/// codeg session — chat and work task alike — even though codeg's Codex panel
+/// dextra session — chat and work task alike — even though dextra's Codex panel
 /// reads, writes and fingerprints them (#442). This env var is the only
 /// launch-time channel that makes the user's own config mean anything, exactly
 /// like [`grok_launch_permission_mode`] above.
@@ -4393,7 +4393,7 @@ pub(crate) fn grok_launch_permission_mode() -> Option<String> {
 ///   trade.
 ///
 /// So the reviewer change is treated as what it is: an upstream default that
-/// every ACP client now inherits. codeg DISCLOSES it in the Codex panel, and the
+/// every ACP client now inherits. dextra DISCLOSES it in the Codex panel, and the
 /// composer's approval-preset selector ("Ask for approval") remains the
 /// first-class, per-session control for a user who wants to adjudicate directly.
 ///
@@ -4429,10 +4429,10 @@ fn codex_initial_agent_mode(settings: &CodexSandboxSettings) -> Option<&'static 
     // codex runs that read-only, but the root keys alone say "full access, no
     // approvals" — and because codex-acp re-sends the preset's policy on every
     // turn, injecting `agent-full-access` here would actually GRANT it. Decline
-    // instead. codeg cannot resolve the profile, so it must not guess: this
+    // instead. dextra cannot resolve the profile, so it must not guess: this
     // leaves codex-acp's own default preset, i.e. exactly the behavior that
     // existed before this mapping (the residual gap between that default and a
-    // stricter profile is pre-existing and not something codeg can close without
+    // stricter profile is pre-existing and not something dextra can close without
     // implementing codex's whole `[permissions]` resolution).
     if settings.shadowed_by_default_permissions {
         return None;
@@ -4506,7 +4506,7 @@ fn apply_grok_structured_config(
     Ok(doc.to_string())
 }
 
-/// Write / rename / remove the codeg-managed custom Grok model. The managed block
+/// Write / rename / remove the dextra-managed custom Grok model. The managed block
 /// is anchored as "the `[model.<id>]` whose id equals `[models].default`":
 ///  - a non-empty `custom_model_id` writes (or renames the previous managed block
 ///    to) `[model.<id>]` and points `[models].default` at it;
@@ -4522,7 +4522,7 @@ fn apply_grok_custom_model(
 ) -> Result<(), AcpError> {
     // Previously-managed id = current `[models].default`, but only when a matching
     // `[model.<default>]` table exists (so a hand-set stock default is never
-    // mistaken for a codeg block and removed).
+    // mistaken for a dextra block and removed).
     let prev_id = doc
         .get("models")
         .and_then(|m| m.as_table_like())
@@ -4771,41 +4771,41 @@ fn persist_opencode_auth_json(raw_auth: &str) -> Result<(), AcpError> {
 // required`. The only advertised ACP auth method is a terminal device-code login
 // (`kimi acp --login`), which requires a Kimi *subscription* account.
 //
-// To support plain API-key users, codeg therefore manages BOTH halves:
-//   1. `config.toml` — a codeg-managed `[providers."codeg"]` + `[models."codeg-managed"]`
+// To support plain API-key users, dextra therefore manages BOTH halves:
+//   1. `config.toml` — a dextra-managed `[providers."dextra"]` + `[models."dextra-managed"]`
 //      + `default_model` block that ROUTES INFERENCE to the user's API key
 //      (any of the six native interface types: kimi / openai / openai_responses /
 //      anthropic / google-genai / vertexai).
-//   2. `credentials/kimi-code.json` — a synthetic gate token codeg seeds so the
+//   2. `credentials/kimi-code.json` — a synthetic gate token dextra seeds so the
 //      ACP session opens. It is purely local: because `default_model` points at
 //      the API-key provider, the managed/OAuth endpoint is never called and this
-//      token is never transmitted. It carries a `_codeg_synthetic` marker so we
+//      token is never transmitted. It carries a `_dextra_synthetic` marker so we
 //      only ever remove OUR token, never a real login the user performed.
 //
-// The codeg-managed block is keyed by the fixed names `codeg` / `codeg-managed`
+// The dextra-managed block is keyed by the fixed names `dextra` / `dextra-managed`
 // so it is recognizable and removable without disturbing any provider/model the
 // user added by hand. The raw config.toml editor is the comment/format escape
 // hatch. A stale `KIMI_MODEL_*` env override would silently win over config.toml,
 // so every save also clears it.
 // ---------------------------------------------------------------------------
 
-const KIMI_MANAGED_PROVIDER: &str = "codeg";
-const KIMI_MANAGED_MODEL_ALIAS: &str = "codeg-managed";
+const KIMI_MANAGED_PROVIDER: &str = "dextra";
+const KIMI_MANAGED_MODEL_ALIAS: &str = "dextra-managed";
 const KIMI_MODEL_API_KEY_ENV: &str = "KIMI_MODEL_API_KEY";
 const KIMI_MODEL_BASE_URL_ENV: &str = "KIMI_MODEL_BASE_URL";
 const KIMI_MODEL_NAME_ENV: &str = "KIMI_MODEL_NAME";
-/// Sentinel `access_token` value (and `_codeg_synthetic` marker) identifying the
-/// gate token codeg seeds, so we never clobber a real OAuth login.
-const KIMI_SYNTHETIC_TOKEN_ACCESS: &str = "codeg-local-gate";
+/// Sentinel `access_token` value (and `_dextra_synthetic` marker) identifying the
+/// gate token dextra seeds, so we never clobber a real OAuth login.
+const KIMI_SYNTHETIC_TOKEN_ACCESS: &str = "dextra-local-gate";
 /// Fallback context window for the managed model. Kimi's config schema **requires**
 /// `[models.<alias>].max_context_size` to be a positive integer — omitting it makes
-/// kimi discard the whole model block ("Ignored invalid config … models.codeg-managed"),
+/// kimi discard the whole model block ("Ignored invalid config … models.dextra-managed"),
 /// which leaves `default_model` dangling and every prompt ends with no reply. So we
 /// always write one, defaulting to the kimi-k2 256K window when the user leaves it blank.
 ///
 /// This deliberately does NOT track `parsers::infer_context_window_max_tokens`, which
 /// puts `kimi-k3` on a 1M lane. The two answer different questions: that one reads a
-/// past session's model id to draw a gauge, while this one is the budget codeg DECLARES
+/// past session's model id to draw a gauge, while this one is the budget dextra DECLARES
 /// for a bring-your-own provider whose model is unknown — the managed block routes to
 /// any of the six interface types, so the model behind it may be GPT or Claude, not a
 /// Kimi model at all. Kimi spends the declared number rather than checking it (a live
@@ -4848,13 +4848,13 @@ fn kimi_provider_key_env_var(interface_type: &str) -> Option<&'static str> {
     }
 }
 
-/// The resolved codeg-managed provider/model block to write into config.toml.
+/// The resolved dextra-managed provider/model block to write into config.toml.
 struct KimiManagedSpec {
     interface_type: String,
     base_url: Option<String>,
     /// Direct `api_key` field (when the user picks "direct key" auth).
     api_key: Option<String>,
-    /// `[providers.codeg.env]` sub-table entries — the env-sub-table API key, or
+    /// `[providers.dextra.env]` sub-table entries — the env-sub-table API key, or
     /// Vertex's `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION`.
     env: BTreeMap<String, String>,
     model: String,
@@ -4886,8 +4886,8 @@ const KIMI_CAPABILITY_THINKING: &str = "thinking";
 /// Same, but kimi drops the `Off` row: the model cannot stop reasoning.
 const KIMI_CAPABILITY_ALWAYS_THINKING: &str = "always_thinking";
 
-/// Upsert (`Some`) or remove (`None`) the codeg-managed `[providers.codeg]` +
-/// `[models.codeg-managed]` block in a parsed config.toml document, preserving
+/// Upsert (`Some`) or remove (`None`) the dextra-managed `[providers.dextra]` +
+/// `[models.dextra-managed]` block in a parsed config.toml document, preserving
 /// every other section the user authored. Removal also resets `default_model`
 /// only when it points at our managed alias.
 fn apply_kimi_managed_block(
@@ -5031,7 +5031,7 @@ fn apply_kimi_managed_block(
 }
 
 /// Read-modify-write `config.toml`, upserting (`Some`) or clearing (`None`) the
-/// codeg-managed block. A clear on a non-existent file is a no-op (never creates
+/// dextra-managed block. A clear on a non-existent file is a no-op (never creates
 /// an empty file). Reuses the existing `toml` crate: data in other sections is
 /// preserved; comments/formatting are not (the raw editor covers that).
 fn mutate_kimi_config_toml(spec: Option<&KimiManagedSpec>) -> Result<(), AcpError> {
@@ -5071,12 +5071,12 @@ fn read_kimi_token() -> Option<serde_json::Value> {
     read_kimi_token_at(&kimi_code_credentials_token_path())
 }
 
-/// Whether a token document is codeg's synthetic gate token (vs a real OAuth
+/// Whether a token document is dextra's synthetic gate token (vs a real OAuth
 /// login the user performed via `kimi login`). Matches either the sentinel
-/// `access_token` or the explicit `_codeg_synthetic` marker.
+/// `access_token` or the explicit `_dextra_synthetic` marker.
 fn kimi_token_is_synthetic(token: &serde_json::Value) -> bool {
     token
-        .get("_codeg_synthetic")
+        .get("_dextra_synthetic")
         .and_then(serde_json::Value::as_bool)
         == Some(true)
         || token.get("access_token").and_then(serde_json::Value::as_str)
@@ -5098,14 +5098,14 @@ fn kimi_credential_present() -> bool {
     read_kimi_token().map(|t| kimi_token_has_access(&t)).unwrap_or(false)
 }
 
-/// Whether the present credential is codeg's synthetic gate token.
+/// Whether the present credential is dextra's synthetic gate token.
 fn kimi_credential_is_synthetic() -> bool {
     read_kimi_token()
         .map(|t| kimi_token_is_synthetic(&t))
         .unwrap_or(false)
 }
 
-/// Seed codeg's synthetic gate token at `path` so `kimi acp` treats the session
+/// Seed dextra's synthetic gate token at `path` so `kimi acp` treats the session
 /// as authenticated. No-op (preserves) when a REAL OAuth login token is already
 /// present — that already satisfies the gate and must never be clobbered.
 fn seed_kimi_synthetic_credential_at(path: &Path) -> Result<(), AcpError> {
@@ -5121,7 +5121,7 @@ fn seed_kimi_synthetic_credential_at(path: &Path) -> Result<(), AcpError> {
         "expires_in": 9_999_999i64,
         "scope": "",
         "token_type": "Bearer",
-        "_codeg_synthetic": true,
+        "_dextra_synthetic": true,
     });
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| {
@@ -5139,7 +5139,7 @@ fn seed_kimi_synthetic_credential() -> Result<(), AcpError> {
     seed_kimi_synthetic_credential_at(&kimi_code_credentials_token_path())
 }
 
-/// Remove the gate token at `path` ONLY when it is codeg's synthetic one —
+/// Remove the gate token at `path` ONLY when it is dextra's synthetic one —
 /// leaving any real OAuth login the user performed untouched.
 fn remove_kimi_synthetic_credential_if_ours_at(path: &Path) -> Result<(), AcpError> {
     match read_kimi_token_at(path) {
@@ -5153,7 +5153,7 @@ fn remove_kimi_synthetic_credential_if_ours() -> Result<(), AcpError> {
     remove_kimi_synthetic_credential_if_ours_at(&kimi_code_credentials_token_path())
 }
 
-/// Project the codeg-managed config.toml block into a flat JSON object for the
+/// Project the dextra-managed config.toml block into a flat JSON object for the
 /// settings panel, plus the raw file text for the advanced editor. Uses keys
 /// (`baseUrl` / `key` / `modelId`, never `apiBaseUrl` / `apiKey` / `model` /
 /// `env`) that do NOT match `AgentRuntimeConfig`, so `build_runtime_env_from_setting`
@@ -5304,7 +5304,7 @@ fn load_kimi_code_config_json() -> Option<String> {
         }
     };
     // Surface the gate-credential state so the panel can show whether `kimi acp`
-    // is currently authenticated and whether that came from codeg's synthetic
+    // is currently authenticated and whether that came from dextra's synthetic
     // token or a real OAuth login.
     merged.insert(
         "credentialPresent".to_string(),
@@ -5321,7 +5321,7 @@ fn load_kimi_code_config_json() -> Option<String> {
 }
 
 /// Structured Kimi Code config update from the settings UI. `mode` is one of:
-/// `apikey` — write the codeg-managed `config.toml` provider/model block AND seed
+/// `apikey` — write the dextra-managed `config.toml` provider/model block AND seed
 /// the synthetic gate token, so the API key actually authenticates `kimi acp`;
 /// `login` — clear the managed block + remove our synthetic token so a real OAuth
 /// login governs; `raw` — write a verbatim config.toml then seed the gate token.
@@ -5489,7 +5489,7 @@ fn build_kimi_managed_spec(update: &KimiCodeConfigUpdate) -> Result<KimiManagedS
 /// Clear any `KIMI_MODEL_*` env override from the DB `env_json`, preserving every
 /// other env key and the agent's enabled/provider state. `kimi acp` reads that
 /// env family BEFORE config.toml, so a stale entry would silently override the
-/// codeg-managed provider; every save clears it to keep config.toml authoritative.
+/// dextra-managed provider; every save clears it to keep config.toml authoritative.
 /// Ensures the settings row exists first. No-op fast path when nothing to clear.
 async fn clear_kimi_model_env(db: &AppDatabase) -> Result<(), AcpError> {
     let default = agent_setting_service::AgentDefaultInput {
@@ -5678,7 +5678,7 @@ pub(crate) async fn acp_fetch_kimi_models_core(
 // model selection from `~/.pi/agent/settings.json` (`defaultProvider`,
 // `defaultModel`, `defaultThinkingLevel` — plain strings) and its API keys from
 // `~/.pi/agent/auth.json` (`{ "<provider>": { "type": "api_key", "key": ... } }`).
-// codeg manages both NATIVE files directly (merge-writes that preserve every
+// dextra manages both NATIVE files directly (merge-writes that preserve every
 // other key), mirroring how it manages Codex's `auth.json`/`config.toml`. The
 // agent dir honors `PI_CODING_AGENT_DIR` so a custom pi install can be targeted.
 // ---------------------------------------------------------------------------
@@ -5711,7 +5711,7 @@ fn pi_models_json_path() -> PathBuf {
 /// Like [`pi_agent_dir`], but resolves `PI_CODING_AGENT_DIR` from a per-agent
 /// `runtime_env` map first (the BYO-pi override path) before falling back to the
 /// process env / `~/.pi/agent`. Launch-time trust seeding only has the per-agent
-/// env (the override never lands in codeg's own process env), so it must consult
+/// env (the override never lands in dextra's own process env), so it must consult
 /// `runtime_env` to target the same agent dir pi-acp will spawn pi against.
 fn pi_agent_dir_for_env(runtime_env: &BTreeMap<String, String>) -> PathBuf {
     match runtime_env
@@ -5725,7 +5725,7 @@ fn pi_agent_dir_for_env(runtime_env: &BTreeMap<String, String>) -> PathBuf {
 }
 
 // NOTE: the per-agent `env_json` key `PI_ACP_TRUST_WORKSPACE` used to gate
-// launch-time workspace-trust seeding here. codeg no longer seeds trust at all —
+// launch-time workspace-trust seeding here. dextra no longer seeds trust at all —
 // project trust is an explicit per-workspace decision now — so nothing on the
 // Rust side reads that key. The frontend still lists it as a reserved pi env key
 // so a `"0"` persisted by an older build stays out of the raw env editor instead
@@ -5737,7 +5737,7 @@ fn pi_agent_dir_for_env(runtime_env: &BTreeMap<String, String>) -> PathBuf {
 ///
 /// This list is a mirror of another project's constant, so it can drift if pi
 /// adds a resource kind. It fails safe in both directions: under-detecting only
-/// means codeg stays quiet about resources pi would ignore anyway (pi's own
+/// means dextra stays quiet about resources pi would ignore anyway (pi's own
 /// non-interactive default is "don't load"), and over-detecting only costs one
 /// extra prompt. Neither direction can load a resource without the user's word.
 const PI_TRUST_REQUIRING_CONFIG_RESOURCES: [&str; 7] = [
@@ -5874,20 +5874,20 @@ pub struct PiProjectTrustState {
     pub decided_at: Option<String>,
     /// Absolute path of pi's `trust.json`, so the UI can point at the real file.
     pub trust_file: String,
-    /// Whether the user has been shown, in this codeg, that this folder is
+    /// Whether the user has been shown, in this dextra, that this folder is
     /// trusted. A grant with `acknowledged == false` is one nobody here has
     /// confirmed — most likely written by the build that auto-trusted every
     /// opened folder — and blocks the launch until it is answered.
     pub acknowledged: bool,
 }
 
-/// codeg's own record of which trusted workspaces the user has confirmed.
+/// dextra's own record of which trusted workspaces the user has confirmed.
 ///
 /// Deliberately NOT stored in pi's `trust.json`: that file is pi's, has no field
 /// for this, and its entries carry no provenance — which is the whole problem.
-/// A flat `{ "<canonical dir>": true }` map in codeg's own home.
+/// A flat `{ "<canonical dir>": true }` map in dextra's own home.
 fn pi_trust_ack_path() -> PathBuf {
-    crate::paths::codeg_home_dir().join("pi-project-trust-ack.json")
+    crate::paths::dextra_home_dir().join("pi-project-trust-ack.json")
 }
 
 fn pi_trust_is_acknowledged_at(ack_file: &Path, workspace: &str) -> bool {
@@ -5926,7 +5926,7 @@ pub struct PiTrustEntry {
 /// Resolve the pi agent dir the launch path will use: the per-agent `env_json`
 /// (BYO `PI_CODING_AGENT_DIR`) first, then the process env / `~/.pi/agent`.
 ///
-/// The override only ever lands in the per-agent env, never codeg's own process
+/// The override only ever lands in the per-agent env, never dextra's own process
 /// env, so reading `std::env` here would silently target the wrong agent dir for
 /// BYO-pi users — the same trap the old launch-time seeding documented.
 async fn pi_agent_dir_from_db(db: &AppDatabase) -> PathBuf {
@@ -5999,7 +5999,7 @@ pub(crate) fn pi_project_trust_launch_block(
     };
     Some(format!(
         "pi is allowed to load this project's own files from {}, which lets the repository run its .pi/extensions at startup.{via} \
-         An earlier version of codeg granted this automatically when a folder was opened, so you may never have been asked. \
+         An earlier version of dextra granted this automatically when a folder was opened, so you may never have been asked. \
          Review it in the project-trust notice above, or under Settings → Agents → Pi, then connect again.",
         state.workspace
     ))
@@ -6052,7 +6052,7 @@ async fn antigravity_runtime_env(db: &AppDatabase) -> Result<BTreeMap<String, St
 
 /// Start a browser-free Antigravity sign-in and hand back the link to open.
 ///
-/// For headless deployments (codeg on a Linux server, no desktop), where the
+/// For headless deployments (dextra on a Linux server, no desktop), where the
 /// agent's own loopback browser flow cannot complete: it opens a browser that
 /// does not exist and then blocks for five minutes inside `session/new`. See
 /// [`crate::acp::antigravity_login`].
@@ -6088,19 +6088,19 @@ pub(crate) async fn acp_antigravity_login_cancel_core(handle: String) -> Result<
 /// Three steps around the `logout`, each closing a way for the sign-out to look
 /// like it worked when it did not.
 ///
-/// 1. **Refuse unless codeg knows the agent will clear something.** `logout`
+/// 1. **Refuse unless dextra knows the agent will clear something.** `logout`
 ///    clears ONE flavor — the one `settings.json` names — and for a
 ///    `gemini-api-key` or `agent-platform` connection that set is empty, since
 ///    those read their key per request rather than storing anything. It answers
 ///    `{}` regardless. Verified against 1.1.1: with `auth.type=gemini-api-key`
 ///    and a `GEMINI_API_KEY` present, `logout` returns `{}`, deletes no token
-///    file, and still strips `auth.type` — so without this check codeg would
+///    file, and still strips `auth.type` — so without this check dextra would
 ///    report a sign-out that left the account exactly where it was.
 ///
 ///    The FILE is consulted rather than the stored row because it is the only
-///    thing the server infers from. And a file codeg cannot parse is refused
-///    rather than assumed harmless: the server reads Hjson and codeg does not,
-///    so "codeg sees no method" and "there is no method" are different facts,
+///    thing the server infers from. And a file dextra cannot parse is refused
+///    rather than assumed harmless: the server reads Hjson and dextra does not,
+///    so "dextra sees no method" and "there is no method" are different facts,
 ///    and only the second is safe to act on.
 /// 2. **Quiesce this agent first, and keep it quiesced.** Antigravity processes
 ///    cache the OAuth credentials in memory behind a per-PROCESS lock and write
@@ -6133,10 +6133,10 @@ pub(crate) async fn acp_antigravity_sign_out_core(
         }
         AntigravityAuthType::Unreadable => {
             return Err(AcpError::protocol(
-                "codeg cannot read the authentication method out of Antigravity's settings.json, \
+                "dextra cannot read the authentication method out of Antigravity's settings.json, \
                  so it cannot tell which account would be signed out — or whether anything would \
                  be. Make that file strict JSON (the server also accepts comments and trailing \
-                 commas; codeg does not), or move it aside, then try again.",
+                 commas; dextra does not), or move it aside, then try again.",
             ));
         }
         // Declared OAuth clears that flavor; `Absent` leaves the server nothing
@@ -6188,7 +6188,7 @@ pub(crate) async fn acp_pi_project_trust_state_core(
 }
 
 /// Record that the user has seen and kept an existing trust grant, so the launch
-/// gate stops blocking this folder. Writes only codeg's own record — pi's
+/// gate stops blocking this folder. Writes only dextra's own record — pi's
 /// `trust.json` is untouched, because the grant itself is not changing.
 pub(crate) async fn acp_pi_acknowledge_project_trust_core(workspace: String) -> Result<(), AcpError> {
     tokio::task::spawn_blocking(move || {
@@ -6200,18 +6200,18 @@ pub(crate) async fn acp_pi_acknowledge_project_trust_core(workspace: String) -> 
 
 /// Record an explicit project-trust decision for `workspace` in pi's `trust.json`.
 ///
-/// This is the ONLY place codeg writes into pi's trust store, and it runs solely
-/// from a user action in the approval UI. codeg used to write `true` here on every
+/// This is the ONLY place dextra writes into pi's trust store, and it runs solely
+/// from a user action in the approval UI. dextra used to write `true` here on every
 /// pi launch, which auto-approved repo-shipped `.pi/extensions` (arbitrary code at
 /// pi startup) and — because entries are inherited by every subdirectory and are
 /// read by the user's standalone `pi` CLI too — silently widened far past the
 /// session that triggered it.
 ///
 /// `trusted`: `Some(true)`/`Some(false)` write that verdict for the exact
-/// canonical dir; `None` removes codeg's entry so the folder falls back to any
+/// canonical dir; `None` removes dextra's entry so the folder falls back to any
 /// ancestor decision, then to pi's own default (the revoke path).
 ///
-/// Scoped to the one directory, and never clobbers a `trust.json` codeg can't
+/// Scoped to the one directory, and never clobbers a `trust.json` dextra can't
 /// parse — that file holds decisions the user made inside pi.
 pub(crate) async fn acp_pi_set_project_trust_core(
     db: &AppDatabase,
@@ -6236,7 +6236,7 @@ pub(crate) async fn acp_pi_set_project_trust_core(
     .map_err(|e| AcpError::protocol(format!("trust write task failed: {e}")))?
 }
 
-/// Serializes codeg's own trust writes. Two surfaces can issue them at once —
+/// Serializes dextra's own trust writes. Two surfaces can issue them at once —
 /// the approval banner and the settings list's revoke buttons — and the write is
 /// a read-modify-write, so without this one call could drop the entry another
 /// just added. The cross-process lock below does not cover this: both callers
@@ -6244,7 +6244,7 @@ pub(crate) async fn acp_pi_set_project_trust_core(
 static PI_TRUST_WRITE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 /// How long a lock may sit untouched before it counts as abandoned by a crashed
-/// process. Mirrors `proper-lockfile`'s default `stale` window so codeg and pi
+/// process. Mirrors `proper-lockfile`'s default `stale` window so dextra and pi
 /// agree on when a leftover lock stops holding everyone up.
 const PI_TRUST_LOCK_STALE: Duration = Duration::from_secs(10);
 
@@ -6369,8 +6369,8 @@ fn pi_write_trust_decision_at(
 }
 
 /// Every decision recorded in pi's `trust.json`, for the settings-page review
-/// list. Entries codeg auto-seeded before this became a user decision are
-/// indistinguishable from ones the user made inside pi (codeg never recorded
+/// list. Entries dextra auto-seeded before this became a user decision are
+/// indistinguishable from ones the user made inside pi (dextra never recorded
 /// provenance), so they are listed for review rather than pruned automatically —
 /// pruning would silently revoke the user's own approvals.
 pub(crate) async fn acp_pi_list_trust_entries_core(
@@ -6444,7 +6444,7 @@ const PI_THINKING_LEVELS: [&str; 6] = ["off", "minimal", "low", "medium", "high"
 
 /// Read a JSON file into an owned object map, returning an empty map when the
 /// file is absent, unreadable, or does not parse to a JSON object. Pi's native
-/// files are small and codeg-owned; corruption shouldn't abort a save (we
+/// files are small and dextra-owned; corruption shouldn't abort a save (we
 /// re-author the managed keys and preserve whatever else parses).
 fn read_json_object_or_empty(path: &Path) -> serde_json::Map<String, serde_json::Value> {
     fs::read_to_string(path)
@@ -6480,7 +6480,7 @@ fn write_json_object_pretty(
 ///
 /// Merge-preserving by design: a model the user hand-tuned in `models.json` keeps its
 /// `cost` / `contextWindow` / `headers` / `compat` / renamed `name`, because those are
-/// fields codeg's form has no opinion about. Only the reasoning keys are re-authored.
+/// fields dextra's form has no opinion about. Only the reasoning keys are re-authored.
 ///
 /// The upsert also fixes the older skip-if-present behaviour, under which re-saving an
 /// already-listed model wrote nothing at all — the reason a reasoning declaration could
@@ -6914,7 +6914,7 @@ fn probe_pi_version(resolved: &Path) -> Option<String> {
 //
 // Hermes self-manages credentials in `~/.hermes/.env` (secrets) and general
 // settings in `~/.hermes/config.yaml` (the `model:` section), reading them with
-// its own runtime resolver. codeg manages those two files directly — mirroring
+// its own runtime resolver. dextra manages those two files directly — mirroring
 // how it manages Codex's `auth.json` + `config.toml` — rather than injecting
 // process env. The provider choice drives the linkage: it selects which `.env`
 // var holds the API key and which `model.provider` / `model.base_url` go into
@@ -6942,14 +6942,14 @@ struct HermesProvider {
     key_env_var: &'static str,
     needs_base_url: bool,
     /// The `.env` variable Hermes reads for a user-supplied endpoint URL. When
-    /// set (only `openai-api` today), codeg mirrors the structured base URL into
+    /// set (only `openai-api` today), dextra mirrors the structured base URL into
     /// both this var and config.yaml `model.base_url`, because Hermes' own
     /// resolution paths disagree on which one wins — keeping them in sync makes
     /// the saved endpoint authoritative under either path.
     base_url_env_var: &'static str,
 }
 
-/// Curated subset of Hermes providers codeg edits via structured fields, keyed
+/// Curated subset of Hermes providers dextra edits via structured fields, keyed
 /// by the canonical `model.provider` id and `.env` key var from Hermes'
 /// `hermes_cli/auth.py` PROVIDER_REGISTRY (the single source of truth its own
 /// setup uses). The long tail and any exotic credential layout go through the
@@ -7219,7 +7219,7 @@ fn hermes_provider(id: &str) -> Option<&'static HermesProvider> {
 /// unchanged through 0.20.0, where `custom` stays deliberately outside
 /// PROVIDER_REGISTRY ("handled outside the registry", auth.py) and the new v12
 /// named `providers:` mapping is a separate `custom:<name>` namespace that
-/// codeg's raw config editor governs. `custom` has no `.env` key var, so the
+/// dextra's raw config editor governs. `custom` has no `.env` key var, so the
 /// key rides in the `model:` section next to `base_url`. Drives both the
 /// structured write (`plan_hermes_write`) and the panel projection
 /// (`project_hermes_key_and_base`).
@@ -7669,7 +7669,7 @@ pub(crate) struct HermesConfigUpdate {
 fn hermes_skip_chmod() -> bool {
     // Match Hermes' Python truthiness (`os.environ.get(...)` — an empty value is
     // falsy): only a NON-EMPTY opt-out enables skip, so a blank `HERMES_SKIP_CHMOD=`
-    // does not (and codeg still performs the 0644→0600 repair Hermes would).
+    // does not (and dextra still performs the 0644→0600 repair Hermes would).
     let truthy = |key: &str| std::env::var(key).map(|v| !v.is_empty()).unwrap_or(false);
     if truthy("HERMES_CONTAINER")
         || truthy("HERMES_SKIP_CHMOD")
@@ -7698,7 +7698,7 @@ fn parse_hermes_home_mode(raw: Option<&str>) -> u32 {
 }
 
 /// Create the Hermes home directory if needed. On Unix, tighten it to
-/// `HERMES_HOME_MODE` (or `0700`) **only when codeg just created it** and Hermes
+/// `HERMES_HOME_MODE` (or `0700`) **only when dextra just created it** and Hermes
 /// itself would chmod (not a container/managed deployment). An existing
 /// `HERMES_HOME` is left untouched — it may be a NixOS-managed `0750`, a
 /// UID-mapped Docker volume, or otherwise deliberately group-accessible, and
@@ -7723,7 +7723,7 @@ pub(crate) fn ensure_hermes_home_secure(home: &Path) -> Result<(), AcpError> {
 /// A brand-new secret — a path whose resolved target does not exist yet, whether
 /// `path` itself is absent or a symlink to a missing target — is created
 /// owner-only (`0600` on Unix) so it is never world-readable under the process
-/// umask, the one real exposure for a first-time codeg-driven setup. An EXISTING
+/// umask, the one real exposure for a first-time dextra-driven setup. An EXISTING
 /// target is written through in place, which preserves everything that identifies
 /// it: its inode, mode, owner/group, POSIX ACL and xattrs, and any symlink (a
 /// dotfile-manager or secret-manager `~/.hermes/.env` keeps pointing at its real
@@ -7770,7 +7770,7 @@ pub(crate) fn write_hermes_secret_file(
     {
         use std::os::unix::fs::PermissionsExt;
         // Repair an accidentally WORLD-accessible secret (e.g. a `0644` left by an
-        // older codeg build or by the pre-fix dangling-symlink path) back to
+        // older dextra build or by the pre-fix dangling-symlink path) back to
         // owner-only `0600`: a world-readable API key is a leak, and tightening it
         // to `0640` would still expose it to a broad group like `staff`. A file
         // with no "other" bits — including a deliberately group-shared managed
@@ -7876,7 +7876,7 @@ fn plan_hermes_write(
         // `custom` provider IS handled (its key/endpoint live inline in
         // config.yaml — see `hermes_inlines_api_key`), but unknown ids (the
         // legacy `openai` pseudo-provider, user-defined `custom:` slugs, or
-        // anything outside the table) have no credential layout codeg can map —
+        // anything outside the table) have no credential layout dextra can map —
         // reject them and steer the user to the raw config.yaml editor, which
         // stays the escape hatch.
         let meta = hermes_provider(provider).ok_or_else(|| {
@@ -7987,7 +7987,7 @@ fn base_url_eq(a: &str, b: &str) -> bool {
 /// var, so auxiliary tasks (title generation, compression, …) silently fall
 /// back to the provider's registry-default host and 401 against the wrong
 /// endpoint. The settings panel already mirrors both on save; this covers
-/// configs authored outside codeg.
+/// configs authored outside dextra.
 ///
 /// Scope is the single ACTIVE provider's own base-URL var, never another
 /// provider's. Returns `Some((env_var, value))` to write — `value` is the
@@ -8047,7 +8047,7 @@ fn plan_hermes_base_url_reconcile(
 /// used VERBATIM (`Path(val)` — Hermes does NOT expand `~`); a blank value falls
 /// back to the default `~/.hermes` (it does NOT re-inherit the parent). With no
 /// override the child inherits the parent env, so defer to `hermes_home_dir()`
-/// (codeg's existing resolution, shared with the settings panel).
+/// (dextra's existing resolution, shared with the settings panel).
 fn hermes_home_for_launch(runtime_env: &BTreeMap<String, String>) -> PathBuf {
     match runtime_env.get("HERMES_HOME") {
         Some(raw) => {
@@ -8147,7 +8147,7 @@ fn agent_local_config_path(agent_type: AgentType) -> Option<PathBuf> {
         // `acp_update_agent_config_core` (written verbatim) and never reaches
         // this module's generic merge-persist, which could not delete a key.
         //
-        // Note this file has other writers: codeg's own MCP settings page owns
+        // Note this file has other writers: dextra's own MCP settings page owns
         // its top-level `mcpServers` (see `commands::mcp::qoder_settings_path`,
         // which resolves the same path through the same helper).
         AgentType::Qoder => Some(qoder_settings_json_path()),
@@ -8406,7 +8406,7 @@ pub(crate) fn skill_storage_spec(agent_type: AgentType) -> Option<SkillStorageSp
         // off the DATA home (so `KIMI_CODE_HOME` moves it) while the shared
         // store hangs off the OS home (so it does not), which is why only the
         // first goes through `resolve_kimi_code_home_dir`. The kimi-native dir
-        // stays first so codeg links into Kimi's own store by default and
+        // stays first so dextra links into Kimi's own store by default and
         // toggling Kimi does not move a skill out from under pi/cline/codex,
         // which share `~/.agents/skills` too.
         //
@@ -8424,7 +8424,7 @@ pub(crate) fn skill_storage_spec(agent_type: AgentType) -> Option<SkillStorageSp
         }),
         // pi auto-loads skills from `~/.pi/agent/skills` and the shared
         // `~/.agents/skills` store (both global), plus project-local
-        // `.pi/skills` / `.agents/skills` once the workspace is trusted (codeg
+        // `.pi/skills` / `.agents/skills` once the workspace is trusted (dextra
         // seeds that trust on connect). `~/.pi/agent/skills` additionally
         // accepts standalone `.md` files, so this mirrors Codex's spec shape.
         // The pi-native dir comes first so toggling pi links into its own dir
@@ -8496,7 +8496,7 @@ pub(crate) fn skill_storage_spec(agent_type: AgentType) -> Option<SkillStorageSp
         // installs to `.agents` alone (and to a bare `<cwd>/skills`, which
         // nothing scans) is why this used to install skills the agent never
         // loaded — while leaving whatever the user already had in
-        // `~/.qoder/skills` invisible to codeg. Both `.agents` roots stay in
+        // `~/.qoder/skills` invisible to dextra. Both `.agents` roots stay in
         // the list so a user who did turn the setting on still sees them.
         AgentType::Qoder => Some(SkillStorageSpec {
             kind: SkillStorageKind::SkillDirectoryOnly,
@@ -8534,7 +8534,7 @@ pub(crate) fn skill_storage_spec(agent_type: AgentType) -> Option<SkillStorageSp
         // or skill subfolders", which does not distinguish a bundle's
         // `<id>/SKILL.md` from a flat `<id>.md`, and the actual scan happens
         // inside the Go harness. The directory bundle is the shape every agent
-        // supports, so codeg installs that rather than guessing at the wider
+        // supports, so dextra installs that rather than guessing at the wider
         // one and writing skills the agent may never load.
         AgentType::Antigravity => Some(SkillStorageSpec {
             kind: SkillStorageKind::SkillDirectoryOnly,
@@ -8545,7 +8545,7 @@ pub(crate) fn skill_storage_spec(agent_type: AgentType) -> Option<SkillStorageSp
             ],
             project_rel_dirs: vec![".gemini/skills", ".agents/skills"],
         }),
-        // codeg cannot detect where an arbitrary ACP agent loads skills from,
+        // dextra cannot detect where an arbitrary ACP agent loads skills from,
         // so custom agents are gated on the user's own declaration: that the
         // agent reads the shared `.agents/skills` store (the cross-agent
         // convention OpenCode, Gemini, Cline, Codex, pi, and Cursor already
@@ -8659,7 +8659,7 @@ pub(crate) fn scoped_skill_dirs(
 /// when they reach the filesystem root — DeepSeek in `dsh-skill-filesystem`'s
 /// `findProjectRoot`, Kimi in `features/skill/catalog/skillRoots.ts`'s
 /// `projectRoots` → `findUpwardRoot(workDir, ".git", exists)`. Opening a
-/// subdirectory of a repo as the workspace would otherwise make codeg create
+/// subdirectory of a repo as the workspace would otherwise make dextra create
 /// and list `<subdir>/.dsh/skills` / `<subdir>/.kimi-code/skills` — a directory
 /// the agent never scans, so the skill would simply never load, with nothing on
 /// screen saying so.
@@ -8669,7 +8669,7 @@ pub(crate) fn scoped_skill_dirs(
 /// `<repo>/.agents/skills` and ignored the ones under `<repo>/sub/...`.
 ///
 /// `.git` is matched as a plain path, file or directory: in a linked worktree
-/// (which codeg creates routinely) it is a FILE, and both upstreams' existence
+/// (which dextra creates routinely) it is a FILE, and both upstreams' existence
 /// probes (`pathExists` / `stat`) accept that too.
 fn project_skill_base(agent_type: AgentType, workspace: &str) -> PathBuf {
     let workspace = PathBuf::from(workspace);
@@ -8805,7 +8805,7 @@ fn is_read_only_skill_path(agent_type: AgentType, skill_path: &Path) -> bool {
     let ro_root = match agent_type {
         AgentType::Codex => codex_home_dir().join("skills").join(".system"),
         // Cursor's bundled builtin skills; the CLI restores them on update,
-        // so editing/deleting through codeg would silently be undone.
+        // so editing/deleting through dextra would silently be undone.
         AgentType::Cursor => home_dir_or_default().join(".cursor").join("skills-cursor"),
         // `dsh-skill-filesystem` sets `skipSystem` on the `$DSH_HOME/skills`
         // root, so anything under `.system/` there belongs to the DeepSeek
@@ -8830,7 +8830,7 @@ fn skill_content_path(layout: AgentSkillLayout, skill_path: &Path) -> PathBuf {
 /// recursively and files are unlinked. This prevents `remove_dir_all` from
 /// accidentally wiping the contents of a symlink target — which is critical
 /// for the Experts feature where agent skill dirs may contain symlinks into
-/// the central `~/.codeg/skills/` store.
+/// the central `~/.dextra/skills/` store.
 pub(crate) fn remove_skill_entry(path: &Path) -> std::io::Result<()> {
     let meta = fs::symlink_metadata(path)?;
     let file_type = meta.file_type();
@@ -9161,10 +9161,10 @@ fn persist_cursor_cli_config(text: &str) -> Result<(), AcpError> {
 /// Validate + write settings.json, whole-document.
 ///
 /// The text is whatever the panel's advanced editor holds, which is the file as
-/// codeg last read it plus the user's edits — writing it verbatim is what lets
+/// dextra last read it plus the user's edits — writing it verbatim is what lets
 /// a key be DELETED, which the generic merge-persist path cannot do.
 ///
-/// Note this file has other writers (the Qoder CLI itself, and codeg's MCP
+/// Note this file has other writers (the Qoder CLI itself, and dextra's MCP
 /// settings page, which owns the top-level `mcpServers`). A verbatim write
 /// therefore reverts anything they wrote since the editor last loaded — the
 /// same last-writer-wins contract every raw editor in this module has.
@@ -9185,7 +9185,7 @@ fn persist_qoder_settings(text: &str) -> Result<(), AcpError> {
         .map_err(|e| AcpError::protocol(format!("write qoder settings failed: {e}")))
 }
 
-/// The `qoder` binary codeg would launch: managed cache first, then the user's
+/// The `qoder` binary dextra would launch: managed cache first, then the user's
 /// own install (PATH / ~/.local/bin) — the same order as `build_agent`.
 fn resolve_qoder_binary() -> Option<PathBuf> {
     if let Ok(Some((path, _))) =
@@ -9336,7 +9336,7 @@ pub(crate) async fn acp_qoder_auth_status_core(
     }
 }
 
-/// The cursor-agent binary codeg would launch: managed cache first, then the
+/// The cursor-agent binary dextra would launch: managed cache first, then the
 /// user's own install (PATH / ~/.local/bin) — the same order as `build_agent`.
 fn resolve_cursor_binary() -> Option<PathBuf> {
     if let Ok(Some((path, _))) =
@@ -9686,7 +9686,7 @@ fn agent_env_keys(agent_type: AgentType) -> (&'static str, &'static str, &'stati
         // The real endpoint knob is `DEEPSEEK_BASE_URL`, read by the
         // `llm-deepseek` adapter through the launch-environment snapshot —
         // which, when the host installs none (deepseek-acp does not), falls
-        // back to `process.env`, so codeg's launch env reaches it. It resolves
+        // back to `process.env`, so dextra's launch env reaches it. It resolves
         // per request (`config.baseURL ?? env ?? https://api.deepseek.com`),
         // NOT at load. `DEEPSEEK_ACP_PROVIDER` is a different thing entirely —
         // the provider ROUTE id (`deepseek-official`), a registry key rather
@@ -9768,7 +9768,7 @@ fn agent_env_keys(agent_type: AgentType) -> (&'static str, &'static str, &'stati
 /// user's endpoint. Hence provider + key together; `CLINE_MODEL` then picks the
 /// session's default model out of that provider's catalogue.
 ///
-/// Does nothing when codeg has no usable credential for the agent, which leaves
+/// Does nothing when dextra has no usable credential for the agent, which leaves
 /// `tryRestoreAuth` free to find a `cline auth` login — a user signed in to
 /// Cline's own service must not be forced onto a half-filled BYO panel.
 ///
@@ -9795,11 +9795,11 @@ fn apply_cline_launch_env(config_json: Option<&str>, merged: &mut BTreeMap<Strin
     //     `CLINE_PROVIDER ?? authResult?.providerId ?? "cline"` and a ClinePass
     //     or ChatGPT account silently runs as plain Cline billing;
     //   * a stale `CLINE_PROVIDER` — an `env_json` row, or one exported in the
-    //     shell codeg was launched from — overrides the account entirely and
+    //     shell dextra was launched from — overrides the account entirely and
     //     freezes a selector these three are entitled to use.
     //
     // Both are cleared by writing an EMPTY value, which the spawn layer turns
-    // into `env_remove` (see the codeg convention in `acp::agent_process`) — so
+    // into `env_remove` (see the dextra convention in `acp::agent_process`) — so
     // this strips an inherited value rather than merely declining to add one.
     // Removal, not `""`, is what the agent needs: `??` does not fall through on
     // an empty string, so an actually-empty `CLINE_PROVIDER` would become the
@@ -10077,7 +10077,7 @@ fn cascade_update_agent_config(
         }
         AgentType::Hermes => {
             // Hermes self-manages credentials in ~/.hermes/.env via
-            // `hermes model` / `hermes setup`; codeg writes no provider creds.
+            // `hermes model` / `hermes setup`; dextra writes no provider creds.
         }
         AgentType::Cursor => {
             // Cursor authenticates via `cursor-agent login` or CURSOR_API_KEY
@@ -10122,7 +10122,7 @@ fn cascade_update_agent_config(
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(str::to_string)
-                .unwrap_or_else(|| "codeg".to_string());
+                .unwrap_or_else(|| "dextra".to_string());
             table.insert(
                 "model_provider".to_string(),
                 toml::Value::String(provider_name.clone()),
@@ -10154,8 +10154,8 @@ fn cascade_update_agent_config(
                     toml::Value::String(api_url.to_string()),
                 );
             }
-            if provider_name == "codeg" {
-                provider_table.insert("name".to_string(), toml::Value::String("codeg".to_string()));
+            if provider_name == "dextra" {
+                provider_table.insert("name".to_string(), toml::Value::String("dextra".to_string()));
                 provider_table.insert(
                     "wire_api".to_string(),
                     toml::Value::String("responses".to_string()),
@@ -10249,9 +10249,9 @@ fn cascade_update_agent_config(
         }
         AgentType::DeepSeek => {
             // deepseek-acp authenticates via `DEEPSEEK_API_KEY` (or
-            // `~/.dsh/.credentials.yaml`, which codeg never writes), injected
+            // `~/.dsh/.credentials.yaml`, which dextra never writes), injected
             // as a runtime env var through the generic agent settings panel;
-            // it has no codeg-managed config file and does not participate in
+            // it has no dextra-managed config file and does not participate in
             // the model-provider credential cascade.
         }
         AgentType::Qoder => {
@@ -10259,7 +10259,7 @@ fn cascade_update_agent_config(
             // and no BYO-provider key — so it stays off the model-provider
             // credential cascade even though its env slots are real. The PAT
             // (`QODER_PERSONAL_ACCESS_TOKEN`) is set directly in the agent's
-            // env, and while codeg DOES manage a Qoder config file
+            // env, and while dextra DOES manage a Qoder config file
             // (`settings.json`, via the Qoder settings panel), that file holds
             // no credentials for the cascade to reconcile.
         }
@@ -10276,7 +10276,7 @@ fn cascade_update_agent_config(
             // reconcile either.
         }
         AgentType::Custom(_) => {
-            // Custom agents are deliberately configuration-free: codeg writes
+            // Custom agents are deliberately configuration-free: dextra writes
             // no config file for them and they are excluded from the
             // model-provider surface, so there is nothing to cascade. Whatever
             // credentials they need go through the generic launch-env panel.
@@ -10657,7 +10657,7 @@ pub async fn acp_connect(
     app_handle: tauri::AppHandle,
     window: tauri::WebviewWindow,
 ) -> Result<String, crate::app_error::AppCommandError> {
-    // Resolve through the effective data dir so a custom `CODEG_DATA_DIR`
+    // Resolve through the effective data dir so a custom `DEXTRA_DATA_DIR`
     // reaches the credential helper script the agent's git subprocess
     // will execute. `acp_connect` may be called before the app data dir
     // exists on disk (first launch); fall back to a sentinel that the
@@ -10738,7 +10738,7 @@ pub async fn acp_goal_control(
 /// read whatever `SessionConfigOptions` / `SessionModes` the agent advertises,
 /// and tear it down. The returned snapshot drives the delegation-settings UI
 /// so the user picks from the exact option set the agent will accept when
-/// codeg-mcp later spawns a subagent.
+/// dextra-mcp later spawns a subagent.
 ///
 /// Does NOT touch the chat-side `selectorsCache`, `localStorage` preferences,
 /// or any active connection state — see `ConnectionManager::probe_agent_options`
@@ -11256,7 +11256,7 @@ pub(crate) async fn acp_list_agents_core(db: &AppDatabase) -> Result<Vec<AcpAgen
         // Hermes is self-managed: project its own ~/.hermes/.env + config.yaml
         // into config_json (read-only) and attach the raw config.yaml for the
         // advanced editor. The env-merge block above is skipped because
-        // `load_agent_local_config_json` returns None for Hermes (no codeg
+        // `load_agent_local_config_json` returns None for Hermes (no dextra
         // local config path), so no Hermes credential leaks into process env.
         let (config_json, hermes_config_yaml) = if agent_type == AgentType::Hermes {
             (
@@ -12277,7 +12277,7 @@ pub async fn acp_pi_acknowledge_project_trust(workspace: String) -> Result<(), A
 }
 
 /// List every decision in pi's `trust.json` so the settings page can review and
-/// revoke them — including any auto-seeded by codeg before trust became a user
+/// revoke them — including any auto-seeded by dextra before trust became a user
 /// decision.
 #[cfg(feature = "tauri-runtime")]
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
@@ -12551,7 +12551,7 @@ pub async fn acp_download_agent_binary(
     acp_download_agent_binary_core(agent_type, version, task_id, &emitter).await
 }
 
-/// Provision ONLY the uv toolchain (uvx) into codeg's cache — independent of
+/// Provision ONLY the uv toolchain (uvx) into dextra's cache — independent of
 /// installing any `Uvx` agent's package. Streams progress over the shared
 /// agent-install event stream so the Settings page shows a live log. Backs the
 /// uv preflight check's "Install uv" fix. After this succeeds,
@@ -12634,7 +12634,7 @@ pub(crate) async fn acp_detect_agent_local_version_core(
         // `installed_version` straight from this row and shows "not installed"
         // while it's null (`acp_list_agents_core` never probes npm for it). When
         // a live probe discovers a version the DB never recorded — an agent
-        // installed outside codeg, or by a build predating version tracking —
+        // installed outside dextra, or by a build predating version tracking —
         // wake `useAcpAgents()` so the composer stops claiming it's missing.
         if previous.as_deref() != Some(version.as_str()) {
             emit_acp_agents_updated(emitter, "local_version_detected", Some(agent_type));
@@ -12828,7 +12828,7 @@ pub(crate) async fn acp_prepare_npx_agent_core(
                         "{} installed, but its runtime did not bootstrap (`{cmd} --version` \
                          does not answer). If your npm config sets ignore-scripts, allow \
                          scripts for this package and reinstall; otherwise retry, or use \
-                         the official installer and codeg will pick up the PATH `{cmd}`.",
+                         the official installer and dextra will pick up the PATH `{cmd}`.",
                         meta.name
                     )));
                 }
@@ -13389,7 +13389,7 @@ pub async fn opencode_provider_catalog(
 }
 
 /// The official codex model catalog (full `ModelInfo` entries), sourced at
-/// runtime from the codex codeg actually launches (cache + bundled fallback),
+/// runtime from the codex dextra actually launches (cache + bundled fallback),
 /// used by the settings editor for the official list, "quick-add official", and
 /// as the clone template for custom entries' heavy required fields.
 pub(crate) async fn codex_bundled_catalog_core(force_refresh: bool) -> Vec<serde_json::Value> {
@@ -13769,7 +13769,7 @@ mod tests {
         // The declared probe's program doesn't exist, so the probe yields
         // nothing; the convention path must still read the real install.
         let version = system_probed_version_with(
-            Some("codeg-missing-probe-cmd-e2e --version"),
+            Some("dextra-missing-probe-cmd-e2e --version"),
             &bin,
             None,
         )
@@ -13788,7 +13788,7 @@ mod tests {
 
     #[test]
     fn parse_grok_settings_migrates_legacy_permission_values() {
-        // codeg's old codeg-invented markers map onto grok's real enum so the
+        // dextra's old dextra-invented markers map onto grok's real enum so the
         // dropdown, launch flag, and grok's TUI agree.
         let approve = parse_grok_settings("[ui]\npermission_mode = \"always-approve\"\n");
         assert_eq!(approve.permission_mode.as_deref(), Some("bypassPermissions"));
@@ -14195,7 +14195,7 @@ mod tests {
         // TOML positioning guard: a root scalar or the `[approval_policy]`
         // granular table must not be emitted AFTER an existing section, which
         // would silently reparent unrelated root keys into that section.
-        let base = "model = \"gpt-5\"\nmodel_provider = \"codeg\"\n\n\
+        let base = "model = \"gpt-5\"\nmodel_provider = \"dextra\"\n\n\
                     [features]\nskills = true\n\n\
                     [mcp_servers.ctx]\ncommand = \"npx\"\n";
         let merged = apply_codex_sandbox_config(
@@ -14222,7 +14222,7 @@ mod tests {
         );
         assert_eq!(
             table.get("model_provider").and_then(toml::Value::as_str),
-            Some("codeg")
+            Some("dextra")
         );
         assert_eq!(
             table
@@ -14246,9 +14246,9 @@ mod tests {
 # my codex config
 model = \"gw/x\"           # the model
 model_catalog_json = \"{value}\"
-model_provider = \"codeg\"
+model_provider = \"dextra\"
 
-[model_providers.codeg]
+[model_providers.dextra]
 base_url = \"https://example.test/v1\"
 "
         )
@@ -14256,34 +14256,34 @@ base_url = \"https://example.test/v1\"
 
     #[test]
     fn remove_codex_catalog_key_is_format_preserving_and_no_op_when_absent() {
-        let home = Path::new("/tmp/codeg-test-codex-home");
-        let base = config_with_catalog_ref("codeg-model-catalog.json");
+        let home = Path::new("/tmp/dextra-test-codex-home");
+        let base = config_with_catalog_ref("dextra-model-catalog.json");
         let next = remove_codex_catalog_key(&base, home)
             .unwrap()
-            .expect("codeg-owned key was present");
+            .expect("dextra-owned key was present");
         assert!(!next.contains("model_catalog_json"));
         // Comments and every unmanaged key survive verbatim.
         assert!(next.contains("# my codex config"));
         assert!(next.contains("model = \"gw/x\"           # the model"));
-        assert!(next.contains("[model_providers.codeg]"));
+        assert!(next.contains("[model_providers.dextra]"));
         assert!(next.contains("base_url = \"https://example.test/v1\""));
         // No key → no rewrite at all (callers skip the disk write).
         assert!(remove_codex_catalog_key(&next, home).unwrap().is_none());
         assert!(remove_codex_catalog_key("", home).unwrap().is_none());
     }
 
-    /// The cleanup must only ever reclaim codeg's OWN generated file. A catalog
+    /// The cleanup must only ever reclaim dextra's OWN generated file. A catalog
     /// the user wrote by hand (or typed into the advanced config.toml editor)
     /// reaches this path on every panel save — deleting its reference would
     /// silently orphan the user's models.
     #[test]
     fn remove_codex_catalog_key_preserves_user_owned_references() {
-        let home = Path::new("/tmp/codeg-test-codex-home");
+        let home = Path::new("/tmp/dextra-test-codex-home");
         for foreign in [
             "manual.json",
             "/abs/path/to/manual.json",
             "~/my-catalog.json",
-            "nested/codeg-model-catalog.json",
+            "nested/dextra-model-catalog.json",
             "  ",
         ] {
             let base = config_with_catalog_ref(foreign);
@@ -14292,17 +14292,17 @@ base_url = \"https://example.test/v1\"
                 "must not touch a user-owned reference: {foreign}"
             );
         }
-        // An absolute path naming codeg's own file IS codeg-owned.
+        // An absolute path naming dextra's own file IS dextra-owned.
         let abs = home
             .join(crate::acp::codex_model_catalog::CATALOG_REL)
             .to_string_lossy()
             .into_owned();
-        assert!(is_codeg_owned_catalog_ref(&abs, home));
-        assert!(is_codeg_owned_catalog_ref(
+        assert!(is_dextra_owned_catalog_ref(&abs, home));
+        assert!(is_dextra_owned_catalog_ref(
             crate::acp::codex_model_catalog::CATALOG_REL,
             home
         ));
-        assert!(!is_codeg_owned_catalog_ref("manual.json", home));
+        assert!(!is_dextra_owned_catalog_ref("manual.json", home));
     }
 
     #[test]
@@ -14410,7 +14410,7 @@ base_url = \"https://example.test/v1\"
     fn apply_codex_sandbox_config_rejects_bad_input() {
         // Relative writable_roots are NOT rejected by codex — they resolve
         // against CODEX_HOME ("rel/dir" → ~/.codex/rel/dir), silently granting
-        // write access somewhere the user never meant. So codeg rejects them.
+        // write access somewhere the user never meant. So dextra rejects them.
         assert!(apply_codex_sandbox_config(
             "",
             &CodexSandboxStructuredConfig {
@@ -14542,7 +14542,7 @@ base_url = \"https://example.test/v1\"
     #[test]
     fn parse_grok_settings_untracks_default_without_model_block() {
         // `[models].default` naming a stock model (no `[model.*]` block) is not a
-        // codeg-managed custom model — the panel must show the custom fields empty.
+        // dextra-managed custom model — the panel must show the custom fields empty.
         let toml = "[model.foo]\nbase_url = \"x\"\n\n[models]\ndefault = \"grok-4.5\"\n";
         let s = parse_grok_settings(toml);
         assert!(s.custom_model_id.is_none());
@@ -14630,7 +14630,7 @@ base_url = \"https://example.test/v1\"
 
     #[test]
     fn apply_grok_custom_model_update_preserves_unmanaged_block_keys() {
-        // Editing a managed block keeps keys codeg doesn't own (e.g. temperature).
+        // Editing a managed block keeps keys dextra doesn't own (e.g. temperature).
         let base = "[model.foo]\nmodel = \"foo\"\ntemperature = 0.7\nbase_url = \"https://old/v1\"\n\n\
                     [models]\ndefault = \"foo\"\n";
         let merged = apply_grok_structured_config(
@@ -14661,7 +14661,7 @@ base_url = \"https://example.test/v1\"
     #[test]
     fn apply_grok_custom_model_clear_leaves_handset_stock_default() {
         // Clearing the (empty) custom form must NOT delete a hand-set stock
-        // `[models].default` that was never codeg-managed.
+        // `[models].default` that was never dextra-managed.
         let base = "[models]\ndefault = \"grok-4.5\"\n";
         let merged =
             apply_grok_structured_config(base, &GrokStructuredConfig::default()).unwrap();
@@ -14705,7 +14705,7 @@ base_url = \"https://example.test/v1\"
             Some("acceptEdits")
         );
         // `default` (grok's own default) and legacy `ask` keep the flag off so
-        // ACP permission requests reach codeg's UI.
+        // ACP permission requests reach dextra's UI.
         assert!(grok_config_permission_mode("[ui]\npermission_mode = \"default\"\n").is_none());
         assert!(grok_config_permission_mode("[ui]\npermission_mode = \"ask\"\n").is_none());
         // Unset / malformed / unknown ⇒ no flag (preserve the ability to prompt).
@@ -14786,7 +14786,7 @@ base_url = \"https://example.test/v1\"
         assert_eq!(by_kind.get(".pi/prompts"), Some(&false));
     }
 
-    /// A bare `.pi/` directory is not a project resource for pi, so codeg must not
+    /// A bare `.pi/` directory is not a project resource for pi, so dextra must not
     /// prompt about it (`hasTrustRequiringProjectResources` ignores it too).
     #[test]
     fn pi_trust_resources_ignores_a_bare_pi_dir() {
@@ -14811,7 +14811,7 @@ base_url = \"https://example.test/v1\"
     }
 
     /// `~/.agents/skills` is the USER's own store, not a repo's — pi excludes it
-    /// from the trust decision and so must codeg, or every workspace under $HOME
+    /// from the trust decision and so must dextra, or every workspace under $HOME
     /// would raise a bogus prompt.
     #[test]
     fn pi_trust_resources_excludes_the_user_agents_skills_store() {
@@ -14935,7 +14935,7 @@ base_url = \"https://example.test/v1\"
         }
     }
 
-    /// Revoking removes codeg's entry so the folder falls back to any ancestor
+    /// Revoking removes dextra's entry so the folder falls back to any ancestor
     /// decision and then to pi's default. Other users' decisions must survive.
     #[test]
     fn pi_set_project_trust_revoke_removes_only_our_entry() {
@@ -14971,12 +14971,12 @@ base_url = \"https://example.test/v1\"
         assert!(!trust.exists());
     }
 
-    /// Drive the launch gate with an isolated pi agent dir AND an isolated codeg
-    /// home (the acknowledgement store lives there, via `CODEG_HOME`).
-    fn launch_block_for(agent_dir: &Path, codeg_home: &Path, cwd: &Path) -> Option<String> {
+    /// Drive the launch gate with an isolated pi agent dir AND an isolated dextra
+    /// home (the acknowledgement store lives there, via `DEXTRA_HOME`).
+    fn launch_block_for(agent_dir: &Path, dextra_home: &Path, cwd: &Path) -> Option<String> {
         temp_env::with_var(
-            "CODEG_HOME",
-            Some(codeg_home.to_string_lossy().to_string()),
+            "DEXTRA_HOME",
+            Some(dextra_home.to_string_lossy().to_string()),
             || pi_project_trust_launch_block(cwd, &pi_env_for(agent_dir)),
         )
     }
@@ -14993,7 +14993,7 @@ base_url = \"https://example.test/v1\"
             map.insert(canonical_key(&ws), serde_json::Value::Bool(verdict));
             write_json_object_pretty(&agent_dir.join("trust.json"), &map).unwrap();
         }
-        (ws, agent_dir, tmp.join("codeg-home"))
+        (ws, agent_dir, tmp.join("dextra-home"))
     }
 
     /// THE regression this whole change exists for on an upgraded install: pi
@@ -15026,7 +15026,7 @@ base_url = \"https://example.test/v1\"
         map.insert(canonical_key(&parent), serde_json::Value::Bool(true));
         write_json_object_pretty(&agent_dir.join("trust.json"), &map).unwrap();
 
-        let blocked = launch_block_for(&agent_dir, &tmp.path().join("codeg-home"), &ws);
+        let blocked = launch_block_for(&agent_dir, &tmp.path().join("dextra-home"), &ws);
 
         assert!(blocked.is_some());
         assert!(
@@ -15036,7 +15036,7 @@ base_url = \"https://example.test/v1\"
     }
 
     /// Once the user answers for the folder, it launches. Acknowledging records
-    /// only codeg's confirmation — pi's own grant is untouched.
+    /// only dextra's confirmation — pi's own grant is untouched.
     #[test]
     fn pi_launch_proceeds_after_the_grant_is_acknowledged() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -15084,7 +15084,7 @@ base_url = \"https://example.test/v1\"
         write_json_object_pretty(&agent_dir.join("trust.json"), &map).unwrap();
 
         assert_eq!(
-            launch_block_for(&agent_dir, &tmp.path().join("codeg-home"), &ws),
+            launch_block_for(&agent_dir, &tmp.path().join("dextra-home"), &ws),
             None,
         );
     }
@@ -15105,7 +15105,7 @@ base_url = \"https://example.test/v1\"
         assert!(!pi_trust_is_acknowledged_at(&ack, &canonical_key(&ws)));
     }
 
-    /// The write is a read-modify-write, and two codeg surfaces (the approval
+    /// The write is a read-modify-write, and two dextra surfaces (the approval
     /// banner and the settings list's revoke buttons) can fire at once. Without
     /// serialization each writer would persist the map it read, so the last one
     /// to land silently drops every entry added since it read — losing a grant
@@ -15144,7 +15144,7 @@ base_url = \"https://example.test/v1\"
         }
     }
 
-    /// The lock must not outlive the operation, or the next decision — from codeg
+    /// The lock must not outlive the operation, or the next decision — from dextra
     /// or from pi, which takes the same lock — would stall until it goes stale.
     #[test]
     fn pi_trust_write_releases_the_lock() {
@@ -15162,7 +15162,7 @@ base_url = \"https://example.test/v1\"
     }
 
     /// pi holds this same lock while it reads or writes its store. When it is
-    /// held, codeg must back off and report it rather than write anyway — writing
+    /// held, dextra must back off and report it rather than write anyway — writing
     /// through the lock is exactly the interleaving the lock exists to prevent.
     #[test]
     fn pi_trust_write_defers_to_a_lock_held_by_pi() {
@@ -15187,7 +15187,7 @@ base_url = \"https://example.test/v1\"
     }
 
     /// A lock orphaned by a crash must not wedge project trust forever — pi
-    /// breaks the same tie by age, so codeg has to agree on when to steal it.
+    /// breaks the same tie by age, so dextra has to agree on when to steal it.
     #[test]
     fn pi_trust_lock_missing_or_unreadable_counts_as_stale() {
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -15198,7 +15198,7 @@ base_url = \"https://example.test/v1\"
         assert!(!pi_trust_lock_is_stale(&fresh));
     }
 
-    /// `trust.json` holds decisions the user made inside pi. If codeg can't parse
+    /// `trust.json` holds decisions the user made inside pi. If dextra can't parse
     /// it, it must refuse loudly rather than rewrite the file from scratch.
     #[test]
     fn pi_set_project_trust_never_clobbers_an_unparseable_file() {
@@ -15215,7 +15215,7 @@ base_url = \"https://example.test/v1\"
     }
 
     /// The settings list surfaces decisions for review/revoke — including ones an
-    /// older codeg auto-seeded. `null` entries carry no decision, so they are not
+    /// older dextra auto-seeded. `null` entries carry no decision, so they are not
     /// listed.
     #[test]
     fn pi_trust_entries_lists_decisions_sorted_and_skips_nulls() {
@@ -15639,11 +15639,11 @@ base_url = \"https://example.test/v1\"
         // endpoint is unchanged. codex-acp 1.0.1 reads `model_provider` from
         // config.toml directly, so it is no longer pinned into the launch env
         // where the fingerprint previously caught it incidentally.
-        let codeg = r#"
+        let dextra = r#"
 model = "gpt-5-codex"
-model_provider = "codeg"
+model_provider = "dextra"
 
-[model_providers.codeg]
+[model_providers.dextra]
 base_url = "https://gateway.example/v1"
 wire_api = "responses"
 
@@ -15651,36 +15651,36 @@ wire_api = "responses"
 base_url = "https://gateway.example/v1"
 wire_api = "chat"
 "#;
-        let other = codeg.replace(
-            "model_provider = \"codeg\"",
+        let other = dextra.replace(
+            "model_provider = \"dextra\"",
             "model_provider = \"other\"",
         );
 
-        let p_codeg = codex_config_projection_from_toml(codeg);
+        let p_dextra = codex_config_projection_from_toml(dextra);
         let p_other = codex_config_projection_from_toml(&other);
 
         assert_eq!(
-            p_codeg.get("modelProvider").and_then(|v| v.as_str()),
-            Some("codeg")
+            p_dextra.get("modelProvider").and_then(|v| v.as_str()),
+            Some("dextra")
         );
         assert_eq!(
             p_other.get("modelProvider").and_then(|v| v.as_str()),
             Some("other")
         );
         // Same endpoint resolved for both providers...
-        assert_eq!(p_codeg.get("apiBaseUrl"), p_other.get("apiBaseUrl"));
+        assert_eq!(p_dextra.get("apiBaseUrl"), p_other.get("apiBaseUrl"));
         // ...yet the projections differ, so the launch-config fingerprint does too.
-        assert_ne!(p_codeg, p_other);
+        assert_ne!(p_dextra, p_other);
 
         // Deterministic for identical input.
-        assert_eq!(codex_config_projection_from_toml(codeg), p_codeg);
+        assert_eq!(codex_config_projection_from_toml(dextra), p_dextra);
 
         // `modelProvider` must NOT be an AgentRuntimeConfig key, or
         // build_runtime_env_from_setting would mirror it back into a runtime env
         // var (reintroducing the very MODEL_PROVIDER pin we removed).
         assert!(
             serde_json::from_value::<AgentRuntimeConfig>(serde_json::Value::Object(
-                p_codeg.clone()
+                p_dextra.clone()
             ))
             .is_ok()
         );
@@ -15697,7 +15697,7 @@ wire_api = "chat"
     }
 
     fn unique_test_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("codeg-acp-{name}-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("dextra-acp-{name}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).expect("create test directory");
         dir
     }
@@ -15828,7 +15828,7 @@ wire_api = "chat"
                 ];
                 assert_eq!(spec.global_dirs, expected);
                 // The product CLI owns `$DSH_HOME/skills/.system` (the provider
-                // sets `skipSystem` on that root), so codeg never writes there.
+                // sets `skipSystem` on that root), so dextra never writes there.
                 assert!(is_read_only_skill_path(
                     AgentType::DeepSeek,
                     &expected[0].join(".system").join("imagegen")
@@ -15845,7 +15845,7 @@ wire_api = "chat"
     fn deepseek_project_skills_hang_off_the_git_root() {
         // `dsh-skill-filesystem` resolves project roots by walking up to the
         // nearest `.git`, so opening a package subdirectory must still target
-        // the repo root — otherwise codeg writes a skill the agent never scans.
+        // the repo root — otherwise dextra writes a skill the agent never scans.
         let tmp = tempfile::tempdir().expect("tempdir");
         let repo = tmp.path().join("repo");
         let nested = repo.join("packages").join("app");
@@ -16239,10 +16239,10 @@ wire_api = "chat"
             .expect("fragment must parse")
             .get("model_providers")
             .and_then(toml::Value::as_table)
-            .and_then(|providers| providers.get("codeg"))
+            .and_then(|providers| providers.get("dextra"))
             .and_then(toml::Value::as_table)
             .cloned()
-            .expect("fragment must define model_providers.codeg")
+            .expect("fragment must define model_providers.dextra")
     }
 
     fn auth_flag_of(table: &toml::map::Map<String, toml::Value>) -> Option<bool> {
@@ -16251,23 +16251,23 @@ wire_api = "chat"
 
     #[test]
     fn codex_auth_default_is_supplied_only_when_absent() {
-        // codeg provisions its provider with the key in auth.json and no
+        // dextra provisions its provider with the key in auth.json and no
         // `env_key`, so a provider WE create needs requires_openai_auth = true.
-        let mut fresh = provider_table_of("[model_providers.codeg]\nbase_url = \"https://x/v1\"\n");
+        let mut fresh = provider_table_of("[model_providers.dextra]\nbase_url = \"https://x/v1\"\n");
         ensure_codex_provider_auth_default(&mut fresh);
         assert_eq!(auth_flag_of(&fresh), Some(true));
 
         // An explicit false is the user's call and must survive every path —
         // this is the regression the whole change exists for.
         let mut explicit_false = provider_table_of(
-            "[model_providers.codeg]\nbase_url = \"https://x/v1\"\nrequires_openai_auth = false\n",
+            "[model_providers.dextra]\nbase_url = \"https://x/v1\"\nrequires_openai_auth = false\n",
         );
         ensure_codex_provider_auth_default(&mut explicit_false);
         assert_eq!(auth_flag_of(&explicit_false), Some(false));
 
         // An explicit true is left alone rather than rewritten.
         let mut explicit_true = provider_table_of(
-            "[model_providers.codeg]\nrequires_openai_auth = true\n",
+            "[model_providers.dextra]\nrequires_openai_auth = true\n",
         );
         ensure_codex_provider_auth_default(&mut explicit_true);
         assert_eq!(auth_flag_of(&explicit_true), Some(true));
@@ -16279,8 +16279,8 @@ wire_api = "chat"
         // `!requires_openai_auth && <non-empty x-openai-actor-authorization>`,
         // so writing the default here would silently disable that auth path.
         let mut header_present = provider_table_of(
-            "[model_providers.codeg]\nbase_url = \"https://x/v1\"\n\n\
-             [model_providers.codeg.http_headers]\n\
+            "[model_providers.dextra]\nbase_url = \"https://x/v1\"\n\n\
+             [model_providers.dextra.http_headers]\n\
              x-openai-actor-authorization = \"local-image-extension\"\n",
         );
         ensure_codex_provider_auth_default(&mut header_present);
@@ -16288,7 +16288,7 @@ wire_api = "chat"
 
         // Header matching is case-insensitive, mirroring eq_ignore_ascii_case.
         let mut mixed_case = provider_table_of(
-            "[model_providers.codeg.http_headers]\n\
+            "[model_providers.dextra.http_headers]\n\
              X-OpenAI-Actor-Authorization = \"local-image-extension\"\n",
         );
         ensure_codex_provider_auth_default(&mut mixed_case);
@@ -16296,7 +16296,7 @@ wire_api = "chat"
 
         // An inline table is the same table to the parser.
         let mut inline = provider_table_of(
-            "[model_providers.codeg]\n\
+            "[model_providers.dextra]\n\
              http_headers = { \"x-openai-actor-authorization\" = \"local-image-extension\" }\n",
         );
         ensure_codex_provider_auth_default(&mut inline);
@@ -16305,7 +16305,7 @@ wire_api = "chat"
         // An empty header value does not enable the path upstream
         // (`!value.trim().is_empty()`), so the default still applies.
         let mut empty_value = provider_table_of(
-            "[model_providers.codeg.http_headers]\nx-openai-actor-authorization = \"  \"\n",
+            "[model_providers.dextra.http_headers]\nx-openai-actor-authorization = \"  \"\n",
         );
         ensure_codex_provider_auth_default(&mut empty_value);
         assert_eq!(auth_flag_of(&empty_value), Some(true));
@@ -16313,8 +16313,8 @@ wire_api = "chat"
         // A header plus an explicit true is a contradictory config, but it is
         // the user's: never rewrite or remove it.
         let mut header_and_true = provider_table_of(
-            "[model_providers.codeg]\nrequires_openai_auth = true\n\n\
-             [model_providers.codeg.http_headers]\n\
+            "[model_providers.dextra]\nrequires_openai_auth = true\n\n\
+             [model_providers.dextra.http_headers]\n\
              x-openai-actor-authorization = \"local-image-extension\"\n",
         );
         ensure_codex_provider_auth_default(&mut header_and_true);
@@ -16323,7 +16323,7 @@ wire_api = "chat"
         // A quoted key containing dots is ONE literal key, not an http_headers
         // sub-table, so it must not suppress the default.
         let mut literal_dotted_key = provider_table_of(
-            "[model_providers.codeg]\n\
+            "[model_providers.dextra]\n\
              \"http_headers.x-openai-actor-authorization\" = \"local-image-extension\"\n",
         );
         ensure_codex_provider_auth_default(&mut literal_dotted_key);
@@ -16340,13 +16340,13 @@ wire_api = "chat"
             let config_path = dir.path().join("config.toml");
             std::fs::write(
                 &config_path,
-                "model_provider = \"codeg\"\n\n\
-                 [model_providers.codeg]\n\
+                "model_provider = \"dextra\"\n\n\
+                 [model_providers.dextra]\n\
                  base_url = \"https://old.example/v1\"\n\
-                 name = \"codeg\"\n\
+                 name = \"dextra\"\n\
                  wire_api = \"responses\"\n\
                  requires_openai_auth = false\n\n\
-                 [model_providers.codeg.http_headers]\n\
+                 [model_providers.dextra.http_headers]\n\
                  x-openai-actor-authorization = \"local-image-extension\"\n",
             )
             .expect("seed config.toml");
@@ -16399,13 +16399,13 @@ wire_api = "chat"
             assert_eq!(
                 auth_flag_of(&provider_table_of(&written)),
                 Some(true),
-                "a provider codeg creates still gets the default"
+                "a provider dextra creates still gets the default"
             );
         });
     }
 
     #[test]
-    fn codex_cascade_leaves_a_non_codeg_provider_alone() {
+    fn codex_cascade_leaves_a_non_dextra_provider_alone() {
         let dir = tempfile::tempdir().expect("tempdir");
         temp_env::with_var("CODEX_HOME", Some(dir.path()), || {
             let config_path = dir.path().join("config.toml");
@@ -16437,7 +16437,7 @@ wire_api = "chat"
                 .expect("custom provider must survive");
             assert!(
                 !custom.contains_key("requires_openai_auth"),
-                "only the codeg provider is codeg-managed"
+                "only the dextra provider is dextra-managed"
             );
         });
     }
@@ -16924,7 +16924,7 @@ wire_api = "chat"
     // The latest channel introduces a NEW SPEC SHAPE (`<name>@latest`), and the
     // spec — not the agent type — is what every downstream step keys off.
     // `npm_package_requires_scripts` is the one that bites: hermes-agent's
-    // postinstall bootstraps its runtime, and it is the only package codeg
+    // postinstall bootstraps its runtime, and it is the only package dextra
     // force-enables lifecycle scripts for. A spec shape that hid the package
     // name from it would install a shim that only fails later, at connect,
     // with "runtime is not ready". Both attempts must be recognized, since
@@ -17921,7 +17921,7 @@ wire_api = "chat"
             home_dir_or_default().join(".hermes")
         );
 
-        // No override → the child inherits the parent env (codeg's resolution).
+        // No override → the child inherits the parent env (dextra's resolution).
         assert_eq!(hermes_home_for_launch(&BTreeMap::new()), hermes_home_dir());
     }
 
@@ -18353,7 +18353,7 @@ wire_api = "chat"
         // leading double-quoted string makes PowerShell parse the line as a
         // string expression and fail with "Unexpected token" instead of running
         // uvx; an unquoted bare path runs in both cmd and PowerShell.
-        let path = r"C:\Users\Administrator\AppData\Local\app.codeg\acp-binaries\uv-tool\windows-x86_64\uvx.exe";
+        let path = r"C:\Users\Administrator\AppData\Local\app.dextra\acp-binaries\uv-tool\windows-x86_64\uvx.exe";
         assert_eq!(shell_quote_arg_for(path, true), path);
         // On POSIX the backslash is the escape char, so it still forces quoting.
         assert_eq!(shell_quote_arg_for(path, false), format!("'{path}'"));
@@ -18529,14 +18529,14 @@ wire_api = "chat"
     fn kimi_managed_block_clear_preserves_user_sections() {
         let mut doc: toml::Value = r#"
 default_model = "mine"
-[providers.codeg]
+[providers.dextra]
 type = "openai"
 api_key = "sk"
 [providers.mine]
 type = "openai"
 api_key = "sk-user"
-[models.codeg-managed]
-provider = "codeg"
+[models.dextra-managed]
+provider = "dextra"
 model = "x"
 [models.mine]
 provider = "mine"
@@ -18562,11 +18562,11 @@ model = "gpt"
     #[test]
     fn kimi_managed_block_clear_resets_our_default_and_empties() {
         let mut doc: toml::Value = r#"
-default_model = "codeg-managed"
-[providers.codeg]
+default_model = "dextra-managed"
+[providers.dextra]
 type = "kimi"
-[models.codeg-managed]
-provider = "codeg"
+[models.dextra-managed]
+provider = "dextra"
 model = "kimi-for-coding"
 "#
         .parse()
@@ -18826,11 +18826,11 @@ model = "kimi-for-coding"
     #[test]
     fn kimi_project_managed_config_round_trips_reasoning_metadata() {
         let value: toml::Value = r#"
-default_model = "codeg-managed"
-[providers.codeg]
+default_model = "dextra-managed"
+[providers.dextra]
 type = "openai_responses"
-[models.codeg-managed]
-provider = "codeg"
+[models.dextra-managed]
+provider = "dextra"
 model = "gpt-5.6-sol"
 max_context_size = 1000000
 capabilities = ["thinking", "image_in", "video_in", "tool_use"]
@@ -18862,10 +18862,10 @@ default_effort = "high"
         // The shape the panel wrote before this feature — the projection must
         // not invent empty arrays, or the panel would read reasoning as "on".
         let value: toml::Value = r#"
-[providers.codeg]
+[providers.dextra]
 type = "kimi"
-[models.codeg-managed]
-provider = "codeg"
+[models.dextra-managed]
+provider = "dextra"
 model = "kimi-k2"
 max_context_size = 262144
 "#
@@ -18884,13 +18884,13 @@ max_context_size = 262144
         // config.toml values back into the KIMI_MODEL_* runtime env, defeating the
         // single-source-of-truth between env override and config.toml.
         let value: toml::Value = r#"
-default_model = "codeg-managed"
-[providers.codeg]
+default_model = "dextra-managed"
+[providers.dextra]
 type = "anthropic"
 base_url = "https://api.anthropic.com"
 api_key = "sk-ant"
-[models.codeg-managed]
-provider = "codeg"
+[models.dextra-managed]
+provider = "dextra"
 model = "claude-opus-4-7"
 max_context_size = 200000
 "#
@@ -18934,12 +18934,12 @@ max_context_size = 200000
     #[test]
     fn kimi_project_managed_config_env_subtable_surfaces_as_env_auth() {
         let value: toml::Value = r#"
-[providers.codeg]
+[providers.dextra]
 type = "openai"
-[providers.codeg.env]
+[providers.dextra.env]
 OPENAI_API_KEY = "sk-x"
-[models.codeg-managed]
-provider = "codeg"
+[models.dextra-managed]
+provider = "dextra"
 model = "gpt"
 "#
         .parse()
@@ -19190,7 +19190,7 @@ model = "gpt"
             "oauth-token"
         );
         assert_eq!(root["providers"]["cline"]["tokenSource"], "oauth");
-        // …as do fields on the edited provider that codeg does not own.
+        // …as do fields on the edited provider that dextra does not own.
         assert_eq!(
             root["providers"]["deepseek"]["settings"]["reasoning"]["effort"],
             "high"
@@ -19254,7 +19254,7 @@ model = "gpt"
                     "deepseek": {
                         "settings": { "provider": "deepseek" },
                         "updatedAt": "2026-01-01T00:00:00.000Z",
-                        "tokenSource": "codeg",
+                        "tokenSource": "dextra",
                     },
                 },
             })
@@ -19483,7 +19483,7 @@ model = "gpt"
         assert!(loaded.get("apiKey").is_none());
 
         // …and the launch carries no credential of its own, so `tryRestoreAuth`
-        // finds the login instead of codeg forcing a half-filled BYO provider
+        // finds the login instead of dextra forcing a half-filled BYO provider
         // over it. Both keys are blanked rather than merely omitted: the spawn
         // layer reads an empty value as `env_remove`, which is the only way to
         // strip one the child would otherwise inherit.

@@ -5,18 +5,18 @@
 // What it does:
 //   1. Resolves the target triple — `--target <triple>` arg, or
 //      `TAURI_TARGET_TRIPLE` env, or the host's `rustc -vV` host triple.
-//   2. Runs `cargo build --release --bin codeg-mcp --no-default-features`
-//      for that triple from `src-tauri/`.
+//   2. Runs `cargo build --release --no-default-features` for both sidecars
+//      from `src-tauri/`. `--runner cargo-xwin` supports Windows cross builds.
 //   3. Copies the produced binary to
-//      `src-tauri/binaries/codeg-mcp-<triple>{.exe}` so Tauri's externalBin
-//      bundler picks it up under the bare name `codeg-mcp` at install time.
+//      `src-tauri/binaries/dextra-mcp-<triple>{.exe}` so Tauri's externalBin
+//      bundler picks it up under the bare name `dextra-mcp` at install time.
 //
 // Why a separate script (not inline in beforeBuildCommand / GitHub Actions):
 //   - Cross-compile in release.yml passes `--target <triple>` so we honour
 //     the matrix triple rather than rebuilding for the host.
 //   - Local `pnpm tauri dev` / `pnpm tauri build` invoke it without args and
 //     get a host-triple build, so the externalBin lookup still finds a file.
-//   - Skippable: set `CODEG_SKIP_SIDECAR=1` when iterating on the frontend
+//   - Skippable: set `DEXTRA_SKIP_SIDECAR=1` when iterating on the frontend
 //     and you don't care about delegation.
 //
 // Intentionally Node-only (no shell): runs identically on macOS, Linux,
@@ -31,7 +31,7 @@ import process from "node:process"
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url))
 const SRC_TAURI = resolve(SCRIPT_DIR, "..")
 const BINARIES_DIR = join(SRC_TAURI, "binaries")
-const BIN_NAMES = ["codeg-mcp", "cerebro-mcp-bridge"]
+const BIN_NAMES = ["dextra-mcp", "dextra-cerebro-mcp-bridge"]
 
 function log(msg) {
   console.log(`[prepare-sidecars] ${msg}`)
@@ -43,13 +43,17 @@ function die(msg) {
 }
 
 function parseArgs(argv) {
-  const args = { target: null }
+  const args = { target: null, runner: "cargo" }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === "--target" && argv[i + 1]) {
       args.target = argv[++i]
     } else if (a.startsWith("--target=")) {
       args.target = a.slice("--target=".length)
+    } else if (a === "--runner" && argv[i + 1]) {
+      args.runner = argv[++i]
+    } else if (a.startsWith("--runner=")) {
+      args.runner = a.slice("--runner=".length)
     }
   }
   return args
@@ -67,27 +71,32 @@ function resolveHostTriple() {
 }
 
 function main() {
-  if (process.env.CODEG_SKIP_SIDECAR === "1") {
-    log("CODEG_SKIP_SIDECAR=1 — skipping sidecar preparation")
+  if (process.env.DEXTRA_SKIP_SIDECAR === "1") {
+    log("DEXTRA_SKIP_SIDECAR=1 — skipping sidecar preparation")
     return
   }
 
-  const { target: cliTarget } = parseArgs(process.argv.slice(2))
+  const { target: cliTarget, runner } = parseArgs(process.argv.slice(2))
+  if (runner !== "cargo" && runner !== "cargo-xwin") {
+    die(`unsupported cargo runner: ${runner}`)
+  }
   const target =
     cliTarget || process.env.TAURI_TARGET_TRIPLE || resolveHostTriple()
   const isWindows = target.includes("windows")
   const ext = isWindows ? ".exe" : ""
 
   log(`target triple: ${target}`)
-  log(`building ${BIN_NAMES.join(", ")} (--release --no-default-features)`)
+  log(
+    `building ${BIN_NAMES.join(", ")} with ${runner} (--release --no-default-features)`
+  )
 
   // cargo build needs to run from src-tauri so it resolves the local manifest
   // and shares the swatinem/rust-cache key with other cargo invocations.
-  // `--no-default-features` keeps codeg-mcp free of the Tauri runtime deps —
+  // `--no-default-features` keeps dextra-mcp free of the Tauri runtime deps —
   // the bin's required-features is empty, so this just enables cross-compile
   // without dragging in macOS-private-api / Linux WebKit / Windows WebView2.
   execFileSync(
-    "cargo",
+    runner,
     [
       "build",
       "--release",

@@ -68,39 +68,39 @@ describe("CloneDialog clone path preview", () => {
 
   it("joins a Windows directory with a backslash", () => {
     renderDialog()
-    fillForm("https://github.com/xintaofei/codeg", "C:\\work")
-    // Previously rendered `C:\work/codeg` — a native prefix with a stray
+    fillForm("https://github.com/xintaofei/dextra", "C:\\work")
+    // Previously rendered `C:\work/dextra` — a native prefix with a stray
     // forward slash bolted on, which is what the bug report showed.
-    expect(previewedPath()).toBe("C:\\work\\codeg")
+    expect(previewedPath()).toBe("C:\\work\\dextra")
   })
 
   it("joins a POSIX directory with a forward slash", () => {
     renderDialog()
-    fillForm("https://github.com/xintaofei/codeg", "/home/me/work")
-    expect(previewedPath()).toBe("/home/me/work/codeg")
+    fillForm("https://github.com/xintaofei/dextra", "/home/me/work")
+    expect(previewedPath()).toBe("/home/me/work/dextra")
   })
 
   it("does not double a separator the directory already ends with", () => {
     renderDialog()
-    fillForm("https://github.com/xintaofei/codeg.git", "C:\\work\\")
-    expect(previewedPath()).toBe("C:\\work\\codeg")
+    fillForm("https://github.com/xintaofei/dextra.git", "C:\\work\\")
+    expect(previewedPath()).toBe("C:\\work\\dextra")
   })
 
   it("keeps the repo name when the url has a trailing slash", () => {
     renderDialog()
-    fillForm("https://github.com/xintaofei/codeg/", "C:\\work")
-    expect(previewedPath()).toBe("C:\\work\\codeg")
+    fillForm("https://github.com/xintaofei/dextra/", "C:\\work")
+    expect(previewedPath()).toBe("C:\\work\\dextra")
   })
 
   it("strips a .git suffix that sits behind a trailing slash", () => {
     renderDialog()
-    fillForm("https://github.com/xintaofei/codeg.git/", "C:\\work")
-    expect(previewedPath()).toBe("C:\\work\\codeg")
+    fillForm("https://github.com/xintaofei/dextra.git/", "C:\\work")
+    expect(previewedPath()).toBe("C:\\work\\dextra")
   })
 
   it("clones into the same path it previewed", async () => {
     renderDialog()
-    fillForm("https://github.com/xintaofei/codeg", "C:\\work")
+    fillForm("https://github.com/xintaofei/dextra", "C:\\work")
     const previewed = previewedPath()
 
     // The click settles the whole clone promise chain, so flush it inside
@@ -110,7 +110,7 @@ describe("CloneDialog clone path preview", () => {
     })
 
     expect(api.cloneRepository).toHaveBeenCalledWith(
-      "https://github.com/xintaofei/codeg",
+      "https://github.com/xintaofei/dextra",
       previewed,
       undefined
     )

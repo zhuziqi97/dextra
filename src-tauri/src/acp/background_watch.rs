@@ -1,6 +1,6 @@
 //! Transcript-tail watcher: surfaces Claude Code's OUT-OF-TURN activity.
 //!
-//! Claude Code produces activity outside any codeg-driven prompt turn:
+//! Claude Code produces activity outside any dextra-driven prompt turn:
 //! `<task-notification>` completions of async sub-agents (`Agent` launched in
 //! the background) and background shell tasks, the agent's continued work
 //! after such a notification (which can run for many minutes), and cron//loop
@@ -27,11 +27,11 @@
 //!   dies with it.
 //!
 //! * **Rendering** — new transcript records that do NOT belong to a
-//!   codeg-sent prompt turn are assembled into turns with the SAME Stage-A/
+//!   dextra-sent prompt turn are assembled into turns with the SAME Stage-A/
 //!   Stage-B code the detail parser uses ([`ClaudeRecordAccumulator`] +
 //!   [`group_into_turns`]) and emitted as `AcpEvent::BackgroundActivity`
 //!   upserts for the frontend's overlay slice. Foreground turns are excluded
-//!   by the **prompt ledger**: every prompt codeg sends is fingerprinted, and
+//!   by the **prompt ledger**: every prompt dextra sends is fingerprinted, and
 //!   a transcript turn whose initiating user record matches an unconsumed
 //!   fingerprint is the wire-rendered foreground turn (each fingerprint is
 //!   consumed exactly once, so a cron//loop re-fire of the SAME text later
@@ -148,7 +148,7 @@ fn reconstructed_slash_command_fingerprint(text: &str) -> Option<String> {
     }
 }
 
-/// Fingerprints of prompts codeg itself sent on this connection, so the
+/// Fingerprints of prompts dextra itself sent on this connection, so the
 /// watcher can tell wire-rendered foreground turns apart from out-of-turn
 /// activity. Shared between the connection loop (writer, on every
 /// `ConnectionCommand::Prompt`) and the watcher tick (consumer). A std mutex
@@ -204,7 +204,7 @@ impl PromptLedger {
     /// no reference to the file it replaced), so without this the only
     /// available evidence — "a sibling with a `/clear` head appeared right
     /// about when our file went quiet" — is equally true of every OTHER
-    /// conversation open on the same folder. codeg is a multi-agent
+    /// conversation open on the same folder. dextra is a multi-agent
     /// workbench; two Claude sessions in one project directory is the normal
     /// case, not the exotic one. Knowing that WE asked for the clear is what
     /// keeps this session from adopting a stranger's transcript.
@@ -256,7 +256,7 @@ impl PromptLedger {
             Some((Instant::now(), std::time::SystemTime::now()));
     }
 
-    /// Record the fingerprint of a prompt codeg is about to send: the first
+    /// Record the fingerprint of a prompt dextra is about to send: the first
     /// text block, trimmed. Attachment/resource blocks are excluded on
     /// purpose — the CLI may persist those differently, while the leading
     /// text lands verbatim at the start of the transcript's user record.
@@ -276,7 +276,7 @@ impl PromptLedger {
         };
         // `/clear` is a CLI-local command: the adapter forwards it like any
         // other prompt and Claude answers it by starting a new session on a
-        // new transcript file. This is the only notice codeg gets.
+        // new transcript file. This is the only notice dextra gets.
         if fingerprint == "/clear" || fingerprint.starts_with("/clear ") {
             *self.clear_sent_at.lock().unwrap_or_else(|p| p.into_inner()) =
                 Some((Instant::now(), std::time::SystemTime::now()));
@@ -537,7 +537,7 @@ struct TaskEntry {
 }
 
 /// The current out-of-turn episode: a contiguous run of transcript records
-/// not belonging to any codeg-sent prompt turn, assembled into turns via the
+/// not belonging to any dextra-sent prompt turn, assembled into turns via the
 /// detail parser's own Stage A/B.
 struct Episode {
     /// Byte offset of the episode's initiating record — the stable base of
@@ -556,7 +556,7 @@ struct Episode {
 }
 
 enum Mode {
-    /// Records belong to a codeg-sent prompt turn — the wire renders them.
+    /// Records belong to a dextra-sent prompt turn — the wire renders them.
     Foreground,
     /// Records are out-of-turn — the overlay renders them.
     Background,
@@ -603,7 +603,7 @@ pub(crate) struct WatchState {
     /// `Prompting` state observed at the previous tick — the edge detector for
     /// `current_turn_launched_ids` above.
     was_prompting: bool,
-    /// A codeg-sent prompt has been matched in the transcript and the model has
+    /// A dextra-sent prompt has been matched in the transcript and the model has
     /// not answered it yet. Within that window the CLI writes the rest of the
     /// SUBMISSION — a slash command's `<local-command-stdout>`, the `isMeta`
     /// instruction `/goal` injects for the model, image metadata — and
@@ -1378,7 +1378,7 @@ impl WatchState {
         if let Some(initiator) = turn_initiator_text(value) {
             let initiator_text = initiator.as_str();
             if ledger.consume_matching(&initiator) {
-                // A codeg-sent prompt: the wire renders this turn. Close any
+                // A dextra-sent prompt: the wire renders this turn. Close any
                 // open episode first (flush its final state) and go silent.
                 tracing::debug!("[bg-watch] foreground turn matched ledger");
                 self.collect_changed_turns(cwd, changed_turns);
@@ -1560,7 +1560,7 @@ fn turn_initiator_text(value: &serde_json::Value) -> Option<TurnInitiatorText> {
         if s.starts_with(CONTEXT_CONTINUATION_PREFIX) {
             return None;
         }
-        // A slash command persists as command tags; codeg sent the display
+        // A slash command persists as command tags; dextra sent the display
         // form ("/name args"), so match the ledger against that.
         if let Some(display) = slash_command_display(s) {
             return Some(TurnInitiatorText::ReconstructedSlashCommand(display));
@@ -2313,7 +2313,7 @@ mod tests {
         let event = tick_prompting(&mut ws, &ledger);
         assert!(
             event.is_none() || unpack(event.unwrap()).0.is_empty(),
-            "the codeg-sent prompt classifies foreground"
+            "the dextra-sent prompt classifies foreground"
         );
 
         // Mid-turn steer: the connection is STILL prompting, and the arm
@@ -2349,7 +2349,7 @@ mod tests {
         );
     }
 
-    /// A slash command sent from codeg writes MORE than its own record: the
+    /// A slash command sent from dextra writes MORE than its own record: the
     /// command, then `<local-command-stdout>`, then (for `/goal`) the `isMeta`
     /// STRING instruction Claude Code injects for the model — and only then the
     /// reply. Those side records are user records carrying text, so
@@ -2612,7 +2612,7 @@ mod tests {
         let ledger = PromptLedger::shared();
         ledger.record_text("do the thing");
 
-        // On disk before discovery: codeg's first prompt, the reply, an ack.
+        // On disk before discovery: dextra's first prompt, the reply, an ack.
         write_lines(
             &path,
             &[
@@ -2634,7 +2634,7 @@ mod tests {
         assert!(settled.is_empty());
         assert!(
             turns.is_empty(),
-            "the codeg-sent prompt classifies foreground — the wire renders it"
+            "the dextra-sent prompt classifies foreground — the wire renders it"
         );
 
         // Its fingerprint was consumed, so a same-text out-of-turn refire
@@ -3110,7 +3110,7 @@ mod tests {
     }
 
     #[test]
-    fn codeg_sent_prompt_is_foreground_and_not_surfaced() {
+    fn dextra_sent_prompt_is_foreground_and_not_surfaced() {
         let dir = tempfile::tempdir().unwrap();
         let path = temp_session(&dir);
         write_lines(&path, &[]);
@@ -3133,7 +3133,7 @@ mod tests {
 
     #[test]
     fn same_text_refire_without_ledger_entry_is_background() {
-        // The /loop case: codeg sent the text once (consumed), the scheduler
+        // The /loop case: dextra sent the text once (consumed), the scheduler
         // re-fires the SAME text later — second occurrence must surface.
         let dir = tempfile::tempdir().unwrap();
         let path = temp_session(&dir);

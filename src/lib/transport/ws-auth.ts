@@ -1,5 +1,5 @@
-export const CODEG_WS_PROTOCOL = "codeg-events"
-const CODEG_WS_TOKEN_PROTOCOL_PREFIX = "codeg-token."
+export const DEXTRA_WS_PROTOCOL = "codeg-events"
+const DEXTRA_WS_TOKEN_PROTOCOL_PREFIX = "codeg-token."
 
 function base64UrlEncode(value: string): string {
   const bytes = new TextEncoder().encode(value)
@@ -13,11 +13,11 @@ function base64UrlEncode(value: string): string {
     .replace(/=+$/g, "")
 }
 
-export function buildCodegWebSocketProtocols(token: string): string[] {
+export function buildDextraWebSocketProtocols(token: string): string[] {
   const trimmed = token.trim()
-  if (!trimmed) return [CODEG_WS_PROTOCOL]
+  if (!trimmed) return [DEXTRA_WS_PROTOCOL]
   return [
-    CODEG_WS_PROTOCOL,
-    `${CODEG_WS_TOKEN_PROTOCOL_PREFIX}${base64UrlEncode(trimmed)}`,
+    DEXTRA_WS_PROTOCOL,
+    `${DEXTRA_WS_TOKEN_PROTOCOL_PREFIX}${base64UrlEncode(trimmed)}`,
   ]
 }

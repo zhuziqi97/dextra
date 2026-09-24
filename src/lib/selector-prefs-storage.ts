@@ -21,7 +21,7 @@ import { clientStorageKey } from "@/lib/web-mount"
 
 import type { SessionModeStateInfo } from "@/lib/types"
 
-const STORAGE_KEY = clientStorageKey("codeg:selector-prefs")
+const STORAGE_KEY = clientStorageKey("dextra:selector-prefs")
 
 interface SelectorPrefs {
   modeId?: string
@@ -81,7 +81,7 @@ function updatePrefs(
 const CURSOR_VARIANT_KEYS = new Set(["thinking", "context", "effort", "fast"])
 
 /**
- * Heal a `model` preference saved before codeg opted into cursor-agent's
+ * Heal a `model` preference saved before dextra opted into cursor-agent's
  * parameterized model picker.
  *
  * That older surface identified a model by a stringified variant —

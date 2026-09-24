@@ -1,8 +1,8 @@
-//! History parser for agents that have **no codeg-side store parser**: custom
+//! History parser for agents that have **no dextra-side store parser**: custom
 //! ACP agents.
 //!
 //! Every other parser in this module reverse-engineers one agent's private
-//! session store. This one reads codeg's own ACP transcript
+//! session store. This one reads dextra's own ACP transcript
 //! ([`crate::acp_transcript`]) — the raw `session/prompt` payloads and
 //! `session/update` notifications the connection layer witnessed — and projects
 //! them into [`MessageTurn`]s using nothing but ACP semantics.
@@ -23,7 +23,7 @@
 //! ## Turn boundaries
 //!
 //! ACP has no "turn ended" notification — the stop reason is the *response* to
-//! `session/prompt`. codeg records it as an explicit
+//! `session/prompt`. dextra records it as an explicit
 //! [`EntryKind::TurnEnd`](crate::acp_transcript::EntryKind::TurnEnd) line, so
 //! live-recorded transcripts have exact boundaries. Transcripts hydrated from a
 //! `session/load` replay have no such line (the agent replays only
@@ -57,7 +57,7 @@ impl AcpNativeParser {
     pub fn new(agent_type: AgentType) -> Self {
         Self {
             agent_type,
-            root: crate::paths::codeg_acp_transcripts_root(),
+            root: crate::paths::dextra_acp_transcripts_root(),
         }
     }
 
@@ -103,7 +103,7 @@ impl AgentParser for AcpNativeParser {
     fn get_conversation(&self, conversation_id: &str) -> Result<ConversationDetail, ParseError> {
         let dir = self.agent_dir();
         // Reads the whole continuation chain: when the agent had forgotten the
-        // session and codeg started a fresh one, the earlier turns still live
+        // session and dextra started a fresh one, the earlier turns still live
         // under the previous session id.
         let transcript = acp_transcript::read_chain_in(&self.root, dir, conversation_id);
         if transcript.header.is_none() && transcript.is_empty() {
@@ -157,7 +157,7 @@ impl AcpNativeParser {
             folder_path,
             folder_name,
             // The first prompt's text is the only title an ACP transcript can
-            // honestly yield — ACP has no title channel, and codeg's DB-side
+            // honestly yield — ACP has no title channel, and dextra's DB-side
             // auto-title backfill takes it from here.
             title: first_prompt_title(&transcript.entries),
             started_at,
@@ -389,7 +389,7 @@ pub fn project_turns(entries: &[TranscriptEntry]) -> Vec<MessageTurn> {
     // second user turn.
     let mut prompt_just_recorded = false;
     // Timestamp of the prompt that opened the current turn. An assistant turn's
-    // span starts when codeg SENT the prompt, not when the first token arrived —
+    // span starts when dextra SENT the prompt, not when the first token arrived —
     // time-to-first-token is part of how long the agent took, and this matches
     // what `turn_timings` records for built-ins.
     let mut turn_start_hint: Option<u64> = None;
@@ -547,7 +547,7 @@ fn apply_update(
     }
     match update {
         SessionUpdate::UserMessageChunk(chunk) => {
-            // Live path: codeg already recorded the outgoing prompt, so the
+            // Live path: dextra already recorded the outgoing prompt, so the
             // agent's echo is a duplicate. Replay path: there is no recorded
             // prompt, so this IS the user turn and it also ends the previous
             // assistant turn.
@@ -983,7 +983,7 @@ mod tests {
     /// older builds) while a `session/load` chunk arrives already typed. Two
     /// readers, one meaning: the same content has to produce the same block
     /// whichever door it comes through, or history would contradict itself
-    /// depending on whether codeg recorded the turn or the agent replayed it.
+    /// depending on whether dextra recorded the turn or the agent replayed it.
     #[test]
     fn the_typed_and_raw_readers_agree_on_the_same_content() {
         for item in attachment_prompt().as_array().expect("an array") {
@@ -1119,7 +1119,7 @@ mod tests {
     /// this parser re-derives the same mapping from the recorded wire bytes.
     /// They are two implementations of one contract — a viewer watching live and
     /// a reader after a refresh must see the same message — so pin them
-    /// together over the block shapes codeg's composer actually sends.
+    /// together over the block shapes dextra's composer actually sends.
     #[test]
     fn history_projection_matches_the_live_user_message_projection() {
         use crate::acp::types::{user_blocks_from_prompt, PromptInputBlock, UserMessageBlock};
@@ -1324,7 +1324,7 @@ mod tests {
         }
     }
 
-    /// A `delegate_to_agent` call from the codeg-mcp companion must replay
+    /// A `delegate_to_agent` call from the dextra-mcp companion must replay
     /// under its wire name. The frontend's tool-kind classifier
     /// (`isAgentLikeToolName`) recognizes `delegate_to_agent` across host
     /// naming conventions and renders the delegation card from it — the same
@@ -1339,7 +1339,7 @@ mod tests {
                 serde_json::json!({
                     "sessionUpdate": "tool_call",
                     "toolCallId": "call-9",
-                    "title": "mcp__codeg-mcp__delegate_to_agent",
+                    "title": "mcp__dextra-mcp__delegate_to_agent",
                     "kind": "other",
                     "status": "pending",
                     "rawInput": { "agent_type": "custom:goose", "task": "review the diff" }
@@ -1365,7 +1365,7 @@ mod tests {
                 input_preview,
                 ..
             } => {
-                assert_eq!(tool_name, "mcp__codeg-mcp__delegate_to_agent");
+                assert_eq!(tool_name, "mcp__dextra-mcp__delegate_to_agent");
                 let input = input_preview.as_deref().unwrap();
                 assert!(input.contains("custom:goose"));
                 assert!(input.contains("review the diff"));
@@ -1635,7 +1635,7 @@ mod tests {
 
     fn temp_root() -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "codeg-acp-native-test-{}-{:?}",
+            "dextra-acp-native-test-{}-{:?}",
             std::process::id(),
             std::thread::current().id()
         ));
@@ -1741,7 +1741,7 @@ mod tests {
     #[test]
     fn a_session_restarted_after_the_agent_forgot_it_reads_as_one_conversation() {
         // The agent kept its sessions in memory, so reopening the conversation
-        // failed `session/load` and codeg opened `sess-new` for the same
+        // failed `session/load` and dextra opened `sess-new` for the same
         // conversation, linked back to `sess-old`. Both halves must render as
         // one history, listed once.
         let root = temp_root();

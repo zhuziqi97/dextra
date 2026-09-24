@@ -242,7 +242,7 @@ export function FileWorkspaceTabBar() {
  * was no way to simply open a page. The blank page is exactly that (see
  * `BLANK_PAGE_URL`): an empty tab with a focused address bar.
  *
- * The local servers below them are the ones codeg has watched start in its
+ * The local servers below them are the ones dextra has watched start in its
  * terminals (`browser::services`), listed fresh every time the menu opens:
  * the backend connects to each one while answering, so an address here is an
  * address that was answering a moment ago. This is the entry point for

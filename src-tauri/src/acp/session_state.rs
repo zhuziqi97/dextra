@@ -80,7 +80,7 @@ pub struct ToolCallState {
     /// extraction. `None` if the agent didn't supply it. Same partial-update
     /// preservation semantic as `locations`.
     ///
-    /// Convention used by codeg's multi-agent delegation (the `delegate_to_agent`
+    /// Convention used by dextra's multi-agent delegation (the `delegate_to_agent`
     /// MCP tool) — `DelegationBroker` writes the following object under
     /// `meta["codeg.delegation"]` on the parent's active tool call:
     ///
@@ -348,7 +348,7 @@ pub struct SessionState {
     /// Backend-internal — not serialized.
     pub pi_startup_banner: Option<String>,
 
-    /// Config-option values codeg asserted while establishing this session
+    /// Config-option values dextra asserted while establishing this session
     /// (`apply_preferred_session_options`) and the agent confirmed — the user's
     /// saved preferences on a connect, the parent's selectors on a fork.
     ///
@@ -369,7 +369,7 @@ pub struct SessionState {
     /// Config-option ids this launch pinned through the environment, which the
     /// agent will therefore refuse to change for as long as the process lives.
     ///
-    /// Cline forced this. codeg pins the provider with `CLINE_PROVIDER` — the
+    /// Cline forced this. dextra pins the provider with `CLINE_PROVIDER` — the
     /// only way a bring-your-own provider clears cline's ACP auth gate — and
     /// cline then answers `set_config_option("provider", …)` with `Invalid
     /// params: Cannot change provider: CLINE_PROVIDER environment variable is
@@ -378,7 +378,7 @@ pub struct SessionState {
     /// preference saved from one of those clicks is replayed — and fails —
     /// on every later connect.
     ///
-    /// codeg is what disabled the control, so codeg is what withholds it: these
+    /// dextra is what disabled the control, so dextra is what withholds it: these
     /// ids are dropped from what the frontend is told about and skipped when
     /// saved preferences are replayed.
     ///
@@ -436,7 +436,7 @@ pub struct SessionState {
     pub(crate) recent_events: RecentEventsBuffer,
 
     /// Per-launch token registered with the delegation broker's
-    /// `TokenRegistry` when `codeg-mcp` is injected at init.
+    /// `TokenRegistry` when `dextra-mcp` is injected at init.
     /// Revoked when the connection tears down so a leaked binary can't
     /// keep round-tripping after the parent session ends.
     pub delegation_token: Option<String>,
@@ -1913,7 +1913,7 @@ impl SessionState {
     /// ## Assumption this rests on
     ///
     /// Bounding only terminal calls assumes the agent reports one. Every agent
-    /// codeg ships does (`upsert_tool_call` inserts at `Pending` and the
+    /// dextra ships does (`upsert_tool_call` inserts at `Pending` and the
     /// adapter's completion update moves it), but one that never did would
     /// leave the table untrimmable at any length. Pinned by
     /// `snapshot_ships_an_all_unsettled_table_whole` so a future change has to
@@ -2073,12 +2073,12 @@ impl SessionState {
 /// Max age of the background keep-alive: how long a connection with
 /// launched-but-unresolved background work stays exempt from the idle sweeps
 /// after the LAST `BackgroundActivity` event. Configurable via
-/// `CODEG_ACP_BACKGROUND_KEEPALIVE_MAX_SECS` (seconds; invalid → default 3600;
+/// `DEXTRA_ACP_BACKGROUND_KEEPALIVE_MAX_SECS` (seconds; invalid → default 3600;
 /// `0` disables the exemption entirely). Read once per process.
 pub(crate) fn background_keepalive_max_age() -> chrono::Duration {
     static SECS: std::sync::OnceLock<i64> = std::sync::OnceLock::new();
     let secs = *SECS.get_or_init(|| {
-        std::env::var("CODEG_ACP_BACKGROUND_KEEPALIVE_MAX_SECS")
+        std::env::var("DEXTRA_ACP_BACKGROUND_KEEPALIVE_MAX_SECS")
             .ok()
             .and_then(|v| v.trim().parse::<i64>().ok())
             // `chrono::Duration::seconds` below is an `expect` over
@@ -2525,7 +2525,7 @@ mod tests {
 
     /// Only the spawn frame carries a task's identity, so it is the only one
     /// allowed to create a row: a progress delta for an id we never saw
-    /// announced means codeg failed to read the announcement, and a row with a
+    /// announced means dextra failed to read the announcement, and a row with a
     /// placeholder name and no type is worse than no row at all.
     #[test]
     fn async_task_rows_are_created_only_by_a_spawn_delta() {
@@ -3896,7 +3896,7 @@ mod tests {
     /// The bound covers terminal calls only, so a table that never reaches one
     /// ships whole however long it gets.
     ///
-    /// Every agent codeg ships reports a terminal status, which is what makes
+    /// Every agent dextra ships reports a terminal status, which is what makes
     /// the carve-out for in-flight calls safe. This pins the assumption rather
     /// than leaving it implicit: an agent that stopped reporting one would
     /// turn this test red instead of silently restoring #380.

@@ -383,14 +383,14 @@ function summarizeChecks(checks: UiCheckItem[]): CheckStatus | "unchecked" {
 
 /**
  * Per-agent `env_json` knob deciding WHICH SIDE of the ACP connection reads
- * files and runs commands (`HostToolsPolicy`, Rust side). codeg advertises
+ * files and runs commands (`HostToolsPolicy`, Rust side). dextra advertises
  * `fs.readTextFile` / `terminal` by default, and an agent that sees them stops
- * using its own backends and delegates — so the work happens in CODEG's
+ * using its own backends and delegates — so the work happens in DEXTRA's
  * process, outside any OS sandbox the agent applies to itself. Set to
- * {@link HOST_TOOLS_AGENT} and codeg advertises neither, so the agent does its
- * own I/O and its own sandbox covers it again (#436). Absent ⇒ codeg hosts.
+ * {@link HOST_TOOLS_AGENT} and dextra advertises neither, so the agent does its
+ * own I/O and its own sandbox covers it again (#436). Absent ⇒ dextra hosts.
  */
-const HOST_TOOLS_ENV = "CODEG_ACP_HOST_TOOLS"
+const HOST_TOOLS_ENV = "DEXTRA_ACP_HOST_TOOLS"
 const HOST_TOOLS_AGENT = "agent"
 const HOST_TOOLS_DEFAULT = "default"
 
@@ -518,7 +518,7 @@ function patchEnvText(
  * which fails OPEN on an unrecognized value rather than silently withholding.
  *
  * Reads the per-agent layer ONLY. When the key is absent and an operator has
- * exported `CODEG_ACP_HOST_TOOLS=agent` in codeg's own environment, the switch
+ * exported `DEXTRA_ACP_HOST_TOOLS=agent` in dextra's own environment, the switch
  * renders off while the next connection actually withholds the channels — the
  * display understates how restricted the agent is. Showing that inherited state
  * would need the backend to report its resolved process-env value; until then
@@ -534,8 +534,8 @@ export function hostToolsAgentModeEnabled(envText: string): boolean {
  * `default` for off, rather than deleting the key.
  *
  * Deleting would be tidier but wrong: the backend resolves this knob as
- * `env_json` first, then codeg's own process env. An operator who exported
- * `CODEG_ACP_HOST_TOOLS=agent` process-wide makes "absent" mean `agent`, so a
+ * `env_json` first, then dextra's own process env. An operator who exported
+ * `DEXTRA_ACP_HOST_TOOLS=agent` process-wide makes "absent" mean `agent`, so a
  * toggle that cleared the key on OFF could not turn the mode off at all — the
  * switch would read false while the next connection still withheld the
  * channels. Writing the value the user actually chose makes the per-agent
@@ -558,7 +558,7 @@ export function setHostToolsAgentMode(
  * is installed, nothing polls npm in the background, and a failed latest
  * install falls back to the pinned version with a note in the install log.
  */
-const ADAPTER_CHANNEL_ENV = "CODEG_ADAPTER_CHANNEL"
+const ADAPTER_CHANNEL_ENV = "DEXTRA_ADAPTER_CHANNEL"
 const ADAPTER_CHANNEL_LATEST = "latest"
 
 export type AdapterChannel = "pinned" | "latest"
@@ -714,13 +714,13 @@ const CLINE_BYO_PROVIDERS = [
 type ClineProvider =
   | (typeof CLINE_SIGNIN_PROVIDERS)[number]["value"]
   | (typeof CLINE_BYO_PROVIDERS)[number]["value"]
-  // A provider configured outside codeg (`cline auth bedrock`, a registry id
+  // A provider configured outside dextra (`cline auth bedrock`, a registry id
   // this list does not carry) still has to select a row, or saving from this
   // panel would silently retarget the user's store at whatever the dropdown
   // fell back to.
   | (string & {})
 
-/** Whether cline owns this provider's credential (OAuth), rather than codeg.
+/** Whether cline owns this provider's credential (OAuth), rather than dextra.
  *  Mirrors the backend `cline_provider_is_agent_managed`. */
 function isClineSignInProvider(provider: string): boolean {
   return CLINE_SIGNIN_PROVIDERS.some((p) => p.value === provider)
@@ -756,7 +756,7 @@ const GROK_DEFAULT_API_BACKEND = "responses"
  * and `importantEnvKeysByAgent`). */
 const GROK_API_KEY_ENV = "XAI_API_KEY"
 
-/** codeg-side knob recording the chosen authentication method. Read by the
+/** dextra-side knob recording the chosen authentication method. Read by the
  * launch path (`apply_grok_env_policy`): in `subscription` mode it clears any
  * inherited XAI_API_KEY so the CLI uses the `grok login` browser credential.
  * The Grok binary itself ignores this var. Mirrors Cursor's CURSOR_AUTH_MODE. */
@@ -764,12 +764,12 @@ const GROK_AUTH_MODE_ENV = "GROK_AUTH_MODE"
 
 /** The subscription sign-in command shown (and copied) in the auth card. Grok's
  * `login` is a root subcommand; a bare `grok login` matches the panel's existing
- * hint wording (codeg doesn't resolve the managed binary path here). */
+ * hint wording (dextra doesn't resolve the managed binary path here). */
 const GROK_LOGIN_COMMAND = "grok login"
 
 /** Grok's three authentication methods:
  *  - `subscription` — sign in with `grok login` (SuperGrok / X Premium+),
- *    whose session lives in `~/.grok/auth.json` (untouched by codeg);
+ *    whose session lives in `~/.grok/auth.json` (untouched by dextra);
  *  - `api_key` — a non-interactive XAI_API_KEY from the xAI console;
  *  - `custom` — a bring-your-own endpoint: a custom `[model.<id>]` in
  *    ~/.grok/config.toml with its own base_url/api_key (the custom-model card). */
@@ -778,7 +778,7 @@ export type GrokAuthMethod = "subscription" | "api_key" | "custom"
 /** Resolve the persisted Grok authentication method, tolerant of legacy rows:
  * an explicit `GROK_AUTH_MODE` wins; otherwise a configured custom model implies
  * `custom`, a saved XAI_API_KEY implies `api_key`, and an empty env means the
- * user relies on `grok login`. `hasCustomModel` reflects whether a codeg-managed
+ * user relies on `grok login`. `hasCustomModel` reflects whether a dextra-managed
  * `[model.<id>]` is set (it lives in config.toml, not env). Mirrors
  * `inferCursorMode`. */
 export function inferGrokMode(
@@ -1879,7 +1879,7 @@ interface CodexImportantValues {
   serviceTierFast: boolean
 }
 
-const CODEX_DEFAULT_MODEL_PROVIDER = "codeg"
+const CODEX_DEFAULT_MODEL_PROVIDER = "dextra"
 
 /**
  * `[features]` flag that lets codex call its `request_user_input` tool in the
@@ -1890,13 +1890,13 @@ const CODEX_DEFAULT_MODEL_PROVIDER = "codeg"
  * `request_user_input_available_modes()` widens it to `Default` exactly when
  * this feature is on (codex-rs/tools/src/tool_config.rs). Without it a
  * default-mode turn that reaches for the tool is refused with
- * "request_user_input is unavailable in Default mode" — i.e. codeg's question
+ * "request_user_input is unavailable in Default mode" — i.e. dextra's question
  * cards only ever appear in Plan mode (openai/codex#24750).
  *
  * Stage is `UnderDevelopment` and `default_enabled` is false
  * (codex-rs/features/src/lib.rs), so it has no `/experimental` menu entry and
  * config.toml is the only way to turn it on. Verified against codex-cli 0.147.0
- * — the version codeg's pinned codex-acp 1.4.0 depends on — with
+ * — the version dextra's pinned codex-acp 1.4.0 depends on — with
  * `codex features list`: absent ⇒ false, `= true` ⇒ true. Unknown keys under
  * `[features]` are ignored rather than rejected (also verified), so writing it
  * is safe on a codex build that predates the flag.
@@ -1997,7 +1997,7 @@ function firstRelativeWritableRoot(text: string): string | null {
 
 /** Whether the workspace-write sub-group applies. `sandbox_mode` unset falls
  * back to `workspace-write` for any directory carrying a `[projects]` trust
- * decision (which codeg writes for every folder it opens), so "unset" keeps the
+ * decision (which dextra writes for every folder it opens), so "unset" keeps the
  * group live rather than greying out the very knobs the fallback uses. */
 function codexWorkspaceWriteApplies(mode: CodexSandboxModeChoice): boolean {
   return mode === "workspace-write" || mode === CODEX_SANDBOX_UNSET
@@ -2026,13 +2026,13 @@ export function codexSandboxSeedsAcpPreset(shadowed: boolean): boolean {
 /**
  * Whether to warn that the ACP adapter cannot honor a read-only sandbox.
  *
- * Fires exactly when codeg will inject the `read-only` preset, because the
+ * Fires exactly when dextra will inject the `read-only` preset, because the
  * warning's second half promises that every escalation reaches the user — true
  * of that preset on codex-acp ≥1.7.0 (`approvalsReviewer: "user"`), and false
  * of the `agent` default a shadowed config falls back to (`auto_review`, where
  * a model forwards only what it judges unsafe). Showing it for a shadowed
  * config would pair "your sandbox key is ignored" with "you will be asked about
- * everything" — the second being a guarantee codeg is not making.
+ * everything" — the second being a guarantee dextra is not making.
  */
 export function showsCodexReadOnlyAcpWarning(
   mode: CodexSandboxModeChoice,
@@ -2346,8 +2346,8 @@ function extractCodexTomlImportantValues(
         continue
       }
       // The three dotted `features.*` spellings below are ROOT-scoped on
-      // purpose. Inside `[model_providers.codeg]` the same text means
-      // `model_providers.codeg.features.…` — a key codex ignores — and the
+      // purpose. Inside `[model_providers.dextra]` the same text means
+      // `model_providers.dextra.features.…` — a key codex ignores — and the
       // writer only ever touches the root spelling. Reading a nested one would
       // show a value no save could clear, and (for the websocket flag, which
       // the writer re-derives on every patch) would promote a provider-local
@@ -2679,8 +2679,8 @@ function removeTomlSection(
  * turning it ON would emit a config.toml the backend refuses to persist.
  *
  * Only lines above the FIRST section header are considered: inside
- * `[model_providers.codeg]`, `features.skills` means
- * `model_providers.codeg.features.skills`, an unrelated key we must not touch.
+ * `[model_providers.dextra]`, `features.skills` means
+ * `model_providers.dextra.features.skills`, an unrelated key we must not touch.
  */
 function stripRootDottedKey(
   lines: string[],
@@ -3007,19 +3007,19 @@ function ensureCodexProviderDefaults(
   }
   let next = configTomlText
   const current = extractCodexTomlImportantValues(next)
-  const codegBaseUrl =
+  const dextraBaseUrl =
     current.providerBaseUrls[CODEX_DEFAULT_MODEL_PROVIDER] ?? ""
   next = patchCodexProviderField(
     next,
     CODEX_DEFAULT_MODEL_PROVIDER,
     "base_url",
-    `base_url = ${JSON.stringify(codegBaseUrl)}`
+    `base_url = ${JSON.stringify(dextraBaseUrl)}`
   )
   next = patchCodexProviderField(
     next,
     CODEX_DEFAULT_MODEL_PROVIDER,
     "name",
-    'name = "codeg"'
+    'name = "dextra"'
   )
   next = patchCodexProviderField(
     next,
@@ -3030,7 +3030,7 @@ function ensureCodexProviderDefaults(
   // `requires_openai_auth` is the one managed field a user legitimately owns:
   // codex defaults it to false, and its `uses_openai_actor_authorization()`
   // requires `!requires_openai_auth`, so forcing true silently disables the
-  // actor-authorization path. Supply codeg's default only when the provider
+  // actor-authorization path. Supply dextra's default only when the provider
   // does not already declare it — true is right for a provider *we* created
   // (key in auth.json, no env_key), never for one the user configured.
   // Read the original text: the three patches above never touch
@@ -3248,7 +3248,7 @@ export function buildGrokStructuredConfig(draft: {
   grokAutoCompactThreshold: string
 }): GrokStructuredConfig {
   // The custom-model group applies only in the `custom` auth method; the
-  // subscription / api_key methods omit the codeg-managed [model.<id>] block
+  // subscription / api_key methods omit the dextra-managed [model.<id>] block
   // (an empty id → the backend removes it). Permission mode, reasoning effort
   // and compaction below stay independent of the auth method.
   const modelId =
@@ -3521,7 +3521,7 @@ export function patchEnvByImportantKey(
   value: string
 ): string {
   const keys = importantEnvKeysByAgent(agentType)
-  // The FIRST key of each list is the one codeg writes; the rest are aliases it
+  // The FIRST key of each list is the one dextra writes; the rest are aliases it
   // only reads. An agent that has no env var for a slot leaves that list empty,
   // and `[0]` is then `undefined` — which `patchEnvText` would happily write as
   // an env var literally named `undefined`, silently swallowing what the user
@@ -3860,12 +3860,12 @@ function isValidCustomVersion(value: string): boolean {
 }
 
 /**
- * The explainer card for agents whose codeg entry is a third-party ACP
+ * The explainer card for agents whose dextra entry is a third-party ACP
  * *adapter* rather than the vendor's own CLI — Claude Code and Codex.
  *
  * Ten of the twelve built-ins install the vendor CLI itself, so a user's
  * existing global install is simply detected. These two are the exception:
- * neither `claude` nor `codex` speaks ACP, so codeg installs `claude-agent-acp`
+ * neither `claude` nor `codex` speaks ACP, so dextra installs `claude-agent-acp`
  * / `codex-acp` instead, and the launch gate looks for THAT command. Without
  * this card the user only sees "Not installed" next to an agent they demonstrably
  * have — by far the most-reported confusion.
@@ -3898,17 +3898,17 @@ export function buildAcpAdapterCheck(
   // The English fallbacks mirror the four i18n messages one-for-one (they are
   // what renders if no translator is mounted), so each state keeps the detail
   // that state is about — above all, the path we found the vendor CLI at.
-  const split = `Codeg drives agents over ACP and the ${adapter.native_label} does not speak ACP, so Codeg needs a separate adapter package, ${adapter.adapter_package}.`
+  const split = `Dextra drives agents over ACP and the ${adapter.native_label} does not speak ACP, so Dextra needs a separate adapter package, ${adapter.adapter_package}.`
   const coexist = `It ships its own runtime, never modifies or replaces your ${adapter.native_cmd} command, and reads the same ${adapter.shared_config_dir} — your existing sign-in and settings carry over.`
   const [key, fallback] = installed
     ? sawNative
       ? [
           "adapter.readyWithNative",
-          `Adapter ${adapter.adapter_cmd} is installed — that is what Codeg launches, not your own ${adapter.native_cmd} at ${adapter.native_path}. They are separate packages that coexist, and both read ${adapter.shared_config_dir}.`,
+          `Adapter ${adapter.adapter_cmd} is installed — that is what Dextra launches, not your own ${adapter.native_cmd} at ${adapter.native_path}. They are separate packages that coexist, and both read ${adapter.shared_config_dir}.`,
         ]
       : [
           "adapter.ready",
-          `Adapter ${adapter.adapter_cmd} is installed — that is what Codeg launches. It ships its own runtime, so the ${adapter.native_label} is not required.`,
+          `Adapter ${adapter.adapter_cmd} is installed — that is what Dextra launches. It ships its own runtime, so the ${adapter.native_label} is not required.`,
         ]
     : sawNative
       ? [
@@ -4173,7 +4173,7 @@ export function buildVersionCheck(
 
   // A latest-channel agent's installed version normally sits AT or AHEAD of
   // the pin, so the compare-to-pin branch above never offers an upgrade again
-  // — and codeg cannot know whether npm has something newer, because nothing
+  // — and dextra cannot know whether npm has something newer, because nothing
   // polls in the background (by design). Keep the Upgrade action available:
   // it resolves the `latest` dist-tag on demand, and "Already latest" would
   // claim a comparison that was never made.
@@ -6114,7 +6114,7 @@ export function AcpAgentSettings() {
         nextConfigTomlText = updateTomlRootStringKey(
           nextConfigTomlText,
           "model_catalog_json",
-          codexHasConfig ? "codeg-model-catalog.json" : ""
+          codexHasConfig ? "dextra-model-catalog.json" : ""
         )
         const synced = extractCodexImportantValues(
           nextAuthJsonText,
@@ -7267,7 +7267,7 @@ export function AcpAgentSettings() {
         return
       }
 
-      // "api_key" or "model_provider": ensure model_provider = "codeg" in toml
+      // "api_key" or "model_provider": ensure model_provider = "dextra" in toml
       const nextConfigTomlText = patchCodexConfigTomlText(
         selectedDraft.codexConfigTomlText,
         { modelProvider: CODEX_DEFAULT_MODEL_PROVIDER }
@@ -7307,7 +7307,7 @@ export function AcpAgentSettings() {
       const defaultSlug = next.default ?? next.customs[0]?.slug ?? ""
       // `next` arrives already pruned of exclusions that no longer name a
       // listable official, so a plain count is the *effective* customization —
-      // codeg only takes over codex's model table when something really deviates.
+      // dextra only takes over codex's model table when something really deviates.
       const hasCatalog =
         next.customs.length > 0 || (next.excludedOfficials?.length ?? 0) > 0
       updateSelectedDraft((current) => {
@@ -7319,7 +7319,7 @@ export function AcpAgentSettings() {
         toml = updateTomlRootStringKey(
           toml,
           "model_catalog_json",
-          hasCatalog ? "codeg-model-catalog.json" : ""
+          hasCatalog ? "dextra-model-catalog.json" : ""
         )
         return {
           ...current,
@@ -7874,7 +7874,7 @@ export function AcpAgentSettings() {
                     <Badge variant="outline" className="shrink-0">
                       {selectedAgent.distribution_type}
                     </Badge>
-                    {/* Names the thing codeg actually installs, right next to
+                    {/* Names the thing dextra actually installs, right next to
                         the vendor's name — so the split is visible even before
                         anyone reads the preflight card below. */}
                     {selectedAgent.is_acp_adapter && (
@@ -8467,7 +8467,7 @@ export function AcpAgentSettings() {
 
                     {/* `[features].default_mode_request_user_input` — without
                         it codex refuses its own `request_user_input` tool
-                        outside Plan mode, so codeg's question cards never
+                        outside Plan mode, so dextra's question cards never
                         appear in an ordinary turn (openai/codex#24750). */}
                     <div className="space-y-1.5">
                       <div className="flex items-center justify-between rounded-md border px-3 py-2">
@@ -8642,7 +8642,7 @@ export function AcpAgentSettings() {
                         <p className="text-3xs text-muted-foreground">
                           {t("codex.sandboxModeHint")}
                         </p>
-                        {/* Sandbox mode is what codeg maps onto the session's
+                        {/* Sandbox mode is what dextra maps onto the session's
                             starting approval preset (#442), so it reaches
                             ordinary prompts even though approval_policy does
                             not. Worth stating next to the control that does it. */}
@@ -8764,12 +8764,12 @@ export function AcpAgentSettings() {
                         placeholder={`disable_response_storage = true
 model = "gpt-6-astra"
 model_reasoning_effort = "high"
-model_provider = "codeg"
+model_provider = "dextra"
 
 [features]
 responses_websockets_v2 = true
 
-[model_providers.codeg]
+[model_providers.dextra]
 base_url = "https://api.openai.com/v1"
 supports_websockets = true`}
                         className="min-h-40 max-h-80 font-mono text-xs"
@@ -10071,7 +10071,7 @@ supports_websockets = true`}
                               </SelectItem>
                             ))}
                           </SelectGroup>
-                          {/* A provider configured outside codeg (e.g. `cline
+                          {/* A provider configured outside dextra (e.g. `cline
                               auth bedrock`) keeps its own row, so opening this
                               panel can't silently retarget the store. */}
                           {!isClineSignInProvider(
@@ -11101,7 +11101,7 @@ supports_websockets = true`}
                     {/* Custom model (BYO endpoint) → [model.<id>] + [models].default.
                         Only shown (and saved) in the `custom` auth method: a model
                         id registers a custom Grok model as the default; the other
-                        methods omit the codeg-managed block. */}
+                        methods omit the dextra-managed block. */}
                     {selectedDraft.grokAuthMode === "custom" ? (
                       <div className="space-y-2.5 rounded-md border p-2.5">
                         <div>
@@ -11426,7 +11426,7 @@ supports_websockets = true`}
                     </div>
                   </div>
                 ) : isCustomAgentType(selectedAgent.agent_type) ? (
-                  // A custom agent is driven purely by the ACP protocol: codeg
+                  // A custom agent is driven purely by the ACP protocol: dextra
                   // knows nothing about its config file layout or auth model,
                   // so the generic "config management" editor below would be
                   // offering to write a file that may not exist in a format it

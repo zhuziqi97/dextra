@@ -2,7 +2,7 @@
 
 import { useEffect } from "react"
 import { useRouter } from "@/lib/navigation"
-import { getCodegToken } from "@/lib/transport/web-auth"
+import { getDextraToken } from "@/lib/transport/web-auth"
 import { webPath } from "@/lib/web-mount"
 import { isDesktop } from "@/lib/platform"
 
@@ -14,7 +14,7 @@ export default function Page() {
       return
     }
     // Web mode: validate token before entering app
-    const token = getCodegToken()
+    const token = getDextraToken()
     if (!token) {
       router.replace("/login")
       return
@@ -35,7 +35,7 @@ export default function Page() {
         }
         if (res.status === 401) {
           // Token genuinely rejected → clear it and re-authenticate.
-          localStorage.removeItem("codeg_token")
+          localStorage.removeItem("dextra_token")
           router.replace("/login")
           return
         }

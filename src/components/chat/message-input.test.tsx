@@ -278,8 +278,8 @@ describe("MessageInput (RichComposer integration)", () => {
     const card = container.querySelector('[class~="@container"]') as HTMLElement
     expect(card).not.toBeNull()
     // The same box paints the text I-beam across its blank chrome (see the
-    // `.codeg-composer-chrome` rule in globals.css).
-    expect(card.className).toContain("codeg-composer-chrome")
+    // `.dextra-composer-chrome` rule in globals.css).
+    expect(card.className).toContain("dextra-composer-chrome")
     expect(firePointer(card, "pointerdown", "mouse")).toBe(false)
   })
 
@@ -451,7 +451,7 @@ describe("MessageInput attach-to-chat insertion position", () => {
     const text = serializeDocToDisplayText(editor.state.doc)
     // A badge, not the block itself.
     expect(text).not.toContain("Captured from a web page")
-    expect(text).toMatch(/\[button#export]\(codeg:\/\/embedded\//)
+    expect(text).toMatch(/\[button#export]\(dextra:\/\/embedded\//)
   })
 
   // Nobody typed this badge, so taking it back has to be as cheap as one key.
@@ -568,7 +568,7 @@ describe("MessageInput attach-to-chat insertion position", () => {
       )
     )
     expect(serializeDocToText(editor.state.doc)).not.toContain(
-      "codeg://embedded/"
+      "dextra://embedded/"
     )
   })
 
@@ -713,7 +713,7 @@ describe("MessageInput session-mention attach", () => {
         conversation: summary(42, "Fix auth"),
       })
     })
-    const link = "[Fix auth](codeg://session/42)"
+    const link = "[Fix auth](dextra://session/42)"
     await waitFor(() =>
       expect(serializeDocToText(editor.state.doc)).toContain(link)
     )
@@ -733,7 +733,7 @@ describe("MessageInput session-mention attach", () => {
     })
     await waitFor(() =>
       expect(serializeDocToText(editor.state.doc)).toContain(
-        "[#7](codeg://session/7)"
+        "[#7](dextra://session/7)"
       )
     )
   })
@@ -747,7 +747,7 @@ describe("MessageInput session-mention attach", () => {
       })
     })
     expect(serializeDocToText(editor.state.doc)).not.toContain(
-      "codeg://session/42"
+      "dextra://session/42"
     )
   })
 
@@ -757,7 +757,7 @@ describe("MessageInput session-mention attach", () => {
     act(() => {
       emitAttachSessionToSession({ tabId: "tab-1", conversation })
     })
-    const link = "[Fix auth](codeg://session/42)"
+    const link = "[Fix auth](dextra://session/42)"
     await waitFor(() =>
       expect(serializeDocToText(editor.state.doc)).toContain(link)
     )
@@ -786,7 +786,7 @@ describe("MessageInput file-tree drag-and-drop", () => {
     kind: "file" | "dir"
   }) {
     const store = new Map<string, string>([
-      ["application/x-codeg-tree-entry", JSON.stringify(payload)],
+      ["application/x-dextra-tree-entry", JSON.stringify(payload)],
       ["text/plain", payload.absPath],
     ])
     return {
@@ -2257,13 +2257,13 @@ describe("MessageInput composer box sizing (#746)", () => {
       expect(container.querySelector('[role="textbox"]')).not.toBeNull()
     )
 
-    const chrome = container.querySelector(".codeg-composer-chrome")
+    const chrome = container.querySelector(".dextra-composer-chrome")
     expect(chrome).not.toBeNull()
     const chromeClasses = chrome!.className.split(/\s+/)
     expect(chromeClasses).toContain("flex")
     expect(chromeClasses).toContain("flex-col")
 
-    const editorRoot = chrome!.querySelector(".codeg-composer")
+    const editorRoot = chrome!.querySelector(".dextra-composer")
     expect(editorRoot).not.toBeNull()
     const editorClasses = editorRoot!.className.split(/\s+/)
     // A zero basis (`flex-1`) only reaches its intended height by absorbing the
@@ -2284,8 +2284,8 @@ describe("MessageInput composer box sizing (#746)", () => {
         expect(container.querySelector('[role="textbox"]')).not.toBeNull()
       )
 
-      const chrome = container.querySelector(".codeg-composer-chrome")!
-      const editorRoot = chrome.querySelector(".codeg-composer")!
+      const chrome = container.querySelector(".dextra-composer-chrome")!
+      const editorRoot = chrome.querySelector(".dextra-composer")!
       expect(chrome.className.split(/\s+/)).toContain(
         composerBoxMinHeight(tall)
       )
@@ -2301,8 +2301,8 @@ describe("MessageInput composer box sizing (#746)", () => {
       expect(container.querySelector('[role="textbox"]')).not.toBeNull()
     )
 
-    const chrome = container.querySelector(".codeg-composer-chrome")!
-    const editorRoot = chrome.querySelector(".codeg-composer")!
+    const chrome = container.querySelector(".dextra-composer-chrome")!
+    const editorRoot = chrome.querySelector(".dextra-composer")!
     // The row holding the add menu / agent settings / stop button.
     const actionRow = chrome.querySelector(":scope > .shrink-0.items-end")
     expect(actionRow).not.toBeNull()

@@ -506,7 +506,7 @@ describe("SidebarConversationCard sub-session chevron", () => {
 // folder, its absolute path, and the branch. Radix portals the content to the
 // body, hence the `screen` queries.
 describe("SidebarConversationCard hover details bubble", () => {
-  const FOLDER_PATH = "/Users/dev/projects/codeg"
+  const FOLDER_PATH = "/Users/dev/projects/dextra"
 
   function renderCard(c: DbConversationSummary) {
     return renderWithIntl(
@@ -534,7 +534,7 @@ describe("SidebarConversationCard hover details bubble", () => {
       allFolders: [
         {
           id: 1,
-          name: "codeg",
+          name: "dextra",
           path: FOLDER_PATH,
           git_branch: null,
           default_agent_type: null,
@@ -569,7 +569,7 @@ describe("SidebarConversationCard hover details bubble", () => {
       vi.advanceTimersByTime(600)
     })
     expect(screen.getByText(FOLDER_PATH)).toBeDefined()
-    expect(screen.getByText("codeg")).toBeDefined()
+    expect(screen.getByText("dextra")).toBeDefined()
   })
 
   // Companion to the `select-none` pin in the content's own test: with the

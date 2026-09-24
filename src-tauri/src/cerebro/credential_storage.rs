@@ -31,7 +31,7 @@ pub(super) struct SelectedCredentialStore {
 }
 
 fn data_root() -> PathBuf {
-    let fallback = dirs::data_dir().unwrap_or_else(|| PathBuf::from(".codeg-data")).join("codeg");
+    let fallback = dirs::data_dir().unwrap_or_else(|| PathBuf::from(".dextra-data")).join("dextra");
     crate::paths::resolve_effective_data_dir(&fallback)
 }
 

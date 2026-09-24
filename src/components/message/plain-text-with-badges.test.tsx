@@ -34,17 +34,17 @@ describe("PlainTextWithBadges", () => {
     expect(file.textContent).toContain("here")
 
     const { container: agent } = render(
-      <PlainTextWithBadges text="[@Codex](codeg://agent/codex)" />
+      <PlainTextWithBadges text="[@Codex](dextra://agent/codex)" />
     )
     expect(badge(agent, "agent")).not.toBeNull()
 
     const { container: session } = render(
-      <PlainTextWithBadges text="[#42](codeg://session/42)" />
+      <PlainTextWithBadges text="[#42](dextra://session/42)" />
     )
     expect(badge(session, "session")).not.toBeNull()
 
     const { container: commit } = render(
-      <PlainTextWithBadges text="[a1b2c3d](codeg://commit/%2Frepo@a1b2c3ddeadbeef)" />
+      <PlainTextWithBadges text="[a1b2c3d](dextra://commit/%2Frepo@a1b2c3ddeadbeef)" />
     )
     expect(badge(commit, "commit")).not.toBeNull()
   })
@@ -76,13 +76,13 @@ describe("PlainTextWithBadges", () => {
     // A path-less embedded attachment renders as a file badge too, but there is
     // nothing to reveal or copy — no anchor.
     const { container: embedded } = render(
-      <PlainTextWithBadges text="[report.pdf](codeg://embedded/abc-123)" />
+      <PlainTextWithBadges text="[report.pdf](dextra://embedded/abc-123)" />
     )
     expect(badge(embedded, "file")).not.toBeNull()
     expect(embedded.querySelector("[data-file-actions]")).toBeNull()
 
     const { container: session } = render(
-      <PlainTextWithBadges text="[#42](codeg://session/42)" />
+      <PlainTextWithBadges text="[#42](dextra://session/42)" />
     )
     expect(session.querySelector("[data-file-actions]")).toBeNull()
   })

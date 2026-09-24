@@ -997,27 +997,27 @@ describe("deriveFlowGraph — the folder a card names in its footer", () => {
     const { nodes } = deriveFlowGraph({
       dbNodes: [pin],
       conversations: [conv(10, { folder_id: 3 })],
-      allFolders: [folder(3, { name: "codeg" })],
+      allFolders: [folder(3, { name: "dextra" })],
       ...NO_DRAG,
     })
-    expect((nodes[0].data as ConversationCardData).folderName).toBe("codeg")
+    expect((nodes[0].data as ConversationCardData).folderName).toBe("dextra")
   })
 
   it("names the parent repo for a conversation living in a worktree", () => {
-    // The worktree's own directory name is `codeg-fix-abc`; what pairs with the
+    // The worktree's own directory name is `dextra-fix-abc`; what pairs with the
     // branch chip beside it is the repo, exactly as the composer row reads.
     const region = node(1, { kind: "folder", folder_id: 4 })
     const { nodes } = deriveFlowGraph({
       dbNodes: [region],
       conversations: [conv(10, { folder_id: 4 })],
       allFolders: [
-        folder(3, { name: "codeg" }),
-        folder(4, { name: "codeg-fix-abc", parent_id: 3 }),
+        folder(3, { name: "dextra" }),
+        folder(4, { name: "dextra-fix-abc", parent_id: 3 }),
       ],
       ...NO_DRAG,
     })
     const member = nodes.find((n) => n.type === "conversationCard")!
-    expect((member.data as ConversationCardData).folderName).toBe("codeg")
+    expect((member.data as ConversationCardData).folderName).toBe("dextra")
   })
 
   it("leaves a folderless chat conversation without a folder", () => {

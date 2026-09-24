@@ -34,7 +34,7 @@ const TRIGGER_ACTIVE =
 /**
  * Unified "Skill Packs" settings hub — a shared generic header + a fixed
  * top-right toolbar over a tabbed switcher for the three curated,
- * codeg-managed skill bundles (Experts, Science, Office). Each tab renders the
+ * dextra-managed skill bundles (Experts, Science, Office). Each tab renders the
  * existing per-pack body verbatim.
  */
 export function SkillPacksSettings() {
@@ -72,7 +72,7 @@ export function SkillPacksSettings() {
     [router, pathname, searchParams]
   )
 
-  // All three packs link from ONE shared central store (~/.codeg/skills), so a
+  // All three packs link from ONE shared central store (~/.dextra/skills), so a
   // single, tab-independent "open central folder" is correct for every tab.
   const handleOpenCentralDir = useCallback(async () => {
     try {
@@ -80,7 +80,7 @@ export function SkillPacksSettings() {
       if (isDesktop() && getActiveRemoteConnectionId() === null) {
         // Desktop: reveal the folder. `revealItemInDir` (not `openPath`) is
         // deliberate — the opener plugin's scope rejects `openPath` for the
-        // hidden `~/.codeg/...` path.
+        // hidden `~/.dextra/...` path.
         await revealItemInDir(path)
       } else {
         await openFolder(path)

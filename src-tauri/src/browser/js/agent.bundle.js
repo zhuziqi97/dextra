@@ -3802,5 +3802,5 @@
       truncated: true
     };
   }
-  globalThis.__codegAgent = { snapshot, elementForRef, act, locate, rectOf };
+  globalThis.__dextraAgent = { snapshot, elementForRef, act, locate, rectOf };
 })();

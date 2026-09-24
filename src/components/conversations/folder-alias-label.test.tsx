@@ -6,32 +6,34 @@ import { FolderAliasLabel } from "./folder-alias-label"
 describe("FolderAliasLabel", () => {
   it("renders `alias [ name ]` with the bracketed name in a deeper-color span", () => {
     const { container } = render(
-      <FolderAliasLabel name="codeg" alias="My Project" />
+      <FolderAliasLabel name="dextra" alias="My Project" />
     )
-    expect(container.textContent).toBe("My Project [ codeg ]")
+    expect(container.textContent).toBe("My Project [ dextra ]")
     const bracket = container.querySelector("span")
-    expect(bracket?.textContent).toBe("[ codeg ]")
+    expect(bracket?.textContent).toBe("[ dextra ]")
     // Default (fallback) bracket color is a neutral foreground shade, not accent.
     expect(bracket?.className).toContain("text-foreground")
     expect(bracket?.className).not.toContain("text-primary")
   })
 
   it("renders just the name (no span) when there is no alias", () => {
-    const { container } = render(<FolderAliasLabel name="codeg" alias={null} />)
-    expect(container.textContent).toBe("codeg")
+    const { container } = render(
+      <FolderAliasLabel name="dextra" alias={null} />
+    )
+    expect(container.textContent).toBe("dextra")
     expect(container.querySelector("span")).toBeNull()
   })
 
   it("treats a whitespace-only alias as unset", () => {
-    const { container } = render(<FolderAliasLabel name="codeg" alias="   " />)
-    expect(container.textContent).toBe("codeg")
+    const { container } = render(<FolderAliasLabel name="dextra" alias="   " />)
+    expect(container.textContent).toBe("dextra")
     expect(container.querySelector("span")).toBeNull()
   })
 
   it("lets a bracketClassName override the accent color", () => {
     const { container } = render(
       <FolderAliasLabel
-        name="codeg"
+        name="dextra"
         alias="X"
         bracketClassName="text-muted-foreground"
       />

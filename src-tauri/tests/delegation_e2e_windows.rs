@@ -11,19 +11,19 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use codeg_lib::acp::delegation::broker::{
+use dextra_lib::acp::delegation::broker::{
     ConversationDepthLookup, DelegationBroker, DelegationConfig,
 };
-use codeg_lib::acp::delegation::listener::{
+use dextra_lib::acp::delegation::listener::{
     DelegationListener, ParentSessionLookup, TokenEntry, TokenRegistry,
 };
-use codeg_lib::acp::delegation::spawner::{mock::MockSpawner, ConnectionSpawner};
-use codeg_lib::acp::delegation::transport::{
+use dextra_lib::acp::delegation::spawner::{mock::MockSpawner, ConnectionSpawner};
+use dextra_lib::acp::delegation::transport::{
     client_round_trip, client_status_round_trip, BrokerRequest, BrokerResponse, BrokerStatusRequest,
 };
-use codeg_lib::acp::delegation::types::{DelegationError, DelegationOutcome, DelegationSuccess};
-use codeg_lib::acp::question::{QuestionSpec, RegisteredQuestion, SessionQuestionAccess};
-use codeg_lib::models::AgentType;
+use dextra_lib::acp::delegation::types::{DelegationError, DelegationOutcome, DelegationSuccess};
+use dextra_lib::acp::question::{QuestionSpec, RegisteredQuestion, SessionQuestionAccess};
+use dextra_lib::models::AgentType;
 use serde_json::json;
 
 struct AlwaysRoot;
@@ -45,11 +45,11 @@ impl ParentSessionLookup for FixedParent {
 /// No-op feedback access — this e2e suite exercises delegation, not feedback.
 struct NoFeedback;
 #[async_trait]
-impl codeg_lib::acp::feedback::SessionFeedbackAccess for NoFeedback {
+impl dextra_lib::acp::feedback::SessionFeedbackAccess for NoFeedback {
     async fn read_pending_feedback(
         &self,
         _parent_connection_id: &str,
-    ) -> Vec<codeg_lib::acp::feedback::PendingFeedback> {
+    ) -> Vec<dextra_lib::acp::feedback::PendingFeedback> {
         Vec::new()
     }
     async fn commit_feedback_delivered(&self, _parent_connection_id: &str, _ids: Vec<String>) {}
@@ -73,34 +73,34 @@ impl SessionQuestionAccess for NoQuestions {
 /// No-op session-info access — this e2e suite never drives `get_session_info`.
 struct NoSessionInfo;
 #[async_trait]
-impl codeg_lib::acp::session_info::SessionInfoAccess for NoSessionInfo {
+impl dextra_lib::acp::session_info::SessionInfoAccess for NoSessionInfo {
     async fn resolve(
         &self,
         session_id: i32,
         _max_messages: u32,
-    ) -> codeg_lib::acp::session_info::SessionInfo {
-        codeg_lib::acp::session_info::SessionInfo::not_found(session_id)
+    ) -> dextra_lib::acp::session_info::SessionInfo {
+        dextra_lib::acp::session_info::SessionInfo::not_found(session_id)
     }
 }
 
 /// Task-tool stub: the e2e delegation tests never exercise the task arms.
 struct NoTaskTools;
 #[async_trait]
-impl codeg_lib::acp::work_task_tools::WorkTaskToolAccess for NoTaskTools {
+impl dextra_lib::acp::work_task_tools::WorkTaskToolAccess for NoTaskTools {
     async fn report_progress(
         &self,
         _parent: &str,
         _message: &str,
-    ) -> codeg_lib::acp::work_task_tools::TaskReportAck {
-        codeg_lib::acp::work_task_tools::TaskReportAck::rejected("no engine")
+    ) -> dextra_lib::acp::work_task_tools::TaskReportAck {
+        dextra_lib::acp::work_task_tools::TaskReportAck::rejected("no engine")
     }
     async fn complete(
         &self,
         _parent: &str,
         _verdict: &str,
         _summary: Option<&str>,
-    ) -> codeg_lib::acp::work_task_tools::TaskReportAck {
-        codeg_lib::acp::work_task_tools::TaskReportAck::rejected("no engine")
+    ) -> dextra_lib::acp::work_task_tools::TaskReportAck {
+        dextra_lib::acp::work_task_tools::TaskReportAck::rejected("no engine")
     }
 }
 
@@ -108,26 +108,26 @@ impl codeg_lib::acp::work_task_tools::WorkTaskToolAccess for NoTaskTools {
 /// arms.
 struct NoAuthoring;
 #[async_trait]
-impl codeg_lib::acp::chat_authoring::ChatAuthoringAccess for NoAuthoring {
+impl dextra_lib::acp::chat_authoring::ChatAuthoringAccess for NoAuthoring {
     async fn create_automation(
         &self,
-        _ctx: codeg_lib::acp::chat_authoring::AuthoringContext,
-        _spec: codeg_lib::acp::chat_authoring::NewAutomationSpec,
-    ) -> codeg_lib::acp::chat_authoring::AuthoringOutcome {
-        codeg_lib::acp::chat_authoring::AuthoringOutcome::rejected("automation", "no authoring")
+        _ctx: dextra_lib::acp::chat_authoring::AuthoringContext,
+        _spec: dextra_lib::acp::chat_authoring::NewAutomationSpec,
+    ) -> dextra_lib::acp::chat_authoring::AuthoringOutcome {
+        dextra_lib::acp::chat_authoring::AuthoringOutcome::rejected("automation", "no authoring")
     }
     async fn create_work_task(
         &self,
-        _ctx: codeg_lib::acp::chat_authoring::AuthoringContext,
-        _spec: codeg_lib::acp::chat_authoring::NewWorkTaskSpec,
-    ) -> codeg_lib::acp::chat_authoring::AuthoringOutcome {
-        codeg_lib::acp::chat_authoring::AuthoringOutcome::rejected("work_task", "no authoring")
+        _ctx: dextra_lib::acp::chat_authoring::AuthoringContext,
+        _spec: dextra_lib::acp::chat_authoring::NewWorkTaskSpec,
+    ) -> dextra_lib::acp::chat_authoring::AuthoringOutcome {
+        dextra_lib::acp::chat_authoring::AuthoringOutcome::rejected("work_task", "no authoring")
     }
 }
 
 fn unique_pipe(tag: &str) -> String {
     format!(
-        r"\\.\pipe\codeg-e2e-{}-{}-{}",
+        r"\\.\pipe\dextra-e2e-{}-{}-{}",
         tag,
         std::process::id(),
         std::time::SystemTime::now()
@@ -210,13 +210,13 @@ async fn end_to_end_named_pipe_happy_path() {
         broker.clone(),
         tokens,
         Arc::new(FixedParent(1)) as Arc<dyn ParentSessionLookup>,
-        Arc::new(NoFeedback) as Arc<dyn codeg_lib::acp::feedback::SessionFeedbackAccess>,
+        Arc::new(NoFeedback) as Arc<dyn dextra_lib::acp::feedback::SessionFeedbackAccess>,
         Arc::new(NoQuestions) as Arc<dyn SessionQuestionAccess>,
-        Arc::new(NoSessionInfo) as Arc<dyn codeg_lib::acp::session_info::SessionInfoAccess>,
-        Arc::new(NoTaskTools) as Arc<dyn codeg_lib::acp::work_task_tools::WorkTaskToolAccess>,
-        Arc::new(NoAuthoring) as Arc<dyn codeg_lib::acp::chat_authoring::ChatAuthoringAccess>,
-        Arc::new(codeg_lib::acp::browser_tools::NoBrowserTabs)
-            as Arc<dyn codeg_lib::acp::browser_tools::BrowserToolAccess>,
+        Arc::new(NoSessionInfo) as Arc<dyn dextra_lib::acp::session_info::SessionInfoAccess>,
+        Arc::new(NoTaskTools) as Arc<dyn dextra_lib::acp::work_task_tools::WorkTaskToolAccess>,
+        Arc::new(NoAuthoring) as Arc<dyn dextra_lib::acp::chat_authoring::ChatAuthoringAccess>,
+        Arc::new(dextra_lib::acp::browser_tools::NoBrowserTabs)
+            as Arc<dyn dextra_lib::acp::browser_tools::BrowserToolAccess>,
     );
 
     let pipe = unique_pipe("happy");
@@ -315,13 +315,13 @@ async fn end_to_end_named_pipe_back_to_back_requests() {
         broker.clone(),
         tokens,
         Arc::new(FixedParent(1)) as Arc<dyn ParentSessionLookup>,
-        Arc::new(NoFeedback) as Arc<dyn codeg_lib::acp::feedback::SessionFeedbackAccess>,
+        Arc::new(NoFeedback) as Arc<dyn dextra_lib::acp::feedback::SessionFeedbackAccess>,
         Arc::new(NoQuestions) as Arc<dyn SessionQuestionAccess>,
-        Arc::new(NoSessionInfo) as Arc<dyn codeg_lib::acp::session_info::SessionInfoAccess>,
-        Arc::new(NoTaskTools) as Arc<dyn codeg_lib::acp::work_task_tools::WorkTaskToolAccess>,
-        Arc::new(NoAuthoring) as Arc<dyn codeg_lib::acp::chat_authoring::ChatAuthoringAccess>,
-        Arc::new(codeg_lib::acp::browser_tools::NoBrowserTabs)
-            as Arc<dyn codeg_lib::acp::browser_tools::BrowserToolAccess>,
+        Arc::new(NoSessionInfo) as Arc<dyn dextra_lib::acp::session_info::SessionInfoAccess>,
+        Arc::new(NoTaskTools) as Arc<dyn dextra_lib::acp::work_task_tools::WorkTaskToolAccess>,
+        Arc::new(NoAuthoring) as Arc<dyn dextra_lib::acp::chat_authoring::ChatAuthoringAccess>,
+        Arc::new(dextra_lib::acp::browser_tools::NoBrowserTabs)
+            as Arc<dyn dextra_lib::acp::browser_tools::BrowserToolAccess>,
     );
 
     let pipe = unique_pipe("repeat");

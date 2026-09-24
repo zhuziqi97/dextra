@@ -75,9 +75,9 @@ fn launch(
     let binary = std::env::current_exe()
         .map_err(|error| AppCommandError::new(AppErrorCode::IoError, error.to_string()))?
         .with_file_name(if cfg!(windows) {
-            "cerebro-mcp-bridge.exe"
+            "dextra-cerebro-mcp-bridge.exe"
         } else {
-            "cerebro-mcp-bridge"
+            "dextra-cerebro-mcp-bridge"
         });
     // tauri dev 将真实 sidecar 放在源码 binaries，安装包则使用可执行文件同目录。
     #[cfg(debug_assertions)]
@@ -87,7 +87,7 @@ fn launch(
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("binaries")
             .join(format!(
-                "cerebro-mcp-bridge-{}{}",
+                "dextra-cerebro-mcp-bridge-{}{}",
                 env!("DEXTRA_TARGET_TRIPLE"),
                 if cfg!(windows) { ".exe" } else { "" }
             ))

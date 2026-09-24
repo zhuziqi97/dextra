@@ -14,18 +14,18 @@ type SanitizeSchema = {
 }
 
 /**
- * Re-derive Streamdown's default rehype pipeline so the app-internal `codeg`
+ * Re-derive Streamdown's default rehype pipeline so the app-internal `dextra`
  * scheme survives sanitization and reaches `MarkdownLink` → `ReferenceBadge`.
  *
  * Streamdown's default pipeline is `[raw, [rehypeSanitize, schema], harden]`
  * (run in that order). The sanitize schema's `protocols.href` allow-list omits
- * `codeg`, so it strips the href off our `[label](codeg://…)` reference links;
+ * `dextra`, so it strips the href off our `[label](dextra://…)` reference links;
  * rehype-harden then sees a hrefless `<a>`, can't transform it, and replaces it
  * with a `… [blocked]` span — all at the rehype stage, *before* react-markdown
- * maps `<a>` to `MarkdownLink` (which turns a `codeg:` href into an inline
+ * maps `<a>` to `MarkdownLink` (which turns a `dextra:` href into an inline
  * badge). The net effect was `@Codex CLI [blocked]` in the transcript.
  *
- * Adding `codeg` to the sanitize allow-list lets the href survive. harden is
+ * Adding `dextra` to the sanitize allow-list lets the href survive. harden is
  * left untouched: it already permits every protocol via its `*` default and
  * still hard-blocks `javascript:` / `data:` / `file:` / `vbscript:`, so widening
  * sanitize by one inert app scheme adds no XSS surface. `file://` links are
@@ -45,7 +45,7 @@ type SanitizeSchema = {
  * dashed key reaches sanitize verbatim; allowing both keeps local images
  * working either way instead of silently degrading them to alt text.
  */
-export function rehypePluginsAllowingCodeg(
+export function rehypePluginsAllowingDextra(
   defaults: Record<string, RehypePlugin>
 ): RehypePlugins {
   return Object.entries(defaults).map<RehypePlugin>(([key, plugin]) => {
@@ -60,15 +60,15 @@ export function rehypePluginsAllowingCodeg(
         ...schema?.attributes,
         span: [
           ...(schema?.attributes?.span ?? []),
-          "dataCodegLocalImage",
-          "dataCodegImageLinked",
-          "data-codeg-local-image",
-          "data-codeg-image-linked",
+          "dataDextraLocalImage",
+          "dataDextraImageLinked",
+          "data-dextra-local-image",
+          "data-dextra-image-linked",
         ],
       },
       protocols: {
         ...schema?.protocols,
-        href: href.includes("codeg") ? href : [...href, "codeg"],
+        href: href.includes("dextra") ? href : [...href, "dextra"],
       },
     }
     return [sanitizePlugin, next] as RehypePlugin

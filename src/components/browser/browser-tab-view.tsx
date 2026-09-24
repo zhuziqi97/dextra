@@ -28,7 +28,7 @@ import { BrowserToolbar } from "./browser-toolbar"
  * The file-pane content of a browser tab. On the desktop: toolbar, notices,
  * and the native surface (or, when the page could not load, a DOM error page
  * in its place). In a browser there is no native surface; the tab shows a
- * dev server on the codeg host through the port bridge instead.
+ * dev server on the dextra host through the port bridge instead.
  */
 export function BrowserTabView({ tab }: { tab: BrowserWorkspaceTab }) {
   if (!isDesktop()) return <BrowserBridgeView tab={tab} />

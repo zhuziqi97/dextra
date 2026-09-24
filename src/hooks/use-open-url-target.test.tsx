@@ -136,7 +136,7 @@ describe("useOpenUrlTarget", () => {
         policy: {
           enabled: true,
           managedRules: [{ pattern: "blocked.example", action: "block" }],
-          managedSource: "/etc/codeg/policy.json",
+          managedSource: "/etc/dextra/policy.json",
         },
       })
     )

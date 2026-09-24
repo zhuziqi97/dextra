@@ -43,7 +43,7 @@ function messageOf(error: unknown): string {
 }
 
 /**
- * The web-mode body of a browser tab: a dev server on the codeg host shown
+ * The web-mode body of a browser tab: a dev server on the dextra host shown
  * through the port bridge in an iframe. Each attempt (a mount, a reload, a
  * new address) takes a fresh grant under a hold id of its own and releases
  * exactly that hold when it is over — after the open has settled, so an

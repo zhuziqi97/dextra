@@ -178,7 +178,7 @@ describe("ImportSessionsWindow", () => {
     // All five sessions render as rows under their folders.
     expect(screen.getByText("Alpha one")).toBeVisible()
     expect(screen.getByText("Beta gone")).toBeVisible()
-    // The not-in-codeg folder carries the "New" badge; the existing one not.
+    // The not-in-dextra folder carries the "New" badge; the existing one not.
     const alphaHeader = screen
       .getByText("alpha")
       .closest("[data-folder-path]") as HTMLElement

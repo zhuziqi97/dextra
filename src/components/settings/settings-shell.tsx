@@ -198,7 +198,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
   const [navOpen, setNavOpen] = useState(false)
 
   useEffect(() => {
-    document.title = `${t("title")} - codeg`
+    document.title = `${t("title")} - dextra`
   }, [t])
 
   const navigateTo = useCallback(

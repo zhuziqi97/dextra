@@ -141,7 +141,7 @@ const LOAD_MORE_PX = 800
 // Recently-filtered authors, persisted per folder (IDEA-style "recent users").
 // We deliberately do NOT scan the whole repo for authors (slow); the dropdown is
 // seeded from this local history plus the current user, with free-text search.
-const RECENT_AUTHORS_KEY_PREFIX = "codeg:gitlog:recent-authors:"
+const RECENT_AUTHORS_KEY_PREFIX = "dextra:gitlog:recent-authors:"
 const RECENT_AUTHORS_MAX = 8
 
 function loadRecentAuthors(folderPath: string): string[] {
@@ -229,7 +229,7 @@ export function canResetFromSelection(
 // The last branch/author filter, persisted per folder path so the tab reopens on
 // the same view. `null` for either means the default (all branches / all
 // authors); when both are null the entry is dropped to keep storage tidy.
-const SELECTION_KEY_PREFIX = "codeg:gitlog:selection:"
+const SELECTION_KEY_PREFIX = "dextra:gitlog:selection:"
 
 type GitLogSelection = { branch: string | null; author: string | null }
 

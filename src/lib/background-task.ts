@@ -29,7 +29,7 @@
  * The same task is polled repeatedly (first timeout/running, then
  * success/completed), so the renderer collapses consecutive polls of one task
  * id into a single lifecycle card — mirroring the delegation-status group
- * (`@/lib/delegation-status`). Codeg owns only the rendering: the backend
+ * (`@/lib/delegation-status`). Dextra owns only the rendering: the backend
  * (`parsers/claude.rs`, `parsers/grok.rs`) passes the tool-result text through
  * verbatim, so all parsing lives here (same convention as
  * `delegation-status.ts`).

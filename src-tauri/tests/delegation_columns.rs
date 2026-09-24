@@ -2,15 +2,15 @@
 //! `delegation_call_id` columns on `conversation`, and they round-trip via the
 //! SeaORM entity.
 
-use codeg_lib::db::entities::conversation;
-use codeg_lib::db::test_helpers::{fresh_in_memory_db, seed_folder};
-use codeg_lib::models::agent::AgentType;
+use dextra_lib::db::entities::conversation;
+use dextra_lib::db::test_helpers::{fresh_in_memory_db, seed_folder};
+use dextra_lib::models::agent::AgentType;
 use sea_orm::{ActiveModelTrait, EntityTrait, NotSet, Set};
 
 #[tokio::test]
 async fn delegation_columns_round_trip() {
     let db = fresh_in_memory_db().await;
-    let folder_id = seed_folder(&db, "/tmp/codeg-delegation-test").await;
+    let folder_id = seed_folder(&db, "/tmp/dextra-delegation-test").await;
 
     let agent_type_str = serde_json::to_value(AgentType::ClaudeCode)
         .unwrap()
@@ -59,10 +59,10 @@ async fn delegation_columns_round_trip() {
 #[tokio::test]
 async fn delegation_columns_default_to_null_on_existing_create() {
     let db = fresh_in_memory_db().await;
-    let folder_id = seed_folder(&db, "/tmp/codeg-delegation-null").await;
+    let folder_id = seed_folder(&db, "/tmp/dextra-delegation-null").await;
     // The existing create helper does not set the new columns; verify they default to None.
     let conv_id =
-        codeg_lib::db::test_helpers::seed_conversation(&db, folder_id, AgentType::ClaudeCode).await;
+        dextra_lib::db::test_helpers::seed_conversation(&db, folder_id, AgentType::ClaudeCode).await;
     let fetched = conversation::Entity::find_by_id(conv_id)
         .one(&db.conn)
         .await

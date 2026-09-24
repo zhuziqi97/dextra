@@ -134,7 +134,7 @@
       },
       "css": {
         "dialogTitle": "Eigenes CSS",
-        "dialogDescription": "Gilt für alle codeg-Fenster. Änderungen werden live vorschauend angezeigt; zum Speichern auf Anwenden klicken.",
+        "dialogDescription": "Gilt für alle Dextra-Fenster. Änderungen werden live vorschauend angezeigt; zum Speichern auf Anwenden klicken.",
         "size": "{used} KB / {max} KB",
         "ruleCount": "{count} Regeln",
         "errorTooLarge": "Zu groß zum Speichern. Bitte unter das Limit kürzen.",
@@ -253,7 +253,7 @@
     "languageSaveSuccess": "Spracheinstellungen wurden gespeichert",
     "languageSaveFailed": "Spracheinstellungen konnten nicht gespeichert werden: {message}",
     "dataTitle": "Daten & Synchronisierung",
-    "dataDescription": "Die Konfigurationssynchronisierung überträgt deine Einstellungen zwischen Geräten; die Sicherung packt alle codeg-Daten dieses Geräts zusammen.",
+    "dataDescription": "Die Konfigurationssynchronisierung überträgt deine Einstellungen zwischen Geräten; die Sicherung packt alle Dextra-Daten dieses Geräts zusammen.",
     "updateTitle": "App-Update",
     "versionTitle": "Softwareupdate",
     "updateDescription": "Prüft die konfigurierte Release-Quelle auf neue Versionen und installiert sie bei Verfügbarkeit direkt.",
@@ -682,7 +682,7 @@
       "draftTitle": "Neuer MCP",
       "draftDescription": "Geben Sie eine Server-ID und Konfiguration an, um einen lokalen MCP-Server zu erstellen.",
       "suggestedLabel": "Mit einem bekannten Server beginnen",
-      "suggestedChromeNote": "Füllt das Formular mit Googles offiziellem chrome-devtools-mcp — die Registry führt Nachahmungen unter demselben Namen, das hier legt das echte fest. Es steuert ein SEPARATES Chrome, das codeg nicht beaufsichtigt: Du bekommst Netzwerk- und Performance-Daten, die die Werkzeuge des integrierten Browsers nicht bieten, und keine ihrer Schutzmaßnahmen – keine Freigabe pro Tab, keine Aktivitätsleiste, keine Bestätigung pro Codeausschnitt. `npx` lädt das Paket beim ersten Start von npm herunter.",
+      "suggestedChromeNote": "Füllt das Formular mit Googles offiziellem chrome-devtools-mcp — die Registry führt Nachahmungen unter demselben Namen, das hier legt das echte fest. Es steuert ein SEPARATES Chrome, das Dextra nicht beaufsichtigt: Du bekommst Netzwerk- und Performance-Daten, die die Werkzeuge des integrierten Browsers nicht bieten, und keine ihrer Schutzmaßnahmen – keine Freigabe pro Tab, keine Aktivitätsleiste, keine Bestätigung pro Codeausschnitt. `npx` lädt das Paket beim ersten Start von npm herunter.",
       "serverIdLabel": "Server-ID",
       "serverIdPlaceholder": "Server-ID (z. B. my-mcp)",
       "typeHint": "Unterstützte Typen: stdio, http (Aliase: streamable-http, streamableHttp), sse. env wird nur von stdio verwendet; für Remote-MCPs Auth-Tokens über headers übermitteln.",
@@ -723,14 +723,14 @@
     "envVars": "Umgebungsvariablen",
     "adapterChannel": {
       "label": "Adapter-Version",
-      "description": "Installieren und Aktualisieren verwenden die von codeg geprüfte und angepinnte Version. Mit Neueste wird stattdessen die jeweils neueste npm-Version des Pakets installiert; schlägt das fehl, fällt codeg auf die angepinnte Version zurück und vermerkt es im Installationsprotokoll.",
+      "description": "Installieren und Aktualisieren verwenden die von Dextra geprüfte und angepinnte Version. Mit Neueste wird stattdessen die jeweils neueste npm-Version des Pakets installiert; schlägt das fehl, fällt Dextra auf die angepinnte Version zurück und vermerkt es im Installationsprotokoll.",
       "pinned": "Angepinnt (empfohlen)",
       "latest": "Neueste (ungeprüft)",
-      "latestWarning": "Die neuesten Versionen sind ungeprüft und können diesen Agenten in codeg beschädigen; gelegentlich ist eine Version sogar bekanntermaßen defekt. Der Versionsstatus zeigt, was tatsächlich installiert ist."
+      "latestWarning": "Die neuesten Versionen sind ungeprüft und können diesen Agenten in Dextra beschädigen; gelegentlich ist eine Version sogar bekanntermaßen defekt. Der Versionsstatus zeigt, was tatsächlich installiert ist."
     },
     "hostTools": {
       "label": "Dateien und Befehle vom Agenten selbst ausführen lassen",
-      "description": "codeg übernimmt Dateizugriffe und Terminalbefehle nicht mehr, sodass der Agent sie im eigenen Prozess ausführt – nur dort greifen seine eigene Sandbox und seine Berechtigungsregeln. Auch das Delegieren an andere Agenten wird deaktiviert, da dieselbe Arbeit sonst wieder über codeg liefe. codeg fügt selbst keine Sandbox hinzu; aktivieren Sie dies also nur, wenn im Agenten eine konfiguriert ist."
+      "description": "Dextra übernimmt Dateizugriffe und Terminalbefehle nicht mehr, sodass der Agent sie im eigenen Prozess ausführt – nur dort greifen seine eigene Sandbox und seine Berechtigungsregeln. Auch das Delegieren an andere Agenten wird deaktiviert, da dieselbe Arbeit sonst wieder über Dextra liefe. Dextra fügt selbst keine Sandbox hinzu; aktivieren Sie dies also nur, wenn im Agenten eine konfiguriert ist."
     },
     "nativeJsonConfig": "Natives JSON-Config",
     "modelHintDefault": "Leer lassen, um das System-Standardmodell zu verwenden.",
@@ -843,7 +843,7 @@
       "configTomlHint": "Wird wortwörtlich als gesamte ~/.grok/config.toml gespeichert. Ungültiges TOML wird abgelehnt, sodass ein Tippfehler deine Datei nie abschneidet.",
       "configTomlPlaceholder": "# Andere Schlüssel als die Steuerelemente oben, z. B.\n# [mcp_servers.*], [cli], [permission]-Regeln.",
       "customModelTitle": "Benutzerdefiniertes Modell (eigener Endpunkt)",
-      "customModelHint": "Richte Grok auf einen benutzerdefinierten oder selbst gehosteten Endpunkt. codeg schreibt einen `[model.*]`-Block pro Modell und legt es als Standard fest. Lasse die Modell-ID leer, um es zu entfernen.",
+      "customModelHint": "Richte Grok auf einen benutzerdefinierten oder selbst gehosteten Endpunkt. Dextra schreibt einen `[model.*]`-Block pro Modell und legt es als Standard fest. Lasse die Modell-ID leer, um es zu entfernen.",
       "customModelIdLabel": "Modell-ID",
       "customModelIdPlaceholder": "grok-4.5",
       "customModelIdHint": "Wird als `[model.*]`-Block registriert und als Modellname an die API gesendet; außerdem als `[models].default` gesetzt.",
@@ -861,7 +861,7 @@
       "autoCompactHint": "Verdichtet die Unterhaltung, wenn die Kontextnutzung diesen Prozentsatz erreicht (Grok-Standard 85). Wird in `[session]` geschrieben."
     },
     "cursor": {
-      "configDescription": "Konfiguriere Cursor hier. Wähle eine Authentifizierungsmethode – offizielles Abo (Browser-Anmeldung) oder einen Cursor-API-Schlüssel für Headless-/Servermaschinen – wähle dann ein Modell und bearbeite die Berechtigungsregeln und die Sandbox des CLI. codeg schreibt sie in ~/.cursor/cli-config.json, gemeinsam mit dem cursor-agent-CLI.",
+      "configDescription": "Konfiguriere Cursor hier. Wähle eine Authentifizierungsmethode – offizielles Abo (Browser-Anmeldung) oder einen Cursor-API-Schlüssel für Headless-/Servermaschinen – wähle dann ein Modell und bearbeite die Berechtigungsregeln und die Sandbox des CLI. Dextra schreibt sie in ~/.cursor/cli-config.json, gemeinsam mit dem cursor-agent-CLI.",
       "authTitle": "Authentifizierung",
       "authChecking": "Prüfe…",
       "authNotInstalled": "cursor-agent ist nicht installiert",
@@ -871,7 +871,7 @@
       "authUnverifiedHint": "cursor-agent hat noch eine Anmeldung gespeichert, konnte sie aber gerade nicht bei Cursor verwenden – meist ist die Sitzung abgelaufen. Sitzungen schlagen mit „Authentication required“ fehl, bis du dich erneut anmeldest; die CLI kann eine Browser-Anmeldung nicht selbst erneuern.",
       "authUnverifiedHintApiKey": "cursor-agent hat einen API-Schlüssel gespeichert, Cursor hat ihn aber gerade abgelehnt — meist ist er widerrufen, abgelaufen oder vertippt. Sitzungen schlagen mit \"Authentication required\" fehl, bis du unten einen funktionierenden Schlüssel speicherst.",
       "loginHint": "Führe dies im Terminal aus, um dich mit deinem Cursor-Konto anzumelden (ein Browserfenster öffnet sich), und klicke danach auf Aktualisieren:",
-      "loginHintRemote": "Führe dies auf dem codeg-Host aus, auf dem cursor-agent installiert ist, nicht auf diesem Rechner, und klicke danach auf Aktualisieren. Dieser Host hat meist keinen Browser zum Öffnen, führe ihn also mit NO_OPEN_BROWSER=1 aus — dann gibt er stattdessen eine Anmelde-URL aus, die du in deinem eigenen Browser öffnest. Für einen unbeaufsichtigten Server stelle die Methode oben auf API-Schlüssel um.",
+      "loginHintRemote": "Führe dies auf dem Dextra-Host aus, auf dem cursor-agent installiert ist, nicht auf diesem Rechner, und klicke danach auf Aktualisieren. Dieser Host hat meist keinen Browser zum Öffnen, führe ihn also mit NO_OPEN_BROWSER=1 aus — dann gibt er stattdessen eine Anmelde-URL aus, die du in deinem eigenen Browser öffnest. Für einen unbeaufsichtigten Server stelle die Methode oben auf API-Schlüssel um.",
       "apiKeyLabel": "Cursor-API-Schlüssel",
       "apiKeyPlaceholder": "Schlüssel von cursor.com/dashboard",
       "apiKeyHint": "CURSOR_API_KEY – ein Cursor-Dashboard-Kontoschlüssel, Alternative zur Browser-Anmeldung für Headless-/Servermaschinen. Kein Drittanbieter- oder OpenAI-Schlüssel.",
@@ -956,11 +956,11 @@
       "missingAgentPlatformConfig": "Enter an API key, or both a project and a location — sessions will fail to start without one of the two.",
       "missingEnterpriseConfig": "Gemini Enterprise needs both a project and a location.",
       "settingsFileHint": "Saved to auth.type in this file. Any other keys you put there are preserved.",
-      "syncSkipped": "Your choice was saved, but codeg could not write it to the ACP server's settings.json, so Antigravity will keep authenticating the way that file says. Set auth.type in it yourself, or move it aside and save again.",
+      "syncSkipped": "Your choice was saved, but Dextra could not write it to the ACP server's settings.json, so Antigravity will keep authenticating the way that file says. Set auth.type in it yourself, or move it aside and save again.",
       "save": "Save",
       "headless": {
         "title": "Ohne Browser auf diesem Rechner anmelden",
-        "description": "Antigravity führt die Google-Anmeldung selbst aus – auf dem Rechner, auf dem der Agent läuft. Fehlt dort ein Browser (codeg auf einem Server ohne Desktop), wartet die erste Sitzung fünf Minuten und schlägt dann fehl. Melde dich stattdessen hier an: Link auf einem beliebigen Gerät öffnen und die Zieladresse zurück einfügen.",
+        "description": "Antigravity führt die Google-Anmeldung selbst aus – auf dem Rechner, auf dem der Agent läuft. Fehlt dort ein Browser (Dextra auf einem Server ohne Desktop), wartet die erste Sitzung fünf Minuten und schlägt dann fehl. Melde dich stattdessen hier an: Link auf einem beliebigen Gerät öffnen und die Zieladresse zurück einfügen.",
         "start": "Anmeldelink holen",
         "saveFirst": "Zuerst speichern – die Anmeldung nutzt die gespeicherten Einstellungen, nicht das oben Eingetippte.",
         "step1": "1. Öffne diesen Link und melde dich bei Google an.",
@@ -983,7 +983,7 @@
         "failed": "Abmelden fehlgeschlagen"
       },
       "tempReclaimTitle": "Übrig gebliebener temporärer Speicher",
-      "tempReclaimHint": "Ältere codeg-Versionen konnten das temporäre Verzeichnis nicht aufräumen, das dieser Agent bei jedem Start entpackt. Hiermit wird der temporäre Systemordner nach diesen Überresten durchsucht. Dieser Ordner wird mit anderen Anwendungen geteilt, daher wird nichts gelöscht, bevor du bestätigst, und alles noch Verwendete wird übersprungen.",
+      "tempReclaimHint": "Ältere Dextra-Versionen konnten das temporäre Verzeichnis nicht aufräumen, das dieser Agent bei jedem Start entpackt. Hiermit wird der temporäre Systemordner nach diesen Überresten durchsucht. Dieser Ordner wird mit anderen Anwendungen geteilt, daher wird nichts gelöscht, bevor du bestätigst, und alles noch Verwendete wird übersprungen.",
       "tempReclaimScan": "Suchen",
       "tempReclaimDelete": "Überreste löschen",
       "tempReclaimNone": "Nichts zurückzugewinnen.",
@@ -1033,7 +1033,7 @@
       "approvalPolicy_untrusted": "Nicht vertrauenswürdig – nur bekannt sichere Lesebefehle laufen ohne Nachfrage",
       "approvalPolicy_never": "Nie – keinerlei Freigabeabfragen",
       "approvalPolicy_granular": "Granular – pro Abfragetyp festlegen",
-      "approvalPolicyUntrustedAcpWarning": "Für „untrusted“ gibt es unter den drei Freigabe-Voreinstellungen des ACP-Adapters keine Entsprechung, daher fallen codeg-Sitzungen auf „auf Anfrage“ zurück: Das Modell entscheidet dann selbst, wann es fragt, und Befehle, die die Sandbox ohnehin erlaubt, fragen nicht mehr nach. Schränke stattdessen unten den Sandbox-Modus ein.",
+      "approvalPolicyUntrustedAcpWarning": "Für „untrusted“ gibt es unter den drei Freigabe-Voreinstellungen des ACP-Adapters keine Entsprechung, daher fallen Dextra-Sitzungen auf „auf Anfrage“ zurück: Das Modell entscheidet dann selbst, wann es fragt, und Befehle, die die Sandbox ohnehin erlaubt, fragen nicht mehr nach. Schränke stattdessen unten den Sandbox-Modus ein.",
       "granularHint": "Aus bedeutet, dass Anfragen dieser Art automatisch abgelehnt statt angezeigt werden.",
       "granular_sandbox_approval": "Rechteerweiterung für Shell-Befehle",
       "granular_rules": "Abfragen aus Execpolicy-Regeln",
@@ -1045,9 +1045,9 @@
       "sandboxMode_read-only": "Nur lesen",
       "sandboxMode_workspace-write": "Workspace-Schreibzugriff",
       "sandboxMode_danger-full-access": "Vollzugriff (keine Sandbox)",
-      "sandboxModeReadOnlyAcpWarning": "Der ACP-Adapter liefert keine schreibgeschützte Sandbox mehr, daher laufen codeg-Sitzungen unabhängig von dieser Einstellung mit Schreibrecht im Arbeitsbereich. codeg wählt die strengste verfügbare Voreinstellung – jede Rechteausweitung kommt zu dir zur Freigabe –, doch Änderungen innerhalb des Arbeitsbereichs brauchen keine mehr. codex-CLI- und IDE-Sitzungen beachten „schreibgeschützt“ weiterhin.",
+      "sandboxModeReadOnlyAcpWarning": "Der ACP-Adapter liefert keine schreibgeschützte Sandbox mehr, daher laufen Dextra-Sitzungen unabhängig von dieser Einstellung mit Schreibrecht im Arbeitsbereich. Dextra wählt die strengste verfügbare Voreinstellung – jede Rechteausweitung kommt zu dir zur Freigabe –, doch Änderungen innerhalb des Arbeitsbereichs brauchen keine mehr. codex-CLI- und IDE-Sitzungen beachten „schreibgeschützt“ weiterhin.",
       "sandboxModeHint": "Unter Windows wird Workspace-Schreibzugriff auf Nur-Lesen herabgestuft, sofern die experimentelle Windows-Sandbox von codex nicht aktiviert ist.",
-      "sandboxModeSeedsPresetHint": "codeg bildet dies auch auf die Start-Freigabe-Voreinstellung der Sitzung ab, wirkt sich also – anders als die Freigaberichtlinie – auf gewöhnliche Anfragen aus. Beachte: Bei der Standard-Voreinstellung des Adapters sichtet jetzt ein Modell die Rechteausweitungen vor und leitet nur weiter, was es für unsicher hält; wähle im Eingabefeld „Um Freigabe bitten“, um jede selbst zu prüfen. Die Voreinstellung im Eingabefeld hat immer Vorrang.",
+      "sandboxModeSeedsPresetHint": "Dextra bildet dies auch auf die Start-Freigabe-Voreinstellung der Sitzung ab, wirkt sich also – anders als die Freigaberichtlinie – auf gewöhnliche Anfragen aus. Beachte: Bei der Standard-Voreinstellung des Adapters sichtet jetzt ein Modell die Rechteausweitungen vor und leitet nur weiter, was es für unsicher hält; wähle im Eingabefeld „Um Freigabe bitten“, um jede selbst zu prüfen. Die Voreinstellung im Eingabefeld hat immer Vorrang.",
       "writableRootsLabel": "Zusätzliche beschreibbare Ordner",
       "writableRootsHint": "Ein absoluter Pfad pro Zeile, zusätzlich zum Arbeitsverzeichnis.",
       "sandboxRootsRelativeError": "Muss ein absoluter Pfad sein – codex löst relative Angaben unter ~/.codex auf: {path}",
@@ -1161,7 +1161,7 @@
         "description": "Legt fest, welche Aktionen einfach laufen, welche vorher nachfragen und welche blockiert werden. Wird in den permission-Block von opencode.json geschrieben und mit dem Speichern unten übernommen.",
         "docsLink": "Dokumentation zu Berechtigungen",
         "unparsableConfig": "Das native JSON unten ist ungültig, deshalb pausiert der visuelle Editor. Korrigiere das JSON, um fortzufahren.",
-        "invalidBlock": "Der permission-Block hat eine Form, die codeg nicht kennt. Bearbeite ihn im nativen JSON unten oder beginne mit Zurücksetzen neu.",
+        "invalidBlock": "Der permission-Block hat eine Form, die Dextra nicht kennt. Bearbeite ihn im nativen JSON unten oder beginne mit Zurücksetzen neu.",
         "orderingUnsafe": "Eine Wildcard-Regel steht hinter konkreten Tools, deshalb wendet OpenCode sie auch auf diese an – die Zeilen unten sind nicht das, was tatsächlich gilt. Reihenfolge korrigieren schiebt jede Wildcard nur wieder an den Anfang ihres Bereichs, ohne einen Wert zu ändern.",
         "orderingUnsafeManual": "Eine Regel wird von einem späteren, allgemeineren Muster verdeckt, OpenCode wendet sie also nie an – die Zeilen unten sind nicht das, was tatsächlich gilt. Für zwei überlappende Muster gibt es keine eine richtige Reihenfolge; sortiere sie im nativen JSON so, dass das allgemeinere zuerst steht.",
         "fixOrder": "Reihenfolge korrigieren",
@@ -1257,7 +1257,7 @@
     },
     "hermes": {
       "configManagement": "Hermes-Konfiguration",
-      "configDescription": "Hermes verwaltet seine eigenen Anmeldedaten in ~/.hermes/.env und die Einstellungen in ~/.hermes/config.yaml. Wähle einen Anbieter und lege dann den API-Schlüssel und das Modell fest – codeg schreibt beide Dateien für dich.",
+      "configDescription": "Hermes verwaltet seine eigenen Anmeldedaten in ~/.hermes/.env und die Einstellungen in ~/.hermes/config.yaml. Wähle einen Anbieter und lege dann den API-Schlüssel und das Modell fest – Dextra schreibt beide Dateien für dich.",
       "providerLabel": "Anbieter",
       "providerHint": "Der Anbieter legt fest, welche API-Schlüssel-Variable und welchen model.provider Hermes verwendet. OAuth-Anbieter werden über die Terminal-Einrichtung unten konfiguriert.",
       "groupApiKey": "Anbieter mit API-Schlüssel",
@@ -1299,7 +1299,7 @@
     },
     "kimiCode": {
       "configManagement": "Kimi-Code-Konfiguration",
-      "configDescription": "`kimi acp` akzeptiert nur ein gespeichertes Login-Token, daher schreibt codeg einen verwalteten Provider in ~/.kimi-code/config.toml und legt lokal ein Gate-Token an – die Inferenz läuft weiterhin über deinen eigenen Schlüssel.",
+      "configDescription": "`kimi acp` akzeptiert nur ein gespeichertes Login-Token, daher schreibt Dextra einen verwalteten Provider in ~/.kimi-code/config.toml und legt lokal ein Gate-Token an – die Inferenz läuft weiterhin über deinen eigenen Schlüssel.",
       "statusUnconfigured": "Noch nicht konfiguriert",
       "statusDirty": "Nicht gespeicherte Änderungen",
       "summaryLabel": "Aktiv",
@@ -1311,7 +1311,7 @@
       "authModeApiKey": "API-Schlüssel",
       "authModeLogin": "Kimi-Konto-Anmeldung (Abo)",
       "authModeApiKeyHint": "Schreibt einen verwalteten Provider in config.toml und legt das Gate-Token an, damit Sitzungen geöffnet werden können.",
-      "loginHint": "Führe `kimi login` im Terminal aus, um dich mit einem Kimi-Abo-Konto anzumelden; ab Kimi 0.39.0 hänge für ein kimi.ai-Konto `--region global` an, denn standardmäßig wird bei kimi.com angemeldet. codeg speichert nichts und nutzt Kimis eigene Anmeldung. Speichern hier entfernt codegs API-Schlüssel-Gate-Token.",
+      "loginHint": "Führe `kimi login` im Terminal aus, um dich mit einem Kimi-Abo-Konto anzumelden; ab Kimi 0.39.0 hänge für ein kimi.ai-Konto `--region global` an, denn standardmäßig wird bei kimi.com angemeldet. Dextra speichert nichts und nutzt Kimis eigene Anmeldung. Speichern hier entfernt Dextras API-Schlüssel-Gate-Token.",
       "credentialTitle": "Zugangsdaten",
       "interfaceTypeLabel": "Provider-Typ",
       "interfaceTypeHint": "Das Provider-Protokoll, das Kimi spricht (`type` in config.toml). Für einen Moonshot-/platform.kimi.com-Schlüssel Kimi / Moonshot wählen.",
@@ -1340,7 +1340,7 @@
       "modelNotInList": "Dieses Modell ist nicht in der Liste, auf die dein Schlüssel zugreifen kann – Kimi scheitert mit „Modell nicht gefunden“.",
       "reasoningTitle": "Reasoning",
       "reasoningEnableLabel": "Aktivieren",
-      "reasoningDescription": "Kimi zeigt den „Thinking“-Auswähler im Eingabefeld nur, wenn das Modell eine Reasoning-Fähigkeit deklariert – codeg schreibt sie hier. Gilt ab neuen Sitzungen.",
+      "reasoningDescription": "Kimi zeigt den „Thinking“-Auswähler im Eingabefeld nur, wenn das Modell eine Reasoning-Fähigkeit deklariert – Dextra schreibt sie hier. Gilt ab neuen Sitzungen.",
       "effortsLabel": "Angebotene Stufen",
       "effortsHint": "Diese Stufen erscheinen im „Thinking“-Auswähler. Kimi reicht die Stufe unverändert an den Provider weiter – wähle also Werte, die dein Modell akzeptiert.",
       "effortsEmptyHint": "Ohne ausgewählte Stufe bleibt im Eingabefeld nur ein einfacher Off/On-Schalter.",
@@ -1366,7 +1366,7 @@
       "authTypeHint": "Wo der API-Schlüssel innerhalb von config.toml abgelegt wird.",
       "rawEditorLabel": "config.toml direkt bearbeiten",
       "rawEditorWarning": "Speichern hier überschreibt die gesamte Datei wortwörtlich und ersetzt die strukturierten Einstellungen oben.",
-      "rawEditorPlaceholder": "[providers.codeg]\ntype = \"kimi\"\nbase_url = \"https://api.moonshot.cn/v1\"\napi_key = \"sk-...\""
+      "rawEditorPlaceholder": "[providers.dextra]\ntype = \"kimi\"\nbase_url = \"https://api.moonshot.cn/v1\"\napi_key = \"sk-...\""
     },
     "authModeOfficialSubscription": "Offizielles Abonnement",
     "authModeCustomEndpoint": "Benutzerdefinierter Endpunkt",
@@ -1513,18 +1513,18 @@
     "adapter": {
       "label": "ACP-Adapter",
       "badge": "ACP-Adapter",
-      "badgeHint": "Für diesen Agenten installiert Codeg ein ACP-Adapterpaket, nicht die Hersteller-CLI. Beide sind unabhängig und teilen sich dieselbe Konfiguration.",
+      "badgeHint": "Für diesen Agenten installiert Dextra ein ACP-Adapterpaket, nicht die Hersteller-CLI. Beide sind unabhängig und teilen sich dieselbe Konfiguration.",
       "learnMore": "Mehr erfahren",
-      "missingWithNative": "Deine eigene {nativeLabel} wurde unter {nativePath} gefunden. Codeg spricht mit Agenten über ACP, und diese CLI beherrscht kein ACP — deshalb braucht Codeg ein separates Adapterpaket, {adapterPackage}, gepflegt vom Agent-Client-Protocol-Projekt (ursprünglich Zed). Es bringt seine eigene Laufzeit mit, verändert oder ersetzt deinen Befehl {nativeCmd} nie und liest dasselbe {configDir} — Anmeldung und Einstellungen bleiben erhalten. Unten installieren.",
-      "missing": "Codeg spricht mit Agenten über ACP, und die {nativeLabel} beherrscht kein ACP — deshalb braucht Codeg ein separates Adapterpaket, {adapterPackage}, gepflegt vom Agent-Client-Protocol-Projekt (ursprünglich Zed). Es bringt seine eigene Laufzeit mit, die CLI {nativeCmd} ist also nicht Voraussetzung; hast du sie bereits, koexistieren beide und teilen sich Anmeldung und Einstellungen in {configDir}. Unten installieren.",
-      "readyWithNative": "Der Adapter {adapterCmd} ist installiert — ihn startet Codeg, nicht dein eigenes {nativeCmd} unter {nativePath}. Es sind getrennte Pakete, die koexistieren, und beide lesen {configDir}, Anmeldung und Einstellungen sind also gemeinsam.",
-      "ready": "Der Adapter {adapterCmd} ist installiert — ihn startet Codeg. Er bringt seine eigene Laufzeit mit, die {nativeLabel} wird also nicht benötigt; installierst du sie später, koexistieren beide und teilen sich {configDir}."
+      "missingWithNative": "Deine eigene {nativeLabel} wurde unter {nativePath} gefunden. Dextra spricht mit Agenten über ACP, und diese CLI beherrscht kein ACP — deshalb braucht Dextra ein separates Adapterpaket, {adapterPackage}, gepflegt vom Agent-Client-Protocol-Projekt (ursprünglich Zed). Es bringt seine eigene Laufzeit mit, verändert oder ersetzt deinen Befehl {nativeCmd} nie und liest dasselbe {configDir} — Anmeldung und Einstellungen bleiben erhalten. Unten installieren.",
+      "missing": "Dextra spricht mit Agenten über ACP, und die {nativeLabel} beherrscht kein ACP — deshalb braucht Dextra ein separates Adapterpaket, {adapterPackage}, gepflegt vom Agent-Client-Protocol-Projekt (ursprünglich Zed). Es bringt seine eigene Laufzeit mit, die CLI {nativeCmd} ist also nicht Voraussetzung; hast du sie bereits, koexistieren beide und teilen sich Anmeldung und Einstellungen in {configDir}. Unten installieren.",
+      "readyWithNative": "Der Adapter {adapterCmd} ist installiert — ihn startet Dextra, nicht dein eigenes {nativeCmd} unter {nativePath}. Es sind getrennte Pakete, die koexistieren, und beide lesen {configDir}, Anmeldung und Einstellungen sind also gemeinsam.",
+      "ready": "Der Adapter {adapterCmd} ist installiert — ihn startet Dextra. Er bringt seine eigene Laufzeit mit, die {nativeLabel} wird also nicht benötigt; installierst du sie später, koexistieren beide und teilen sich {configDir}."
     },
     "cline": {
       "configDescription": "Konfigurieren Sie den Cline API-Anbieter und die Anmeldedaten. Einstellungen werden in ~/.cline/data/ gespeichert.",
       "signInGroup": "Mit Cline anmelden",
       "byoGroup": "Eigenen Anbieter verwenden",
-      "externalGroup": "Außerhalb von codeg konfiguriert",
+      "externalGroup": "Außerhalb von Dextra konfiguriert",
       "signInHint": "Cline verwahrt diese Zugangsdaten selbst. Führe den Befehl unten in einem Terminal aus, um dich anzumelden – er zeigt einen Code an und öffnet eine Browserseite zur Bestätigung."
     },
     "opencodePlugins": {
@@ -1597,7 +1597,7 @@
       "installing": "Wird installiert…",
       "recheck": "Erneut prüfen",
       "configDirSkillsNote": "Mit einem benutzerdefinierten Konfigurationsverzeichnis gelten die in den Einstellungen verwalteten Skills, Experten und Office-Tools nicht für dieses pi — verwalte seine Skills direkt in diesem Ordner.",
-      "dirHistoryNote": "Diese Verzeichnisse gelten nur für den pi-Prozess. Der Gesprächsverlauf von codeg liest den Standardpfad von pi – Sitzungen in einem eigenen Verzeichnis erscheinen daher nicht in der Liste.",
+      "dirHistoryNote": "Diese Verzeichnisse gelten nur für den pi-Prozess. Der Gesprächsverlauf von Dextra liest den Standardpfad von pi – Sitzungen in einem eigenen Verzeichnis erscheinen daher nicht in der Liste.",
       "projectTrustTitle": "Projektvertrauen",
       "projectTrustDescription": "Ordner, aus denen pi Projektdateien laden darf. In einem vertrauten Ordner führt das Repository seine .pi/extensions beim Start von pi aus. Die Entscheidung gilt für alle enthaltenen Ordner und auch, wenn du pi im Terminal startest.",
       "projectTrustLoading": "Wird geladen…",
@@ -1644,7 +1644,7 @@
     "customAgentEditNotFound": "Benutzerdefinierter Agent {id} wurde nicht gefunden",
     "customAgentSaved": "{name} gespeichert",
     "customAgentVersionProbeLabel": "Versionsabfrage-Befehl (optional)",
-    "customAgentVersionProbeHint": "Befehl, der die lokal installierte Version ausgibt. Bleibt er leer, führt codeg den Agent-Befehl mit --version aus.",
+    "customAgentVersionProbeHint": "Befehl, der die lokal installierte Version ausgibt. Bleibt er leer, führt Dextra den Agent-Befehl mit --version aus.",
     "customAgentRemove": "Agent entfernen",
     "customAgentRemoveHint": "Löscht die Agent-Definition. Bestehende Unterhaltungen behalten ihren Verlauf; der Agent lässt sich nur nicht mehr starten.",
     "customAgentIconLabel": "Symbol (optional)",
@@ -1657,7 +1657,7 @@
     "customAgentSkillsDirLabel": "Dediziertes Skills-Verzeichnis",
     "customAgentSkillsDirHint": "Absoluter Pfad des Verzeichnisses, aus dem dieser Agent Skills lädt — sein eigener Speicher, zusätzlich zum geteilten oder an dessen Stelle. ~ wird zum Home-Verzeichnis erweitert; verknüpfte Skills landen zuerst hier.",
     "customAgentMcpLabel": "MCP-Unterstützung",
-    "customAgentMcpHint": "Übergibt den in codeg integrierten MCP-Begleitprozess beim Sitzungsstart an diesen Agenten — der Kanal hinter Delegation, Live-Feedback und Aufgaben-Tools. Für einen Agenten, der MCP-Server ablehnt und deshalb keine Verbindung aufbaut, ausschalten; die Änderung gilt ab der nächsten Verbindung.",
+    "customAgentMcpHint": "Übergibt den in Dextra integrierten MCP-Begleitprozess beim Sitzungsstart an diesen Agenten — der Kanal hinter Delegation, Live-Feedback und Aufgaben-Tools. Für einen Agenten, der MCP-Server ablehnt und deshalb keine Verbindung aufbaut, ausschalten; die Änderung gilt ab der nächsten Verbindung.",
     "customAgentIconNotAnImage": "Bitte eine Bilddatei auswählen.",
     "customAgentIconTooLarge": "Das Symbol muss kleiner als {limit} KB sein.",
     "customAgentIconReadFailed": "Dieses Bild konnte nicht gelesen werden.",
@@ -1701,22 +1701,22 @@
   "CloseBehaviorSettings": {
     "title": "Verhalten der Schließen-Schaltfläche",
     "description": "Lege fest, was die Schließen-Schaltfläche des Hauptfensters bewirkt.",
-    "trayUnavailable": "Dieses System bietet keinen nutzbaren Infobereich, daher beendet die Schließen-Schaltfläche codeg immer.",
+    "trayUnavailable": "Dieses System bietet keinen nutzbaren Infobereich, daher beendet die Schließen-Schaltfläche Dextra immer.",
     "behaviorAsk": "Jedes Mal fragen",
     "behaviorMinimize": "In den Infobereich minimieren",
-    "behaviorExit": "codeg beenden",
+    "behaviorExit": "Dextra beenden",
     "saveFailed": "Schließverhalten konnte nicht gespeichert werden: {message}"
   },
   "CloseRequestDialog": {
-    "askTitle": "codeg schließen?",
-    "askDescription": "codeg kann im Infobereich weiterlaufen, damit Agenten und Terminals aktiv bleiben – oder vollständig beendet werden.",
-    "confirmExitTitle": "codeg beenden?",
-    "confirmExitDescription": "Das Schließen des Fensters ist so eingestellt, dass codeg beendet wird.",
+    "askTitle": "Dextra schließen?",
+    "askDescription": "Dextra kann im Infobereich weiterlaufen, damit Agenten und Terminals aktiv bleiben – oder vollständig beendet werden.",
+    "confirmExitTitle": "Dextra beenden?",
+    "confirmExitDescription": "Das Schließen des Fensters ist so eingestellt, dass Dextra beendet wird.",
     "runningTerminals": "{count, plural, one {# Terminal läuft noch und wird beim Beenden geschlossen.} other {# Terminals laufen noch und werden beim Beenden geschlossen.}}",
     "remember": "Meine Auswahl merken",
     "cancel": "Abbrechen",
     "minimize": "In den Infobereich minimieren",
-    "exit": "codeg beenden",
+    "exit": "Dextra beenden",
     "actionFailed": "Aktion fehlgeschlagen: {message}"
   },
   "GeneralSettings": {
@@ -1724,7 +1724,7 @@
     "sectionTitle": "Allgemein",
     "sectionDescription": "Zentrale Einstellungen für das Standardterminal, die Rendering-Beschleunigung, das Verhalten beim Schließen des Fensters sowie Benachrichtigungen und Töne.",
     "terminalTitle": "Standardterminal",
-    "terminalDescription": "Wählen Sie die Shell, die codeg für neue Terminal-Tabs startet und für vollständige Befehlszeilen, deren Ausführung ein Agent bei codeg anfragt. Agenten mit einer eigenen Shell (Codex, Claude Code) führen Befehle im eigenen Prozess aus — dorthin reicht diese Einstellung nicht.",
+    "terminalDescription": "Wählen Sie die Shell, die Dextra für neue Terminal-Tabs startet und für vollständige Befehlszeilen, deren Ausführung ein Agent bei Dextra anfragt. Agenten mit einer eigenen Shell (Codex, Claude Code) führen Befehle im eigenen Prozess aus — dorthin reicht diese Einstellung nicht.",
     "terminalSystemDefault": "Systemstandard",
     "terminalPowerShell7": "PowerShell 7 (pwsh)",
     "terminalWindowsPowerShell": "Windows PowerShell",
@@ -1750,11 +1750,11 @@
   },
   "CollaborationSettings": {
     "sectionTitle": "Zusammenarbeit",
-    "sectionDescription": "Wie Agenten zusammenarbeiten und auf welche codeg-eigenen Werkzeuge sie innerhalb einer Unterhaltung zugreifen dürfen."
+    "sectionDescription": "Wie Agenten zusammenarbeiten und auf welche Dextra-eigenen Werkzeuge sie innerhalb einer Unterhaltung zugreifen dürfen."
   },
   "LoginPage": {
-    "documentTitle": "Anmelden - codeg",
-    "brand": "Codeg",
+    "documentTitle": "Anmelden - Dextra",
+    "brand": "Dextra",
     "subtitle": "Gib dein Zugriffstoken ein, um dich mit der Desktop-App zu verbinden",
     "tokenPlaceholder": "Zugriffstoken",
     "connect": "Verbinden",
@@ -1810,7 +1810,7 @@
     "onlyImportable": "Nur importierbare",
     "includeDeleted": "Gelöschte einbeziehen",
     "includeDeletedWithCount": "Gelöschte einbeziehen ({count})",
-    "includeDeletedHint": "Das Löschen einer Sitzung in codeg blendet sie nur aus – Unterhaltung und Verlauf bleiben erhalten. Aktiviere dies, um gelöschte Sitzungen auszuwählen und an Ort und Stelle wiederherzustellen.",
+    "includeDeletedHint": "Das Löschen einer Sitzung in Dextra blendet sie nur aus – Unterhaltung und Verlauf bleiben erhalten. Aktiviere dies, um gelöschte Sitzungen auszuwählen und an Ort und Stelle wiederherzustellen.",
     "selectAll": "Alle auswählen",
     "clearSelection": "Leeren",
     "expandAll": "Alle ausklappen",
@@ -2190,7 +2190,7 @@
         "showPet": "Pet anzeigen"
       },
       "mcp": {
-        "title": "codeg-mcp-Dienst",
+        "title": "dextra-mcp-Dienst",
         "state": {
           "running": "Läuft",
           "stopped": "Läuft nicht",
@@ -2199,10 +2199,10 @@
           "unknown": "Unbekannt"
         },
         "hint": {
-          "running": "Hier gestartete Agenten können codegs Tools nutzen.",
+          "running": "Hier gestartete Agenten können Dextras Tools nutzen.",
           "stopped": "Der Broker-Socket antwortet nicht.",
           "disabled": "Alle Tool-Gruppen sind ausgeschaltet.",
-          "unavailable": "Die codeg-mcp-Binärdatei fehlt auf der Festplatte.",
+          "unavailable": "Die dextra-mcp-Binärdatei fehlt auf der Festplatte.",
           "unknown": "Der Status konnte nicht gelesen werden."
         },
         "socketPath": "Adresse",
@@ -3030,7 +3030,7 @@
         },
         "backendErrors": {
           "initializeTimeout": "Der Verbindungs-Handshake von {agent} hat nach 60 Sekunden das Zeitlimit überschritten. Öffnen Sie die Einstellungen, um Agenten- und Netzwerkkonfiguration zu prüfen.",
-          "mcpRejectedByAgent": "{agent} hat die Sitzung abgelehnt, während codegs MCP-Begleitprozess angehängt war: {message} Falls dieser Agent MCP nicht unterstützt, deaktivieren Sie „MCP-Unterstützung“ in den Einstellungen und verbinden Sie erneut.",
+          "mcpRejectedByAgent": "{agent} hat die Sitzung abgelehnt, während Dextras MCP-Begleitprozess angehängt war: {message} Falls dieser Agent MCP nicht unterstützt, deaktivieren Sie „MCP-Unterstützung“ in den Einstellungen und verbinden Sie erneut.",
           "processExited": "{agent}-Prozess wurde unerwartet beendet.",
           "spawnFailed": "{agent} konnte nicht gestartet werden: {message}",
           "downloadFailed": "{agent}-Download fehlgeschlagen: {message}",
@@ -3046,7 +3046,7 @@
           "agentAuthRequired": "{agent} konnte keine Sitzung starten: Es sind keine verwendbaren Anmeldedaten vorhanden. Melde dich unter Einstellungen → Agenten → {agent} erneut an und öffne diese Unterhaltung neu.",
           "grokModelSwitchIncompatibleAgent": "{agent} kann in einer bestehenden Unterhaltung nicht zu diesem Modell wechseln. Starte eine neue Sitzung, um es zu verwenden.",
           "turnFailedEmpty": "{agent} hat die Runde ohne jegliche Antwort beendet.",
-          "turnFailedEmptyProtocol": "{agent} hat eine Ausgabe erzeugt, die codeg nicht auswerten konnte — die Agent-Version passt möglicherweise nicht zum Protokoll.",
+          "turnFailedEmptyProtocol": "{agent} hat eine Ausgabe erzeugt, die Dextra nicht auswerten konnte — die Agent-Version passt möglicherweise nicht zum Protokoll.",
           "turnFailedEmptyMetadata": "{agent} hat in dieser Runde nur Statusaktualisierungen gesendet (Plan / Modus / Verbrauch) und keine Antwort.",
           "detailsInAlerts": "Öffnen Sie die Warnungen in der Statusleiste und klappen Sie die Details auf, um die Ausgabe des Agents zu sehen."
         },
@@ -3204,7 +3204,7 @@
           "shortcutsAuxPanel": "<shortcut>{toggleAuxPanel}</shortcut> blendet das rechte Panel ein – mit den geänderten Dateien und Git-Änderungen dieser Sitzung.",
           "shortcutsTerminalSidebar": "<shortcut>{toggleTerminal}</shortcut> öffnet das eingebaute Terminal, <shortcut>{toggleSidebar}</shortcut> schaltet die Seitenleiste um.",
           "customShortcuts": "Alle Tastenkürzel lassen sich unter Einstellungen → Tastenkürzel frei belegen.",
-          "webService": "Aktiviere Einstellungen → Webdienst, damit Teammitglieder dasselbe codeg im Browser nutzen können.",
+          "webService": "Aktiviere Einstellungen → Webdienst, damit Teammitglieder dasselbe Dextra im Browser nutzen können.",
           "fusionMode": "Öffne eine Datei oder ein Diff, um es automatisch neben der Konversation zu sehen.",
           "quickMessages": "Klicke auf die +-Schaltfläche neben der Eingabe und wähle Schnellnachrichten, um ein gespeichertes Snippet einzufügen (verwaltbar unter Einstellungen → Schnellnachrichten).",
           "experts": "Die +-Schaltfläche hat ein Menü Expertenfähigkeiten – lade Rollen wie Debugging oder Planung mit einem Klick.",
@@ -3214,7 +3214,7 @@
           "mentionTargets": "@ holt mehr als Dateien: Erwähne einen anderen Agenten, um eine Teilaufgabe abzugeben, oder verweise auf eine frühere Sitzung, einen Commit oder einen Skill.",
           "splitGroups": "Rechtsklick auf einen Tab, dann Nach rechts teilen oder Nach unten teilen – so bleiben zwei Konversationen in eigenen Bereichen offen.",
           "worktrees": "Öffne die Branch-Schaltfläche und wähle Neuer Worktree, damit mehrere Agenten dasselbe Repository bearbeiten, ohne sich gegenseitig die Dateien zu überschreiben.",
-          "importSessions": "Schon Sitzungen im Terminal gelaufen? Im Menü eines Ordners holt Lokale Sitzungen importieren diesen Verlauf nach codeg.",
+          "importSessions": "Schon Sitzungen im Terminal gelaufen? Im Menü eines Ordners holt Lokale Sitzungen importieren diesen Verlauf nach Dextra.",
           "subSessions": "Delegiert ein Agent, erscheint die Untersitzung in der Seitenleiste verschachtelt darunter – klapp die Zeile auf, um jeder einzeln zu folgen.",
           "liveFeedback": "Live-Feedback im +-Menü schiebt eine Notiz in den Zug, den der Agent gerade ausführt – ohne ihn zu unterbrechen.",
           "skillPacks": "Einstellungen → Skill-Pakete bündelt Coding-Experten, wissenschaftliche Recherche und Office-Skills – pro Agent aktivierbar.",
@@ -3764,7 +3764,7 @@
         "collapse": "Einklappen",
         "errorTitle": "Feedback-Prüfung fehlgeschlagen"
       },
-      "codegMcpTool": {
+      "dextraMcpTool": {
         "getSessionInfo": "Sitzung {session} wird gelesen",
         "getSessionInfoNoId": "Sitzung wird gelesen",
         "taskProgress": "Fortschritt: {message}",
@@ -3823,7 +3823,7 @@
         "grantDescription": "pi lädt die .pi-Dateien dieses Repositorys. Sieh dir an, was das erlaubt.",
         "grantInheritedDescription": "Einem übergeordneten Ordner wird vertraut, daher lädt pi die .pi-Dateien dieses Repositorys. Sieh dir an, was das erlaubt.",
         "grantDialogTitle": "Den pi-Ressourcen dieses Projekts wird vertraut",
-        "grantDialogDescription": "pi darf die .pi-Dateien dieses Repositorys laden. Frühere codeg-Versionen haben das beim Öffnen eines Ordners automatisch erteilt, du wurdest also womöglich nie gefragt.",
+        "grantDialogDescription": "pi darf die .pi-Dateien dieses Repositorys laden. Frühere Dextra-Versionen haben das beim Öffnen eines Ordners automatisch erteilt, du wurdest also womöglich nie gefragt.",
         "grantExecutionWarning": "Erweiterungen sind Code. Das Repository führt sie beim Start von pi mit deinen Rechten aus, bevor du eine Nachricht sendest.",
         "inheritedFrom": "Vertraut über",
         "revoke": "Vertrauen widerrufen",
@@ -4035,11 +4035,11 @@
   "WebServiceSettings": {
     "addressSwitchHint": "Das Umschalten ändert nur die hier angezeigte und geöffnete Adresse – der Dienst lauscht auf allen Schnittstellen und bleibt unter jeder Adresse erreichbar.",
     "sectionTitle": "Webdienst",
-    "sectionDescription": "Aktivieren Sie den Fernzugriff auf Codeg über den Browser",
+    "sectionDescription": "Aktivieren Sie den Fernzugriff auf Dextra über den Browser",
     "port": "Port",
     "status": "Status",
     "autoStart": "Automatisch starten",
-    "autoStartHint": "Webdienst beim Start von Codeg starten",
+    "autoStartHint": "Webdienst beim Start von Dextra starten",
     "running": "Läuft",
     "stopped": "Gestoppt",
     "processing": "Verarbeitung...",
@@ -4054,7 +4054,7 @@
     "copy": "Kopieren",
     "qrcode": "QR-Code",
     "qrcodeTitle": "Zum Öffnen scannen",
-    "qrcodeHint": "Scanne mit deinem Handy, um Codeg im Browser zu öffnen",
+    "qrcodeHint": "Scanne mit deinem Handy, um Dextra im Browser zu öffnen",
     "addressLabel": "Zugriffsadresse",
     "tokenLabel": "Zugriffstoken",
     "tokenHint": "Geben Sie dieses Token beim ersten Zugriff auf den Web-Client ein",
@@ -4062,7 +4062,7 @@
     "regenerate": "Neu generieren",
     "stalePortOccupiedTitle": "Port {port} wird von einem anderen Prozess belegt",
     "stalePortUnknownTitle": "Status von Port {port} unklar",
-    "stalePortHint": "Codeg kann sich nicht binden, bis der Port freigegeben ist. Ändere den Port oben oder beende den Prozess, der ihn hält.",
+    "stalePortHint": "Dextra kann sich nicht binden, bis der Port freigegeben ist. Ändere den Port oben oder beende den Prozess, der ihn hält.",
     "errors": {
       "alreadyRunning": "Der Web-Dienst läuft bereits",
       "invalidAddress": "Host- oder Portformat ungültig",
@@ -4101,7 +4101,7 @@
     "tokenRequired": "Token ist erforderlich.",
     "chatIdRequired": "Chat-ID ist erforderlich.",
     "topicMode": "Themengruppenmodus",
-    "topicModeHint": "Leitet Telegram-Forum-Themen als separate Codeg-Sitzungen weiter. Der Bot muss in einer Forum-Supergruppe sein und Themen verwalten dürfen.",
+    "topicModeHint": "Leitet Telegram-Forum-Themen als separate Dextra-Sitzungen weiter. Der Bot muss in einer Forum-Supergruppe sein und Themen verwalten dürfen.",
     "loadFailed": "Kanäle konnten nicht geladen werden.",
     "saveFailed": "Änderungen konnten nicht gespeichert werden.",
     "connectSuccess": "Kanal verbunden.",
@@ -4298,7 +4298,7 @@
     },
     "confirm": {
       "disableTitle": "Diese Verknüpfungen deaktivieren?",
-      "disableBody": "Dadurch werden {count} von codeg verwaltete Skill-Verknüpfungen entfernt. Skills, die ein eigenes Verzeichnis belegen, bleiben unberührt. Du kannst sie jederzeit wieder aktivieren.",
+      "disableBody": "Dadurch werden {count} von Dextra verwaltete Skill-Verknüpfungen entfernt. Skills, die ein eigenes Verzeichnis belegen, bleiben unberührt. Du kannst sie jederzeit wieder aktivieren.",
       "cancel": "Abbrechen",
       "confirm": "Deaktivieren"
     },
@@ -4319,7 +4319,7 @@
   },
   "ExpertsSettings": {
     "title": "Experten-Skills",
-    "description": "Aktivieren Sie kuratierte, praxiserprobte Skill-Workflows für Ihre KI-Coding-Agents. Jeder Experte ist ein eigenständiger Skill aus dem superpowers-Projekt — codeg verwaltet die zentrale Kopie und verknüpft sie mit den von Ihnen ausgewählten Agents.",
+    "description": "Aktivieren Sie kuratierte, praxiserprobte Skill-Workflows für Ihre KI-Coding-Agents. Jeder Experte ist ein eigenständiger Skill aus dem superpowers-Projekt — Dextra verwaltet die zentrale Kopie und verknüpft sie mit den von Ihnen ausgewählten Agents.",
     "loading": "Experten werden geladen…",
     "loadingContent": "Inhalt wird geladen…",
     "emptyExperts": "Keine Experten verfügbar. Prüfen Sie die Anwendungsprotokolle.",
@@ -4328,7 +4328,7 @@
     "searchPlaceholder": "Experten nach Name, ID oder Beschreibung suchen",
     "enableForAgents": "Für Agents aktivieren",
     "noAgents": "Keine ACP-Agents erkannt.",
-    "copyModeWarning": "Kopiert (nicht verknüpft). Nach codeg-Updates erneut aktivieren, um die neueste Version zu erhalten.",
+    "copyModeWarning": "Kopiert (nicht verknüpft). Nach Dextra-Updates erneut aktivieren, um die neueste Version zu erhalten.",
     "previewTitle": "SKILL.md-Vorschau",
     "categories": {
       "discovery": "Entdeckung & Design",
@@ -4364,7 +4364,7 @@
   },
   "ScienceSettings": {
     "title": "Wissenschaftliche Skills",
-    "description": "Aktiviere kuratierte wissenschaftliche Skills für deine KI-Coding-Agents — Hypothesengenerierung, Versuchsplanung, Statistik, Visualisierung, kritische Bewertung und Literatursuche. codeg verwaltet eine zentrale Kopie und verlinkt jeden Skill in die von dir gewählten Agents.",
+    "description": "Aktiviere kuratierte wissenschaftliche Skills für deine KI-Coding-Agents — Hypothesengenerierung, Versuchsplanung, Statistik, Visualisierung, kritische Bewertung und Literatursuche. Dextra verwaltet eine zentrale Kopie und verlinkt jeden Skill in die von dir gewählten Agents.",
     "loading": "Wissenschaftliche Skills werden geladen…",
     "emptySkills": "Keine wissenschaftlichen Skills verfügbar. Prüfe die Anwendungsprotokolle.",
     "searchPlaceholder": "Wissenschaftliche Skills nach Name, ID oder Beschreibung suchen",
@@ -4458,7 +4458,7 @@
   },
   "SkillPacksSettings": {
     "title": "Skill-Pakete",
-    "description": "Kuratierte Skill-Pakete, die codeg zentral verwaltet und mit deinen KI-Agenten verknüpft – Programmierexperten, wissenschaftliche Forschung und Office-Dokumenttools. Unten pro Agent aktivierbar.",
+    "description": "Kuratierte Skill-Pakete, die Dextra zentral verwaltet und mit deinen KI-Agenten verknüpft – Programmierexperten, wissenschaftliche Forschung und Office-Dokumenttools. Unten pro Agent aktivierbar.",
     "tabs": {
       "experts": "Experten",
       "science": "Wissenschaft",
@@ -4696,7 +4696,7 @@
       "restore": "Wiederherstellung"
     },
     "export": {
-      "description": "Packt die codeg-Daten dieses Geräts – Datenbank und hochgeladene Dateien – in ein Archiv.",
+      "description": "Packt die Dextra-Daten dieses Geräts – Datenbank und hochgeladene Dateien – in ein Archiv.",
       "includeExternal": "Gesprächsinhalte einschließen",
       "includeExternalHint": "Archiviert auch die CLI-Transkripte (Claude, Codex, Gemini, …). Erhöht die Größe.",
       "passphrase": "Passphrase (optional)",
@@ -4719,7 +4719,7 @@
       }
     },
     "restore": {
-      "description": "Ersetzt die codeg-Daten dieses Geräts durch den Inhalt einer Sicherung.",
+      "description": "Ersetzt die Dextra-Daten dieses Geräts durch den Inhalt einer Sicherung.",
       "selectFile": "Sicherungsdatei auswählen",
       "passphrasePrompt": "Diese Sicherung ist verschlüsselt. Gib ihre Passphrase ein.",
       "unlock": "Entsperren",
@@ -4730,9 +4730,9 @@
         "incompatible": "Inkompatibel",
         "createdAt": "Erstellt: {value}",
         "appVersion": "App-Version: {value}",
-        "incompatibleHint": "Diese Sicherung wurde mit einer neueren Version von codeg erstellt und kann nicht wiederhergestellt werden."
+        "incompatibleHint": "Diese Sicherung wurde mit einer neueren Version von Dextra erstellt und kann nicht wiederhergestellt werden."
       },
-      "replaceWarning": "Beim Wiederherstellen werden alle aktuellen codeg-Daten (Datenbank und Uploads) ersetzt. Deine aktuellen Daten werden zuvor als Snapshot gesichert.",
+      "replaceWarning": "Beim Wiederherstellen werden alle aktuellen Dextra-Daten (Datenbank und Uploads) ersetzt. Deine aktuellen Daten werden zuvor als Snapshot gesichert.",
       "keyringNote": "GitHub-/Chat-Tokens der Desktop-App liegen im Schlüsselbund des Betriebssystems und sind nicht enthalten; gib sie nach dem Wiederherstellen erneut ein.",
       "button": "Wiederherstellen",
       "staging": "Wiederherstellung wird vorbereitet…",
@@ -4741,7 +4741,7 @@
       "restartTimeout": "Der Server kam nicht rechtzeitig zurück. Lade die Seite neu, sobald er läuft.",
       "externalSideLocation": "Gesprächstranskripte wurden nach {path} wiederhergestellt",
       "confirmTitle": "Alle Daten ersetzen?",
-      "confirmBody": "Dadurch werden deine aktuelle codeg-Datenbank und Uploads durch die Sicherung ersetzt und anschließend neu gestartet. Deine aktuellen Daten werden zuvor als Snapshot gesichert.",
+      "confirmBody": "Dadurch werden deine aktuelle Dextra-Datenbank und Uploads durch die Sicherung ersetzt und anschließend neu gestartet. Deine aktuellen Daten werden zuvor als Snapshot gesichert.",
       "cancel": "Abbrechen",
       "confirmAction": "Ersetzen & neu starten",
       "external": {
@@ -4773,7 +4773,7 @@
         "later": "Später"
       }
     },
-    "remoteUnsupported": "Sicherung & Wiederherstellung wirken auf die Daten des Rechners, auf dem codeg läuft. Du bist mit einem entfernten Arbeitsbereich verbunden – verwalte dessen Sicherungen direkt auf jenem Server.",
+    "remoteUnsupported": "Sicherung & Wiederherstellung wirken auf die Daten des Rechners, auf dem Dextra läuft. Du bist mit einem entfernten Arbeitsbereich verbunden – verwalte dessen Sicherungen direkt auf jenem Server.",
     "progress": {
       "cancel": "Abbrechen"
     },
@@ -4787,7 +4787,7 @@
       "rollbackConfirmBody": "Damit werden deine aktuellen Daten durch die Momentaufnahme ersetzt und die App startet neu. Von den ersetzten Daten wird vorher eine Momentaufnahme angelegt."
     },
     "title": "Sicherung & Wiederherstellung",
-    "description": "Exportiere eine portable Sicherung deiner codeg-Daten oder stelle aus einer Sicherung wieder her."
+    "description": "Exportiere eine portable Sicherung deiner Dextra-Daten oder stelle aus einer Sicherung wieder her."
   },
   "ConfigSyncSettings": {
     "title": "Konfigurationssynchronisierung",
@@ -4857,7 +4857,7 @@
     "plaintextWarning": "Der Snapshot wird unverschlüsselt hochgeladen und enthält API-Schlüssel. Nutze daher einen WebDAV-Server, auf den nur du zugreifen kannst. Die Zugangsdaten der Synchronisierung selbst sind nie Teil des Snapshots.",
     "importConfirmTitle": "Konfiguration importieren?",
     "importConfirmBody": "Einträge aus der Datei werden auf diesem Gerät hinzugefügt oder aktualisiert. Vorhandene Einträge, die in der Datei nicht vorkommen, bleiben erhalten.",
-    "restartHint": "Einige Änderungen – Darstellung, Sprache und die Anbieterliste – werden erst nach einem Neustart von codeg wirksam.",
+    "restartHint": "Einige Änderungen – Darstellung, Sprache und die Anbieterliste – werden erst nach einem Neustart von Dextra wirksam.",
     "importConfirmAction": "Importieren",
     "restoreConfirmTitle": "Vom Server wiederherstellen?",
     "restoreConfirmBody": "Der Snapshot von {device} vom {time} wird auf dieses Gerät angewendet. Vorhandene Einträge, die im Snapshot fehlen, bleiben erhalten.",
@@ -4893,8 +4893,8 @@
       "error": {
         "badPassphrase": "Falsche Passphrase oder beschädigte Sicherung.",
         "corrupted": "Das Sicherungsarchiv ist beschädigt.",
-        "unknownFormat": "Diese Datei ist keine erkannte codeg-Sicherung.",
-        "newerVersion": "Diese Sicherung wurde mit codeg {backupVersion} erstellt, neuer als diese Version ({appVersion}).",
+        "unknownFormat": "Diese Datei ist keine erkannte Dextra-Sicherung.",
+        "newerVersion": "Diese Sicherung wurde mit Dextra {backupVersion} erstellt, neuer als diese Version ({appVersion}).",
         "alreadyPending": "Es ist bereits eine Wiederherstellung vorbereitet. Starte neu, um sie anzuwenden, bevor du eine weitere vorbereitest."
       }
     },
@@ -4905,9 +4905,9 @@
   },
   "configSync": {
     "error": {
-      "newerSchema": "Dieser Snapshot stammt aus einer neueren codeg-Version (Format {snapshotVersion}); diese Version unterstützt höchstens Format {appVersion}.",
+      "newerSchema": "Dieser Snapshot stammt aus einer neueren Dextra-Version (Format {snapshotVersion}); diese Version unterstützt höchstens Format {appVersion}.",
       "checksum": "Der Snapshot passt nicht zu seiner Prüfsumme und ist möglicherweise unvollständig.",
-      "invalidSnapshot": "Diese Datei ist kein gültiger codeg-Konfigurations-Snapshot.",
+      "invalidSnapshot": "Diese Datei ist kein gültiger Dextra-Konfigurations-Snapshot.",
       "noRemoteSnapshot": "Auf dem Server liegt noch kein Konfigurations-Snapshot.",
       "notConfigured": "Richte den WebDAV-Server ein, bevor du synchronisierst.",
       "unauthorized": "Der WebDAV-Server hat Benutzername oder Passwort abgelehnt.",
@@ -4953,7 +4953,7 @@
   },
   "AgentToolsSettings": {
     "title": "Tools in der Unterhaltung",
-    "description": "Zusätzliche Tools, die codeg einem Agenten innerhalb einer Unterhaltung gibt. Sie werden beim Start des Agenten injiziert – eine Änderung gilt daher für danach gestartete Agenten.",
+    "description": "Zusätzliche Tools, die Dextra einem Agenten innerhalb einer Unterhaltung gibt. Sie werden beim Start des Agenten injiziert – eine Änderung gilt daher für danach gestartete Agenten.",
     "save": "Speichern",
     "saving": "Wird gespeichert…",
     "saved": "Tool-Einstellungen gespeichert",
@@ -5021,21 +5021,21 @@
     "permissionDefault": "Nicht angefragt",
     "permissionUnsupported": "Nicht verfügbar",
     "permissionManagedByOs": "Vom System verwaltet",
-    "permissionGrantedHint": "Dieser Browser zeigt Benachrichtigungen von Codeg an.",
-    "permissionDeniedHint": "Dieser Browser blockiert Benachrichtigungen von Codeg. Nur die Website-Einstellungen des Browsers können das aufheben — eine Seite kann nicht erneut fragen.",
+    "permissionGrantedHint": "Dieser Browser zeigt Benachrichtigungen von Dextra an.",
+    "permissionDeniedHint": "Dieser Browser blockiert Benachrichtigungen von Dextra. Nur die Website-Einstellungen des Browsers können das aufheben — eine Seite kann nicht erneut fragen.",
     "permissionDefaultHint": "Dieser Browser wurde noch nicht gefragt. Bis du zustimmst, bleiben Benachrichtigungen aus.",
     "permissionUnsupportedHint": "Benachrichtigungen brauchen einen sicheren Kontext. Rufe diesen Server über HTTPS oder auf localhost auf.",
-    "permissionManagedByOsHint": "Die Desktop-App sendet über die Mitteilungszentrale des Systems, die nicht zurückmeldet, ob Codeg erlaubt ist. Sende einen Test, um es herauszufinden.",
+    "permissionManagedByOsHint": "Die Desktop-App sendet über die Mitteilungszentrale des Systems, die nicht zurückmeldet, ob Dextra erlaubt ist. Sende einen Test, um es herauszufinden.",
     "identityTitle": "Zugestellt als",
     "identityHint": "Das System ordnet diese Mitteilungen dieser App zu – es gelten deren eigene Schalter.",
-    "identityDegradedHint": "Codegs eigene Kennung konnte nicht belegt werden, daher stellt das System sie als {bundleId} zu, und die Schalter jener App gelten. Installiere Codeg in den Programme-Ordner, um die eigene Identität wiederherzustellen.",
+    "identityDegradedHint": "Dextras eigene Kennung konnte nicht belegt werden, daher stellt das System sie als {bundleId} zu, und die Schalter jener App gelten. Installiere Dextra in den Programme-Ordner, um die eigene Identität wiederherzustellen.",
     "requestPermission": "Benachrichtigungen erlauben",
     "permissionGrantedToast": "Benachrichtigungen erlaubt.",
     "permissionDeniedToast": "Benachrichtigungen wurden blockiert. Aktiviere sie in den Website-Einstellungen deines Browsers erneut.",
     "openSystemSettings": "Systemeinstellungen öffnen",
     "openSystemSettingsFailed": "Die Benachrichtigungseinstellungen des Systems konnten nicht geöffnet werden.",
     "sendTest": "Test senden",
-    "testTitle": "Codeg",
+    "testTitle": "Dextra",
     "testBody": "Desktop-Benachrichtigungen funktionieren.",
     "testSent": "Testbenachrichtigung gesendet.",
     "testFailed": "Die Testbenachrichtigung konnte nicht gesendet werden.",
@@ -5059,7 +5059,7 @@
     "preview": "Anhören",
     "previewEvent": "Ton für {event} anhören",
     "onlyWhenUnfocused": "Nur wenn das Fenster nicht im Fokus ist",
-    "onlyWhenUnfocusedHint": "Bleibt stumm, solange du Codeg ansiehst.",
+    "onlyWhenUnfocusedHint": "Bleibt stumm, solange du Dextra ansiehst.",
     "eventsTitle": "Ereignisse",
     "eventsHint": "Wähle pro Ereignis einen Ton oder „Stumm“, um es zu überspringen. Wiederholt sich dasselbe Ereignis innerhalb weniger Sekunden, erklingt es nur einmal.",
     "toneNone": "Stumm",
@@ -5073,7 +5073,7 @@
   "BrowserSettings": {
     "title": "Integrierter Browser",
     "description": "Webseiten aus Unterhaltungen, Werkzeugergebnissen und dem Terminal können als Tabs neben deinen Dateien erscheinen, ohne die App zu verlassen.",
-    "descriptionWeb": "In einer Browsersitzung öffnen sich Webseiten in dem Browser, den du bereits benutzt. Die Ausnahme ist ein Server, der auf dem codeg-Host läuft: er wird hierher in einen Tab weitergeleitet. Dies sind die Einstellungen, die dort noch etwas entscheiden.",
+    "descriptionWeb": "In einer Browsersitzung öffnen sich Webseiten in dem Browser, den du bereits benutzt. Die Ausnahme ist ein Server, der auf dem Dextra-Host läuft: er wird hierher in einen Tab weitergeleitet. Dies sind die Einstellungen, die dort noch etwas entscheiden.",
     "defaultTargetTitle": "Wo Links geöffnet werden",
     "defaultTargetHint": "Je Quelle einstellbar. ⌘/Strg+Klick auf einen Link verwendet einmalig die andere Variante.",
     "sourceTranscript": "Unterhaltungsnachrichten",
@@ -5104,7 +5104,7 @@
     "proxyOn": "Verwendet {url}",
     "proxyOff": "Direkte Verbindung",
     "proxyNextTab": "Ein geänderter Proxy gilt für ab jetzt geöffnete Tabs.",
-    "proxyRestart": "Starte codeg neu, damit Browser-Tabs den geänderten Proxy verwenden.",
+    "proxyRestart": "Starte Dextra neu, damit Browser-Tabs den geänderten Proxy verwenden.",
     "proxyUnsupported": "Auf dieser macOS-Version nicht verfügbar (14 oder neuer erforderlich).",
     "proxyUnusable": "Der konfigurierte Proxy ist kein Typ, den Browser-Tabs verwenden können (nur http und socks5).",
     "suspendTitle": "Hintergrund-Tabs entladen",
@@ -5205,9 +5205,9 @@
     "filesEmpty": "Noch keine Protokolldateien.",
     "download": "Herunterladen",
     "downloadTruncated": "Die Datei ist groß; die neuesten {size} wurden heruntergeladen. Die vollständige Datei befindet sich im Log-Verzeichnis.",
-    "captureEnvLocked": "Die Protokollebene wird durch die Umgebungsvariable RUST_LOG / CODEG_LOG gesteuert; ändere sie dort, damit es wirksam wird.",
+    "captureEnvLocked": "Die Protokollebene wird durch die Umgebungsvariable RUST_LOG / DEXTRA_LOG gesteuert; ändere sie dort, damit es wirksam wird.",
     "targetsTitle": "Modulspezifische Überschreibungen",
-    "targetsDescription": "Lege für bestimmte Module (z. B. codeg_lib::acp) eine andere Stufe fest, ohne die globale Stufe zu ändern.",
+    "targetsDescription": "Lege für bestimmte Module (z. B. dextra_lib::acp) eine andere Stufe fest, ohne die globale Stufe zu ändern.",
     "targetsAdd": "Hinzufügen",
     "targetsRemove": "Überschreibung entfernen",
     "toggleDetails": "Details umschalten"
@@ -5543,7 +5543,7 @@
     "settingsDeleteWorktreeHint": "Aktiviert die Option im Merge-Dialog vor; dort lässt sie sich weiterhin ändern.",
     "settingsWorktreeRoot": "Worktree-Verzeichnis",
     "settingsWorktreeRootHint": "Verzeichnis, in dem neue Aufgaben-Worktrees angelegt werden – eines pro Aufgabe. Leer lassen, um sie neben dem Projektordner anzulegen; „~“ ist dein Home-Verzeichnis, ein relativer Pfad gilt relativ zum Projektordner.",
-    "settingsWorktreeRootPlaceholder": "~/codeg-worktrees",
+    "settingsWorktreeRootPlaceholder": "~/dextra-worktrees",
     "settingsWorktreeRootBrowse": "Worktree-Verzeichnis auswählen",
     "settingsPreflight": "Preflight-Befehl",
     "settingsPreflightHint": "Läuft im Worktree, sobald eine Aufgabe das Review erreicht.",
@@ -5670,7 +5670,7 @@
     "editor": {
       "createTitle": "Neuer benutzerdefinierter Skill",
       "editTitle": "Benutzerdefinierten Skill bearbeiten",
-      "description": "Benutzerdefinierte Skills liegen im gemeinsamen Speicher (~/.codeg/skills) und können für jeden Agenten aktiviert werden.",
+      "description": "Benutzerdefinierte Skills liegen im gemeinsamen Speicher (~/.dextra/skills) und können für jeden Agenten aktiviert werden.",
       "idLabel": "Skill-ID",
       "idPlaceholder": "z. B. my-workflow",
       "contentLabel": "SKILL.md",
@@ -5725,7 +5725,7 @@
     }
   },
   "CodexModelEditor": {
-    "customizedNotice": "Du hast die Modellliste angepasst, daher verwaltet codeg jetzt die gesamte Modelltabelle von codex. Offizielle Modelle, die codex später hinzufügt, erscheinen nicht automatisch – klicke unten auf Aktualisieren und speichere erneut, um sie zu übernehmen. Entferne alle Anpassungen, damit codex sich wieder automatisch aktualisiert.",
+    "customizedNotice": "Du hast die Modellliste angepasst, daher verwaltet Dextra jetzt die gesamte Modelltabelle von codex. Offizielle Modelle, die codex später hinzufügt, erscheinen nicht automatisch – klicke unten auf Aktualisieren und speichere erneut, um sie zu übernehmen. Entferne alle Anpassungen, damit codex sich wieder automatisch aktualisiert.",
     "officialsTitle": "Offizielle Modelle",
     "officialsHint": "Automatisch aus dem gestarteten codex übernommen; nicht benötigte entfernen.",
     "officialsEmpty": "Keine offiziellen Modelle verfügbar.",
@@ -5829,13 +5829,13 @@
       "npm_missing": "npm wurde im PATH der App nicht gefunden.",
       "not_installed": "Dieser Agent scheint nicht installiert zu sein.",
       "installed_but_unresolved": "Als installiert vermerkt, aber die App findet die ausführbare Datei nicht.",
-      "user_prefix_not_on_path": "In das Ausweich-Prefix (~/.codeg/npm-global) installiert, das nicht im PATH der App liegt. Starte die App komplett neu und versuche es erneut.",
+      "user_prefix_not_on_path": "In das Ausweich-Prefix (~/.dextra/npm-global) installiert, das nicht im PATH der App liegt. Starte die App komplett neu und versuche es erneut.",
       "homebrew_bin_not_on_path": "Unter dem Homebrew-bin installiert, das nicht im PATH der App liegt (Apple-Silicon-Keg-Trennung).",
       "terminal_only_path": "Der Befehl wird in deinem Terminal aufgelöst, aber nicht in der App – eine GUI-PATH-Lücke. Starte die App aus einem Terminal oder installiere sie in den Agent-Einstellungen neu.",
       "npm_prefix_timeout": "npm prefix -g war zu langsam (über 1,5 s), daher wurde die Ausweicherkennung übersprungen. Starte die App neu und versuche es erneut.",
       "node_too_old": "Dein aktives Node.js ist älter als von diesem Agenten benötigt. Aktualisiere Node.js.",
-      "adapter_missing_native_present": "Deine eigene {agent}-CLI ist installiert, aber Codeg startet ein separates ACP-Adapterpaket — und das fehlt noch. Installiere es in den Agenten-Einstellungen; es rührt deine CLI nicht an und teilt sich dieselbe Anmeldung.",
-      "adapter_missing": "Codeg startet für {agent} ein separates ACP-Adapterpaket, das noch nicht installiert ist. Installiere es in den Agenten-Einstellungen — die Hersteller-CLI allein genügt nicht."
+      "adapter_missing_native_present": "Deine eigene {agent}-CLI ist installiert, aber Dextra startet ein separates ACP-Adapterpaket — und das fehlt noch. Installiere es in den Agenten-Einstellungen; es rührt deine CLI nicht an und teilt sich dieselbe Anmeldung.",
+      "adapter_missing": "Dextra startet für {agent} ein separates ACP-Adapterpaket, das noch nicht installiert ist. Installiere es in den Agenten-Einstellungen — die Hersteller-CLI allein genügt nicht."
     }
   },
   "TokenUsage": {
@@ -5869,7 +5869,7 @@
     "resetFilters": "Filter zurücksetzen",
     "refresh": "Aktualisieren",
     "rebuild": "Alles neu aufbauen",
-    "rebuildHint": "Verwirft die gezählten Daten und liest alle Sitzungsprotokolle neu ein. Nützlich, wenn eine Sitzung außerhalb von codeg gewachsen ist.",
+    "rebuildHint": "Verwirft die gezählten Daten und liest alle Sitzungsprotokolle neu ein. Nützlich, wenn eine Sitzung außerhalb von Dextra gewachsen ist.",
     "syncing": "Sitzungen werden gezählt…",
     "syncProgress": "{done} / {total}",
     "syncDone": "{synced} Sitzungen gezählt",
@@ -5948,7 +5948,7 @@
     "cardHeading": "Meine KI-Coding-Bilanz",
     "cardRangeAll": "Gesamter Zeitraum",
     "cardTotalLabel": "Verbrauchte Tokens",
-    "cardFooter": "Erstellt mit codeg",
+    "cardFooter": "Erstellt mit Dextra",
     "cardTopModels": "Top-Modelle",
     "cardTopProjects": "Top-Projekte",
     "archetypeNightOwl": "Nachteule",
@@ -5970,7 +5970,7 @@
     "archetypeSteady": "Stetiger Bauer",
     "archetypeSteadyDesc": "{days} Tage geliefert.",
     "emptyTitle": "Noch nichts gezählt",
-    "emptyHint": "Codeg liest die Token-Zahlen direkt aus dem Protokoll jedes Agenten. Aktualisiere, um zu zählen, was schon auf diesem Rechner liegt.",
+    "emptyHint": "Dextra liest die Token-Zahlen direkt aus dem Protokoll jedes Agenten. Aktualisiere, um zu zählen, was schon auf diesem Rechner liegt.",
     "emptyAction": "Meine Sitzungen zählen",
     "loadFailed": "Verbrauch konnte nicht geladen werden",
     "truncatedNotice": "Dieser Zeitraum ist sehr groß — die Zahlen decken nur seinen jüngsten Abschnitt ab."
@@ -6130,7 +6130,7 @@
     "dialogDescriptionMr": "Legt in {repo}s Ordner eine To-do-Aufgabe an, deren Worktree auf dem Head dieses Merge Requests ausgecheckt ist — die Commits des Agenten kommen obendrauf und werden beim Annehmen in denselben Merge Request gepusht.",
     "instructionPlaceholder": "Optionale Zusatzanweisung für den Agenten…",
     "writebackLabel": "Ergebnis als Kommentar zurückschreiben",
-    "writebackHint": "Wenn die Aufgabe fertig ist, schreibt codeg einen Kommentar zu diesem Eintrag: Ergebnis, Link und Diff-Zahlen.",
+    "writebackHint": "Wenn die Aufgabe fertig ist, schreibt Dextra einen Kommentar zu diesem Eintrag: Ergebnis, Link und Diff-Zahlen.",
     "previewToggle": "Issue-Inhalt der Aufgabe ansehen",
     "previewEmpty": "(keine Beschreibung)",
     "duplicateBody": "Eine aktive Aufgabe bearbeitet dieses Element bereits: {title} ({status}). Trotzdem eine weitere erstellen?",
@@ -6306,7 +6306,7 @@
       "errorBlockedHint": "Eine Site-Regel blockiert diese Adresse. Regeln werden unter Einstellungen → Integrierter Browser verwaltet.",
       "popupDeniedBlockedHost": "durch eine Site-Regel blockiert",
       "channelDegraded": "In diesem Tab werden Pop-ups blockiert und die Adressleiste kann der Seite hinterherhinken",
-      "channelDegradedHint": "codeg konnte sein Seitenskript nicht einsetzen. Von dieser Seite geöffnete Pop-ups werden blockiert, die Adressleiste folgt der Navigation innerhalb der Seite nicht, und das Suchkürzel in der Seite öffnet die Suchleiste nicht. Ein erneutes Öffnen des Tabs versucht es noch einmal.",
+      "channelDegradedHint": "Dextra konnte sein Seitenskript nicht einsetzen. Von dieser Seite geöffnete Pop-ups werden blockiert, die Adressleiste folgt der Navigation innerhalb der Seite nicht, und das Suchkürzel in der Seite öffnet die Suchleiste nicht. Ein erneutes Öffnen des Tabs versucht es noch einmal.",
       "downloadsDenied": "Downloads blockiert: {host}",
       "downloadsDeniedNoGesture": "mehrere Dateien, nicht durch einen Klick ausgelöst",
       "agentGrantLost": "Freigabe beendet: Die Seite hat {origin} verlassen",
@@ -6331,8 +6331,8 @@
       "copyAddress": "Adresse kopieren",
       "copied": "Adresse kopiert",
       "unreachableTitle": "Der Bridge-Port ist nicht erreichbar",
-      "unreachableHint": "Der codeg-Server stellt diese Seite unter {origin} bereit, aber dein Browser erreicht sie nicht. Gib diesen Port frei (siehe CODEG_BRIDGE_PORTS) oder setze CODEG_BRIDGE_PUBLIC_HOST; wird codeg über HTTPS ausgeliefert, brauchen auch die Bridge-Ports HTTPS.",
-      "unreachableHostHint": "Der codeg-Server hat diese Seite unter {origin} bereitgestellt, aber dein Browser erreicht sie nicht. Dieser Hostname muss auf den codeg-Server auflösen und den davorliegenden Proxy passieren – ein Wildcard-DNS-Eintrag und ein Wildcard-vhost (siehe CODEG_BRIDGE_HOST_PATTERN).",
+      "unreachableHint": "Der Dextra-Server stellt diese Seite unter {origin} bereit, aber dein Browser erreicht sie nicht. Gib diesen Port frei (siehe DEXTRA_BRIDGE_PORTS) oder setze DEXTRA_BRIDGE_PUBLIC_HOST; wird Dextra über HTTPS ausgeliefert, brauchen auch die Bridge-Ports HTTPS.",
+      "unreachableHostHint": "Der Dextra-Server hat diese Seite unter {origin} bereitgestellt, aber dein Browser erreicht sie nicht. Dieser Hostname muss auf den Dextra-Server auflösen und den davorliegenden Proxy passieren – ein Wildcard-DNS-Eintrag und ein Wildcard-vhost (siehe DEXTRA_BRIDGE_HOST_PATTERN).",
       "errorTitle": "Diese Seite kann hier nicht angezeigt werden"
     },
     "download": {

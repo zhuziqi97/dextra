@@ -39,10 +39,10 @@ pub struct AppState {
     pub delegation_broker: Arc<DelegationBroker>,
     /// Per-launch ephemeral tokens identifying parent ACP connections.
     /// Registered when `load_mcp_servers_for_agent` injects the
-    /// `codeg-mcp` MCP entry, revoked on parent teardown.
+    /// `dextra-mcp` MCP entry, revoked on parent teardown.
     pub delegation_tokens: Arc<TokenRegistry>,
     /// Absolute path of the UDS / named pipe the companion connects to.
-    /// PID-scoped so multiple codeg processes on the same host don't fight.
+    /// PID-scoped so multiple dextra processes on the same host don't fight.
     pub delegation_socket_path: PathBuf,
     /// Hot-swappable live-feedback (`check_user_feedback`) enable flag. Shared
     /// with the `DelegationInjection` so MCP injection reads it, and updated by
@@ -107,7 +107,7 @@ pub fn default_chat_channel_manager() -> ChatChannelManager {
 }
 
 /// Build the delegation broker + token registry + per-process UDS socket
-/// path. Shared between codeg-server bootstrap and the Tauri `setup` block
+/// path. Shared between dextra-server bootstrap and the Tauri `setup` block
 /// so both modes apply identical depth limit + timeout defaults.
 ///
 /// The listener task is _not_ spawned here — callers spawn it after they

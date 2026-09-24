@@ -211,7 +211,7 @@ pub struct ImportResult {
     pub restored: u32,
 }
 
-/// Reconciliation state of one locally-discovered session against the codeg DB,
+/// Reconciliation state of one locally-discovered session against the dextra DB,
 /// keyed by `(external_id, agent_type)` — the same identity `import_one` uses.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

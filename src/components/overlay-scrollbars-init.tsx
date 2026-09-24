@@ -8,7 +8,7 @@ export function OverlayScrollbarsInit() {
   const [init] = useOverlayScrollbars({
     options: {
       scrollbars: {
-        theme: "os-theme-codeg",
+        theme: "os-theme-dextra",
         autoHide: "leave",
         dragScroll: false,
       },

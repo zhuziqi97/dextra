@@ -18,7 +18,7 @@ interface SidebarConversationHoverDetailsProps {
  * A technical identifier — a filesystem path, a branch, a model id. Pinned to
  * `dir="ltr"` because these read left to right in every locale: under an RTL
  * document the bidi algorithm treats a leading `/` as neutral and moves it to
- * the end, rendering `/Users/me/codeg` as `Users/me/codeg/`. The folder picker
+ * the end, rendering `/Users/me/dextra` as `Users/me/dextra/`. The folder picker
  * gives `folder.path` the same treatment (`shared/folder-select.tsx`).
  */
 function LtrValue({

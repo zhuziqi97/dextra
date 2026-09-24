@@ -172,7 +172,7 @@ pub struct AsyncTaskRecord {
     /// deserialize.
     pub task_type: String,
     pub description: String,
-    /// Whether this task earns its own transcript card upstream. codeg renders
+    /// Whether this task earns its own transcript card upstream. dextra renders
     /// the live strip regardless — that is AIR's always-on task panel, and the
     /// strip answers "is it still running", which no transcript card can. Not
     /// currently read by any surface; carried so a client that does want to
@@ -181,7 +181,7 @@ pub struct AsyncTaskRecord {
     pub show_in_transcript: bool,
     /// Whether `_session/async_task/stop` is offered. The adapter announces
     /// `true` for every task it publishes; it is carried rather than assumed so
-    /// a future adapter can withdraw the affordance without a codeg release.
+    /// a future adapter can withdraw the affordance without a dextra release.
     pub can_stop: bool,
     /// `running` | `paused` | `completed` | `failed` | `stopped`. Plain string
     /// for the same forward-compatibility reason as `task_type`; treat anything
@@ -457,7 +457,7 @@ pub enum AcpEvent {
     /// one that was requested.
     ///
     /// `session/set_config_option` is advisory: the agent answers with the option
-    /// list it actually adopted, and codeg renders that verbatim — so a refused or
+    /// list it actually adopted, and dextra renders that verbatim — so a refused or
     /// downgraded pick reads in the composer as the selector springing back for no
     /// reason. pi does this for a model that never declared `reasoning` (its whole
     /// thinking vocabulary collapses to `off`); grok does it for a model switch
@@ -512,10 +512,10 @@ pub enum AcpEvent {
         /// When present, the frontend renders a localized message keyed on
         /// this code; otherwise it falls back to `message`.
         code: Option<String>,
-        /// Out-of-band diagnostic evidence for errors codeg *inferred* rather
+        /// Out-of-band diagnostic evidence for errors dextra *inferred* rather
         /// than received — currently the `turn_failed_empty*` family, where the
         /// agent reported success and the wire carried no error at all. Holds
-        /// the turn's agent stderr tail and a summary of updates codeg failed
+        /// the turn's agent stderr tail and a summary of updates dextra failed
         /// to parse.
         ///
         /// **Already redacted and length-bounded at the source**
@@ -601,21 +601,21 @@ pub enum AcpEvent {
     /// `SessionFailureRecord` so the banner keeps the role the AIR advisory
     /// lane used to fill.
     ///
-    /// Reaches codeg from the two adapters `build_client_capabilities`
+    /// Reaches dextra from the two adapters `build_client_capabilities`
     /// advertises `session.notices` to: claude-agent-acp (0.81+) and codex-acp
     /// (1.13+). Dropped on the replay seam — a notice has no history position.
     SessionNotice { notice: SessionNotice },
     /// A JetBrains AIR async-task delta (see [`AsyncTaskDelta`]). Emitted for
-    /// every frame codeg could read; the merge into whole rows happens
+    /// every frame dextra could read; the merge into whole rows happens
     /// identically in `SessionState::apply_event` (which the snapshot is taken
     /// from) and the frontend reducer, so a mid-session attach and a client that
     /// saw every delta agree.
     ///
-    /// Reaches codeg from the two adapters `build_client_capabilities`
+    /// Reaches dextra from the two adapters `build_client_capabilities`
     /// advertises `asyncTasks` to: claude-agent-acp (0.73+) and codex-acp
     /// (1.10+).
     AsyncTask { delta: AsyncTaskDelta },
-    /// `session/load` failed in a way codeg cannot paper over — the agent has
+    /// `session/load` failed in a way dextra cannot paper over — the agent has
     /// no record of this `session_id`, the session/process died, or it is
     /// archived. Emitted instead of silently falling back to `session/new`, so
     /// the frontend can surface the failure with reload / new-conversation
@@ -634,7 +634,7 @@ pub enum AcpEvent {
     UsageUpdate { used: u64, size: u64 },
     /// Out-of-turn activity surfaced from the agent's own session transcript
     /// by the background watcher (`acp::background_watch`; Claude-only today).
-    /// Covers everything that happens OUTSIDE a codeg-driven prompt turn:
+    /// Covers everything that happens OUTSIDE a dextra-driven prompt turn:
     /// async sub-agent / background-shell `<task-notification>` completions,
     /// the agent's continued work after them, and cron//loop autonomous turns
     /// (which never produce ACP wire events at all — see issue #270). The
@@ -697,7 +697,7 @@ pub enum AcpEvent {
         agent_type: crate::models::agent::AgentType,
         result: DelegationResultSummary,
     },
-    /// A human submitted a prompt from the Codeg conversation UI (desktop or
+    /// A human submitted a prompt from the Dextra conversation UI (desktop or
     /// web). Synthetic, notification-only event: it mutates no `SessionState`
     /// field and exists purely to drive the chat-channel "user message" push.
     /// Emitted by `send_prompt_linked` on the genuine UI path only
@@ -792,7 +792,7 @@ pub enum AcpEvent {
 /// `<tool-use-id>`/`<result>` tags. They let the frontend flip the LAUNCH card
 /// (`AgentToolCallPart`) from "running in background" to its terminal state
 /// entirely in-memory — rewriting the launching tool call's own
-/// `[[codeg-background-task]]` marker — WITHOUT a `refetchDetail`. That refetch
+/// `[[dextra-background-task]]` marker — WITHOUT a `refetchDetail`. That refetch
 /// path used to be the only card-flip trigger, but it re-parses the still-open
 /// transcript mid-`#870`-hold and both double-renders the held turn and races
 /// the file's own last write.
@@ -851,7 +851,7 @@ pub enum UserMessageBlock {
 /// prompt back to somebody:
 ///
 /// * the live broadcast, [`user_blocks_from_prompt`] → [`UserMessageBlock`];
-/// * the ACP-native history parser, `parsers::acp_native`, reading codeg's own
+/// * the ACP-native history parser, `parsers::acp_native`, reading dextra's own
 ///   transcript back off disk;
 /// * the grok history parser, `parsers::grok`, reading grok's `updates.jsonl`.
 ///
@@ -1072,7 +1072,7 @@ fn escape_link_destination(uri: &str) -> String {
 /// [`project_user_prompt_block`] instead of re-deriving the rule.
 ///
 /// The inverse of `connection::map_prompt_blocks`, and deliberately lenient —
-/// it reads bytes written by older builds of codeg and by other agents' stores:
+/// it reads bytes written by older builds of dextra and by other agents' stores:
 ///
 /// * `mimeType` **and** legacy snake_case `mime_type`;
 /// * an embedded resource's uri/mime/body nested under `resource` (where ACP
@@ -1103,7 +1103,7 @@ pub fn prompt_block_from_wire(item: &serde_json::Value) -> Option<PromptInputBlo
         Some("image") => Some(PromptInputBlock::Image {
             data: string(item, "data")?,
             // ACP requires `mimeType`; a record MISSING it is old enough that
-            // png was the only thing codeg ever pasted. A record that carries
+            // png was the only thing dextra ever pasted. A record that carries
             // an empty one keeps it, which is what the typed reader sees.
             mime_type: mime(item).unwrap_or_else(|| "image/png".to_string()),
             uri: string(item, "uri"),
@@ -1256,7 +1256,7 @@ pub struct SessionConfigOptionInfo {
     pub category: Option<String>,
     pub kind: SessionConfigKindInfo,
     /// The value the AGENT recommends for this option, when it named one —
-    /// JetBrains AIR's `recommendedValue` (codex-acp 1.11.0+, gated on codeg
+    /// JetBrains AIR's `recommendedValue` (codex-acp 1.11.0+, gated on dextra
     /// advertising the capability; see `build_client_capabilities`). It is a
     /// hint, never an instruction: `current_value` still decides what is
     /// selected, and a recommendation that matches nothing in the option list
@@ -1360,7 +1360,7 @@ pub struct ConversationConnectionInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct AcpAgentInfo {
     pub agent_type: crate::models::agent::AgentType,
-    /// Whether this agent has a codeg-known skill store — every built-in, and
+    /// Whether this agent has a dextra-known skill store — every built-in, and
     /// custom agents that declared the shared `.agents/skills` store. Gates
     /// the skills matrices frontend-side.
     pub skills_capable: bool,
@@ -1381,7 +1381,7 @@ pub struct AcpAgentInfo {
     pub description: String,
     pub available: bool,
     pub distribution_type: String,
-    /// Whether codeg's entry for this agent is a third-party ACP *adapter*
+    /// Whether dextra's entry for this agent is a third-party ACP *adapter*
     /// wrapping a vendor CLI of a different name (Claude Code, Codex — see
     /// `registry::acp_adapter_relation`). Lets the surfaces that have no
     /// preflight result (composer block banner, settings header badge) say
@@ -1397,13 +1397,13 @@ pub struct AcpAgentInfo {
     pub sort_order: i32,
     pub installed_version: Option<String>,
     pub env: BTreeMap<String, String>,
-    /// The RESOLVED `CODEG_ACP_HOST_TOOLS` verdict for this agent — whether the
+    /// The RESOLVED `DEXTRA_ACP_HOST_TOOLS` verdict for this agent — whether the
     /// next launch hands the `fs/*` + `terminal/*` channels (and, with them,
-    /// codeg-mcp's delegation tools) back to the agent.
+    /// dextra-mcp's delegation tools) back to the agent.
     ///
     /// Resolved by [`crate::acp::host_tools_policy::HostToolsPolicy::from_env`],
     /// the same function the launch uses, so it accounts for BOTH layers: the
-    /// per-agent `env_json` above and codeg's own process env. Reading `env`
+    /// per-agent `env_json` above and dextra's own process env. Reading `env`
     /// frontend-side would see only the first, and an operator who exported the
     /// knob process-wide would get no warning at all while every agent silently
     /// lost delegation.
@@ -1413,7 +1413,7 @@ pub struct AcpAgentInfo {
     pub opencode_auth_json: Option<String>,
     pub codex_auth_json: Option<String>,
     pub codex_config_toml: Option<String>,
-    /// Compact structured codex model-catalog source (the `codeg` custom-model
+    /// Compact structured codex model-catalog source (the `dextra` custom-model
     /// list) round-tripped into the settings editor. Only populated for
     /// `AgentType::Codex`, and only in api-key mode (no bound provider).
     pub codex_model_catalog: Option<String>,
@@ -1527,13 +1527,13 @@ pub struct CodexGranularApproval {
 
 /// `[sandbox_workspace_write]` — only consulted when the effective sandbox mode
 /// is `workspace-write`. Every field defaults to false/empty upstream, so an
-/// absent key and an explicit `false` are equivalent; codeg writes only the
+/// absent key and an explicit `false` are equivalent; dextra writes only the
 /// non-default ones to keep the file tidy.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CodexWorkspaceWrite {
     /// Extra writable folders beyond cwd. Upstream these are `AbsolutePathBuf`,
     /// but a RELATIVE entry is not rejected — codex resolves it against
-    /// `CODEX_HOME` (verified: `"rel/dir"` became `~/.codex/rel/dir`). codeg
+    /// `CODEX_HOME` (verified: `"rel/dir"` became `~/.codex/rel/dir`). dextra
     /// therefore refuses to write relative entries rather than let a user
     /// silently grant write access inside `~/.codex`.
     pub writable_roots: Vec<String>,
@@ -1599,8 +1599,8 @@ pub struct CodexSandboxStructuredConfig {
 /// docs.x.ai/build/settings/reference); `None` means the key is absent.
 ///
 /// The *stock* per-session model is NOT surfaced here — it is chosen from the
-/// composer's model selector. But a codeg-managed **custom (BYO endpoint) model**
-/// IS: codeg writes a `[model.<id>]` block and points `[models].default` at it,
+/// composer's model selector. But a dextra-managed **custom (BYO endpoint) model**
+/// IS: dextra writes a `[model.<id>]` block and points `[models].default` at it,
 /// then reads it back through `custom_*` below. The managed block is anchored as
 /// "the `[model.<id>]` whose id equals `[models].default`", giving clean
 /// edit/rename/remove without leaving orphans.
@@ -1609,11 +1609,11 @@ pub struct GrokSettings {
     /// `[models].default_reasoning_effort` — one of low/medium/high/xhigh.
     pub default_reasoning_effort: Option<String>,
     /// `[ui].permission_mode` — grok's real enum
-    /// (default/acceptEdits/auto/dontAsk/bypassPermissions/plan). Legacy codeg
+    /// (default/acceptEdits/auto/dontAsk/bypassPermissions/plan). Legacy dextra
     /// markers (`ask`/`always-approve`) are migrated to `default`/`bypassPermissions`
     /// on read (see `migrate_grok_permission_mode`).
     pub permission_mode: Option<String>,
-    /// The codeg-managed custom model id: the `[model.<id>]` block whose id
+    /// The dextra-managed custom model id: the `[model.<id>]` block whose id
     /// equals `[models].default`. `None` when there is no such managed block.
     pub custom_model_id: Option<String>,
     /// `[model.<id>].base_url` — the custom endpoint. `None` ⇒ Grok's official
@@ -1639,7 +1639,7 @@ pub struct GrokSettings {
 ///
 /// The custom-model group is driven by `custom_model_id`: a non-empty id writes
 /// (or renames to) `[model.<id>]` + `[models].default = "<id>"`; an empty/`None`
-/// id removes the codeg-managed block and its default. Within an active model,
+/// id removes the dextra-managed block and its default. Within an active model,
 /// each empty sub-field omits its key (e.g. empty `custom_base_url` ⇒ Grok falls
 /// back to the official endpoint).
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -1657,7 +1657,7 @@ pub struct GrokStructuredConfig {
 
 /// The subset of `~/.cursor/cli-config.json` surfaced as structured controls
 /// in the Cursor settings panel. The file is shared with the Cursor CLI's own
-/// `/config` UI, so codeg only projects the keys it manages; everything else
+/// `/config` UI, so dextra only projects the keys it manages; everything else
 /// is preserved verbatim on write. `None` means the key is absent.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CursorSettings {
@@ -1700,10 +1700,10 @@ pub struct CursorAuthStatus {
     pub membership: Option<String>,
     /// Probe failure detail (spawn error / timeout / non-JSON output).
     pub error: Option<String>,
-    /// Absolute path to the cursor-agent binary codeg would launch (managed
+    /// Absolute path to the cursor-agent binary dextra would launch (managed
     /// cache or system install). The settings panel builds a copy-pasteable
     /// `"<binary_path>" login` command from it — the managed binary lives in
-    /// codeg's cache and is NOT on the user's PATH, so a bare `cursor-agent
+    /// dextra's cache and is NOT on the user's PATH, so a bare `cursor-agent
     /// login` fails. `None` when no binary is installed.
     pub binary_path: Option<String>,
     /// Whether the stored login credential actually WORKED against Cursor's
@@ -1768,15 +1768,15 @@ pub struct QoderAuthStatus {
     /// Account tier, e.g. `personal_standard`.
     pub user_type: Option<String>,
     /// CLI version the probe reported — the one that would actually launch,
-    /// which is not necessarily the version codeg's registry pins.
+    /// which is not necessarily the version dextra's registry pins.
     pub version: Option<String>,
     /// Whether the account may bring its own model provider key.
     pub allow_byok: Option<bool>,
     /// Probe failure detail (spawn error / timeout / non-JSON output).
     pub error: Option<String>,
-    /// Absolute path to the `qoder` binary codeg would launch. The panel builds
+    /// Absolute path to the `qoder` binary dextra would launch. The panel builds
     /// a copy-pasteable `"<binary_path>" login` command from it, because a
-    /// managed binary lives in codeg's cache and is NOT on the user's PATH.
+    /// managed binary lives in dextra's cache and is NOT on the user's PATH.
     pub binary_path: Option<String>,
 }
 

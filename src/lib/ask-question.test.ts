@@ -113,7 +113,7 @@ describe("parseAskQuestionInput", () => {
     // CodexToolCallMapper.ts::createMcpToolCallUpdate. The questions live under
     // `arguments`, not the top level.
     const input = JSON.stringify({
-      server: "codeg-mcp",
+      server: "dextra-mcp",
       tool: "ask_user_question",
       arguments: {
         questions: [
@@ -322,7 +322,7 @@ describe("parseAskQuestionOutcome", () => {
   it("parses codex request_user_input's object-keyed answers", () => {
     // Verbatim function_call_output shape from ~/.codex/sessions: answers are
     // keyed by the question id, each carrying its own `answers` array — NOT the
-    // codeg-mcp `{answers:[{…,selected}]}` envelope. Without this the card shows
+    // dextra-mcp `{answers:[{…,selected}]}` envelope. Without this the card shows
     // "no selection" (the reported bug).
     const output = JSON.stringify({
       answers: { drink_preference: { answers: ["咖啡（推荐）"] } },

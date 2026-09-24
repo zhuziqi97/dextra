@@ -6,14 +6,14 @@ import { getWebMountPath } from "../web-mount"
 // rules, multi-tenant prefixing, etc.) doesn't have to be remembered at every
 // call site.
 
-const TOKEN_KEY = "codeg_token"
+const TOKEN_KEY = "dextra_token"
 
-export function getCodegToken(): string {
+export function getDextraToken(): string {
   if (getWebMountPath()) return "client-session"
   return localStorage.getItem(TOKEN_KEY) ?? ""
 }
 
-export function redirectToCodegLogin(): void {
+export function redirectToDextraLogin(): void {
   if (getWebMountPath()) {
     window.close()
     return

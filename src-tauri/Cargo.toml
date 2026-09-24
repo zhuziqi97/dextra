@@ -1,10 +1,10 @@
 [package]
-name = "codeg"
+name = "dextra"
 version = "0.32.1"
 description = "Agent Code Generation App"
 authors = ["feitao"]
 edition = "2021"
-default-run = "codeg"
+default-run = "dextra"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -12,7 +12,7 @@ default-run = "codeg"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "codeg_lib"
+name = "dextra_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [features]
@@ -58,23 +58,23 @@ browser-child = ["dep:tauri-runtime-wry", "dep:webview2-com", "dep:windows"]
 browser-smoke = []
 
 [[bin]]
-name = "codeg"
+name = "dextra"
 path = "src/main.rs"
 required-features = ["tauri-runtime"]
 
 [[bin]]
-name = "codeg-server"
-path = "src/bin/codeg_server.rs"
+name = "dextra-server"
+path = "src/bin/dextra_server.rs"
 required-features = []
 
 [[bin]]
-name = "codeg-mcp"
-path = "src/bin/codeg_mcp.rs"
+name = "dextra-mcp"
+path = "src/bin/dextra_mcp.rs"
 required-features = []
 
 [[bin]]
-name = "cerebro-mcp-bridge"
-path = "src/bin/cerebro_mcp_bridge.rs"
+name = "dextra-cerebro-mcp-bridge"
+path = "src/bin/dextra_cerebro_mcp_bridge.rs"
 required-features = []
 
 [build-dependencies]
@@ -118,9 +118,9 @@ ignore = "0.4"
 # The official ACP runtime (the `sacp` crate was upstreamed into it and renamed).
 # Stable protocol v1 only: `unstable_protocol_v2` is deliberately left off, so
 # the builder's protocol-compat layer is a pass-through and `initialize` goes
-# out exactly as codeg writes it. The unstable features are exactly the surfaces
-# codeg consumes: `session/fork` and the Session Notices / Session Compaction
-# RFDs. (`unstable_end_turn_token_usage` stays off: codeg's token accounting
+# out exactly as dextra writes it. The unstable features are exactly the surfaces
+# dextra consumes: `session/fork` and the Session Notices / Session Compaction
+# RFDs. (`unstable_end_turn_token_usage` stays off: dextra's token accounting
 # reads the agents' own transcripts, not the prompt response's `usage`.)
 agent-client-protocol = { version = "2.2.0", features = ["unstable_session_fork", "unstable_session_notices", "unstable_session_compaction"] }
 tokio = { version = "1", features = ["process", "io-util", "io-std", "sync", "macros", "rt", "net", "rt-multi-thread"] }
@@ -243,7 +243,7 @@ windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com"
 # gated on that feature: a plain target dependency is unconditional on
 # features, so `--no-default-features` would still run the gtk-sys / gdk-sys /
 # atk-sys pkg-config probes while compiling none of the code that needs them.
-# Neither the codeg-server CI cell nor the Docker backend stage installs GTK.
+# Neither the dextra-server CI cell nor the Docker backend stage installs GTK.
 #
 # `v2_40` is not an independent floor we are choosing: tauri-runtime-wry turns
 # on wry's `linux-body`, which enables it already. Declaring it states the API

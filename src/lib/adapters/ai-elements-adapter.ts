@@ -1037,7 +1037,7 @@ function stripBlockedMentions(
 
 /** Apply the per-scheme rule to ONE Markdown link, mutating `resources`. Returns
  *  the text to keep in place of the link: the original `match` for an inline-kept
- *  ref (file / codeg / non-resource link), or "" for a moved-out `@mention`. */
+ *  ref (file / dextra / non-resource link), or "" for a moved-out `@mention`. */
 function handleMarkdownLink(
   match: string,
   label: string,
@@ -1050,18 +1050,18 @@ function handleMarkdownLink(
   // the real path, not `file:///C:\\dir`. `match` (returned for inline-kept
   // refs) keeps the original bracketed form untouched.
   const normalizedUri = unwrapReferenceDestination(uri)
-  // A `codeg://` reference (session / commit / agent) renders as an inline badge
+  // A `dextra://` reference (session / commit / agent) renders as an inline badge
   // in the transcript (markdown-link → ReferenceBadge); never lift it to the
   // bottom resource-chip row. The guard mirrors markdown-link's interception
-  // (`href.startsWith("codeg:")`): an unrecognized codeg path is parsed back to
+  // (`href.startsWith("dextra:")`): an unrecognized dextra path is parsed back to
   // null there and degrades to a plain inline link — still in-flow, never a chip.
-  // (The `@`-prefixed agent link `[@label](codeg://agent/…)` would otherwise be
+  // (The `@`-prefixed agent link `[@label](dextra://agent/…)` would otherwise be
   // caught by `hasMentionLabel` below.)
-  if (normalizedUri.toLowerCase().startsWith("codeg:")) {
-    // A `codeg://embedded/…` ref is a path-less pasted attachment — still an
+  if (normalizedUri.toLowerCase().startsWith("dextra:")) {
+    // A `dextra://embedded/…` ref is a path-less pasted attachment — still an
     // attached file, so it is COPIED to the row too (kept inline as its inert
-    // badge). Other codeg refs are not attachments: inline only.
-    if (normalizedUri.toLowerCase().startsWith("codeg://embedded/")) {
+    // badge). Other dextra refs are not attachments: inline only.
+    if (normalizedUri.toLowerCase().startsWith("dextra://embedded/")) {
       addResource(resources, {
         name: unescapeReferenceLabel(normalizedLabel) || "attachment",
         uri: normalizedUri,
@@ -1191,14 +1191,14 @@ function embeddedRefName(uri: string): string {
 /**
  * The display uri an embedded attachment's badge and chip carry.
  *
- * The same `codeg://embedded/…` shape the composer mints for one
+ * The same `dextra://embedded/…` shape the composer mints for one
  * (`buildEmbeddedReferenceUri`), so the transcript renders the rebuilt badge
  * through exactly the same branch: an inert file badge, never a link to
  * anywhere. Built from the ref rather than a fresh id so the badge and the
  * block's own chip land on one entry instead of two.
  */
 function embeddedDisplayUri(ref: string): string {
-  return `codeg://embedded/${encodeURIComponent(ref)}`
+  return `dextra://embedded/${encodeURIComponent(ref)}`
 }
 
 /** The badge the composer showed in place of an embedded attachment, written
@@ -2199,7 +2199,7 @@ function buildToolResultMap(
  *    "No matches" instead of a raw JSON dump. Two predicates for one fact
  *    would let the card's status and its body disagree.
  * 2. A live `failed` with NO output at all, on a call the backend marked as
- *    codex's own search (`CODEX_SEARCH_ACTION_META_KEY`). codeg advertises
+ *    codex's own search (`CODEX_SEARCH_ACTION_META_KEY`). dextra advertises
  *    `_meta.terminal_output_delta` to codex, and with it codex-acp stops
  *    sending `rawOutput` on every command completion — so a search that
  *    printed nothing arrives as a bare status, with no exit code left to
@@ -2244,7 +2244,7 @@ function isCodexGrepNoMatchResult(
  *
  * codex publishes its Plan-mode plan on two live channels at once: as an
  * ordinary `agent_message` (so it streams as normal assistant prose) and as
- * `rawInput.plan` on the plan-review permission request codeg seeds a tool call
+ * `rawInput.plan` on the plan-review permission request dextra seeds a tool call
  * from. Both land in one turn — the live turn splitter only cuts a new turn on
  * a content block that FOLLOWS a completed tool call — so the reader sees the
  * whole plan twice, once bare and once boxed.

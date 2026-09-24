@@ -9,10 +9,10 @@ use std::sync::Arc;
 
 use axum_test::multipart::{MultipartForm, Part};
 use axum_test::TestServer;
-use codeg_lib::app_state::AppState;
-use codeg_lib::db::test_helpers::fresh_disk_db;
-use codeg_lib::web::router::build_router;
-use codeg_lib::web::shutdown::ShutdownSignal;
+use dextra_lib::app_state::AppState;
+use dextra_lib::db::test_helpers::fresh_disk_db;
+use dextra_lib::web::router::build_router;
+use dextra_lib::web::shutdown::ShutdownSignal;
 use serde_json::{json, Value};
 
 const TEST_TOKEN: &str = "backup-test-token";
@@ -27,7 +27,7 @@ async fn build_server() -> (TestServer, tempfile::TempDir, tempfile::TempDir) {
 
     let db = fresh_disk_db(data_dir.path()).await;
     // Seed a row so the snapshot has observable content.
-    codeg_lib::db::service::folder_service::add_folder(&db.conn, "/tmp/proj")
+    dextra_lib::db::service::folder_service::add_folder(&db.conn, "/tmp/proj")
         .await
         .expect("seed folder");
 
@@ -68,7 +68,7 @@ async fn export_download_upload_inspect_stage_roundtrip() {
     // 3. Upload it back.
     let form = MultipartForm::new().add_part(
         "file",
-        Part::bytes(bytes).file_name("codeg-backup.codeg.zip"),
+        Part::bytes(bytes).file_name("dextra-backup.dextra.zip"),
     );
     let up = server
         .post("/api/backup_upload")
@@ -110,7 +110,7 @@ async fn export_download_upload_inspect_stage_roundtrip() {
     assert_eq!(stage.json::<Value>()["needsRestart"], json!(true));
     assert!(data_dir
         .path()
-        .join(".codeg-restore-pending.json")
+        .join(".dextra-restore-pending.json")
         .is_file());
 
     // 6. The prepared source is released on a successful stage.
@@ -133,7 +133,7 @@ async fn export_download_upload_inspect_stage_roundtrip() {
     assert_eq!(discarded.json::<Value>(), json!(true));
     assert!(!data_dir
         .path()
-        .join(".codeg-restore-pending.json")
+        .join(".dextra-restore-pending.json")
         .exists());
 }
 

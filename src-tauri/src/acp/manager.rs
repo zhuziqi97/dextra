@@ -347,12 +347,12 @@ fn steered_turn_changed(
     !now_in_flight || now_turns_completed != admitted_turns_completed
 }
 
-/// Read the spawn-handshake timeout from `CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS`,
+/// Read the spawn-handshake timeout from `DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS`,
 /// falling back to `SPAWN_HANDSHAKE_TIMEOUT_SECS`. Returns the configured
 /// `Duration`. Tests can construct the manager with a custom value via
 /// `with_spawn_handshake_timeout` instead of mutating env.
 fn spawn_handshake_timeout_from_env() -> Duration {
-    let secs = std::env::var("CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS")
+    let secs = std::env::var("DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse::<u64>().ok())
         .unwrap_or(SPAWN_HANDSHAKE_TIMEOUT_SECS);
@@ -476,7 +476,7 @@ pub struct ConnectionManager {
     /// Delegation broker + token registry + UDS path installed during app
     /// bootstrap (`install_delegation`). When present, `spawn_agent` propagates
     /// the injection to `spawn_agent_connection`, which makes
-    /// `codeg-mcp` appear in the agent's MCP server list during ACP
+    /// `dextra-mcp` appear in the agent's MCP server list during ACP
     /// init. `Arc<OnceLock>` so the inner `Self` cloned from `clone_ref` sees
     /// the install too — the lock is set once at startup and never mutated.
     delegation_injection: Arc<std::sync::OnceLock<crate::acp::connection::DelegationInjection>>,
@@ -855,7 +855,7 @@ impl ConnectionManager {
         // SessionStarted has applied (so external_id is populated for the
         // next waiter), aborted (connection died), or the timeout fires.
         // Logged on every wait so production can audit real-world handshake
-        // latencies and tune `CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS`.
+        // latencies and tune `DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS`.
         if dedup_lock.is_some() {
             let timeout = self.spawn_handshake_timeout;
             let (outcome, elapsed) = wait_for_session_started(session_started_rx, timeout).await;
@@ -1304,7 +1304,7 @@ impl ConnectionManager {
         // agent all see the full bytes.
         crate::acp::prompt_hydration::hydrate_prompt_blocks(
             &mut blocks,
-            &crate::paths::codeg_uploads_root(),
+            &crate::paths::dextra_uploads_root(),
         )
         .await?;
 
@@ -1427,7 +1427,7 @@ impl ConnectionManager {
                     // handled by the lifecycle subscriber.
                     let eid_opt = task_state.read().await.external_id.clone();
                     let preserved = if let Some(eid) = eid_opt {
-                        // THE codeg#500 write. Branch A above adopts a row the
+                        // THE dextra#500 write. Branch A above adopts a row the
                         // caller supplied, which may still be bound to an older
                         // session — a connection spawned with `session_id = None`
                         // (a reconnect that lost the id, or an unclassified
@@ -1795,7 +1795,7 @@ impl ConnectionManager {
     ///   out.
     ///
     /// Liveness deliberately does NOT gate it. `ConnectionStatus::Prompting`
-    /// (and `turn_in_flight` with it) tracks turns CODEG started, and a goal
+    /// (and `turn_in_flight` with it) tracks turns DEXTRA started, and a goal
     /// loop's continuations are started by codex itself — detached turns no host
     /// request owns — so gating on them would skip the interrupt in exactly the
     /// case that motivated this. Any post-hoc read is unsound anyway: by the
@@ -2237,7 +2237,7 @@ impl ConnectionManager {
     /// title lock. Returns the sibling row id.
     ///
     /// Both titles outlive the per-turn auto-title backfill by design: neither
-    /// the user's own name nor codeg's `[Fork] ` marker exists in the session
+    /// the user's own name nor dextra's `[Fork] ` marker exists in the session
     /// file the backfill re-parses, so an unlocked row would silently revert to
     /// the parsed title on its next detail load.
     ///
@@ -2361,7 +2361,7 @@ impl ConnectionManager {
                     let mut active: conversation::ActiveModel = current.into();
                     if let Some(ref clean) = clean_title {
                         active.title = Set(Some(format!("[Fork] {clean}")));
-                        // ...and lock it. The `[Fork] ` marker is codeg's own —
+                        // ...and lock it. The `[Fork] ` marker is dextra's own —
                         // no parser derives it from a transcript — so on an
                         // unlocked row it survives only until the next detail
                         // load, where the auto-title backfill adopts the
@@ -2509,7 +2509,7 @@ impl ConnectionManager {
     ///
     /// Used by the delegation-settings UI to enumerate the options the user
     /// can override, with the guarantee that what the UI shows is exactly
-    /// what `codeg-mcp` will pass through to `session/set_config_option`
+    /// what `dextra-mcp` will pass through to `session/set_config_option`
     /// when a delegation actually fires.
     ///
     /// Returns `Ok(snapshot)` even when the agent advertises no options
@@ -3254,7 +3254,7 @@ impl ConnectionManager {
             Some(mut blocks) => {
                 crate::acp::prompt_hydration::hydrate_prompt_blocks(
                     &mut blocks,
-                    &crate::paths::codeg_uploads_root(),
+                    &crate::paths::dextra_uploads_root(),
                 )
                 .await?;
                 // Hydration is the ONLY await this path puts between admission
@@ -3914,7 +3914,7 @@ impl ConnectionManager {
 ///
 /// `data_dir` is required so `spawn` can build a runtime env that
 /// includes the git credential helper — without it, delegated subagents
-/// fail any git command that depends on the codeg-injected helper.
+/// fail any git command that depends on the dextra-injected helper.
 #[derive(Clone)]
 pub struct ConnectionManagerSpawner {
     pub manager: Arc<ConnectionManager>,
@@ -5032,8 +5032,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_codex_goal_clear_interrupts_even_when_codeg_thinks_it_is_idle() {
-        // Codeg's `Prompting` only covers turns IT started. A goal loop's
+    async fn a_codex_goal_clear_interrupts_even_when_dextra_thinks_it_is_idle() {
+        // Dextra's `Prompting` only covers turns IT started. A goal loop's
         // continuations are started by codex — detached turns no host request
         // owns — so the session reads "connected" while the agent is very much
         // working, which is precisely when the user hits Clear. Gating on our
@@ -5186,7 +5186,7 @@ mod tests {
             &db,
             conn_id,
             vec![PromptInputBlock::Text {
-                text: "ask [@Antigravity](codeg://agent/antigravity) to review".into(),
+                text: "ask [@Antigravity](dextra://agent/antigravity) to review".into(),
             }],
             Some(folder_id),
             None,
@@ -5210,14 +5210,14 @@ mod tests {
         assert!(matches!(
             blocks.as_slice(),
             [PromptInputBlock::Text { text }]
-                if text == "ask [@Antigravity](codeg://agent/antigravity) to review"
+                if text == "ask [@Antigravity](dextra://agent/antigravity) to review"
         ));
         let (message_id, user_blocks) = user_message.expect("root prompt is broadcast");
         assert_eq!(message_id, "optimistic-route");
         assert!(matches!(
             user_blocks.as_slice(),
             [crate::acp::types::UserMessageBlock::Text { text }]
-                if text == "ask [@Antigravity](codeg://agent/antigravity) to review"
+                if text == "ask [@Antigravity](dextra://agent/antigravity) to review"
         ));
     }
 
@@ -5289,7 +5289,7 @@ mod tests {
 
     #[tokio::test]
     async fn send_prompt_linked_preserves_history_when_the_session_was_re_minted() {
-        // codeg#500, end to end, in the exact shape the reporter described:
+        // dextra#500, end to end, in the exact shape the reporter described:
         // an existing completed conversation, then a new session started in the
         // same folder and pane.
         //
@@ -7346,15 +7346,15 @@ mod tests {
     fn spawn_handshake_timeout_from_env_uses_default_when_unset() {
         // Snapshot env, mutate, restore. Single test owns this var to avoid
         // cross-test contention.
-        let prev = std::env::var("CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS").ok();
-        std::env::remove_var("CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS");
+        let prev = std::env::var("DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS").ok();
+        std::env::remove_var("DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS");
         let default = spawn_handshake_timeout_from_env();
         assert_eq!(default, Duration::from_secs(SPAWN_HANDSHAKE_TIMEOUT_SECS));
 
-        std::env::set_var("CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS", "5");
+        std::env::set_var("DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS", "5");
         assert_eq!(spawn_handshake_timeout_from_env(), Duration::from_secs(5));
 
-        std::env::set_var("CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS", "garbage");
+        std::env::set_var("DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS", "garbage");
         assert_eq!(
             spawn_handshake_timeout_from_env(),
             Duration::from_secs(SPAWN_HANDSHAKE_TIMEOUT_SECS),
@@ -7363,8 +7363,8 @@ mod tests {
 
         // Restore.
         match prev {
-            Some(v) => std::env::set_var("CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS", v),
-            None => std::env::remove_var("CODEG_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS"),
+            Some(v) => std::env::set_var("DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS", v),
+            None => std::env::remove_var("DEXTRA_ACP_SPAWN_HANDSHAKE_TIMEOUT_SECS"),
         }
     }
 
@@ -8798,7 +8798,7 @@ mod tests {
             assert_eq!(s.feedback[0].text, "one enormous screenshot");
         }
 
-        // And the wire was never trimmed: the budget governs what codeg KEEPS,
+        // And the wire was never trimmed: the budget governs what dextra KEEPS,
         // not what the agent receives.
         let sent = fake_loop.await.unwrap();
         assert!(matches!(

@@ -213,7 +213,7 @@ pub fn adopt_pull_request(
 /// is server-derived: the caller passes coordinates, never URLs or tokens.
 pub struct DeliveryCtx<'a> {
     pub conn: &'a DatabaseConnection,
-    /// codeg data dir — where the GIT_ASKPASS helper script lives.
+    /// dextra data dir — where the GIT_ASKPASS helper script lives.
     pub data_dir: &'a Path,
     /// The forge this task came from, read back from its own provenance —
     /// never "whatever this host looks like now". Every method below routes on
@@ -512,7 +512,7 @@ pub async fn get_pull(
 /// maintainer edits. That grant cannot be read reliably up front, so it is not
 /// gated here: a refused push bounces the task back to review with the reason,
 /// and a review turn that added no commits settles without pushing at all.
-/// What IS refused is a fork codeg cannot even name — a deleted or invisible
+/// What IS refused is a fork dextra cannot even name — a deleted or invisible
 /// head repository — because a push there can never work for anyone.
 pub fn pull_is_workable(
     provider: ForgeProvider,
@@ -524,7 +524,7 @@ pub fn pull_is_workable(
         && super::normalize_repo(&pull.head_repo).is_none()
     {
         return Err(format!(
-            "{noun} #{} comes from a fork whose repository codeg cannot see (it may be private \
+            "{noun} #{} comes from a fork whose repository dextra cannot see (it may be private \
              or deleted), so there would be no way to push work back to it",
             pull.number
         ));
@@ -737,9 +737,9 @@ fn ensure_pushable_branch(branch: &str) -> Result<(), String> {
     crate::commands::folders::ensure_pushable_branch_name(branch).map_err(|e| e.to_string())
 }
 
-/// How a codeg task id is written into text that lands on a forge.
+/// How a dextra task id is written into text that lands on a forge.
 ///
-/// The number is codeg-local: it names a row in this workspace's task list,
+/// The number is dextra-local: it names a row in this workspace's task list,
 /// not anything in the repository the text is posted to. Both halves of the
 /// form below carry weight — neither is decoration:
 ///
@@ -756,7 +756,7 @@ fn task_ref(task_id: i32) -> String {
     format!("`{task_id}`")
 }
 
-/// Body of the pull request codeg opens. `Closes #N` is what links it to the
+/// Body of the pull request dextra opens. `Closes #N` is what links it to the
 /// issue: GitHub's native closing keyword beats an API `close` call — it fires
 /// only if the pull request actually merges, and only into the right branch.
 /// That reference is the intended one; the task id beside it is not, hence
@@ -765,7 +765,7 @@ pub fn pull_request_body(issue_url: &str, issue_number: i64, task_id: i32) -> St
     let task = task_ref(task_id);
     format!(
         "Closes #{issue_number}\n\n\
-         Prepared by [codeg](https://github.com/xggz/codeg) work task {task} \
+         Prepared by [Dextra](https://hm.ziqi.ac.cn:9400/zzq/dextra) work task {task} \
          from {issue_url}.\n\n\
          Review the diff before merging — the task ran against issue text \
          written by an external author."
@@ -787,7 +787,7 @@ pub enum TaskOutcome<'a> {
     Accepted { nothing_to_land: bool },
 }
 
-/// The comment codeg posts when a task finishes.
+/// The comment dextra posts when a task finishes.
 ///
 /// Deliberately built from nothing but the task id, the outcome and the diff
 /// counters: NO agent-written text (result summary, commit message, verdict
@@ -816,18 +816,18 @@ pub fn writeback_comment_body(
             // to nothing. Saying it plainly is the difference between a status
             // note and a false claim that the work has shipped.
             format!(
-                "codeg work task {task} is done — merged locally into `{base_branch}` as \
+                "dextra work task {task} is done — merged locally into `{base_branch}` as \
                  `{short}`{numbers}."
             )
         }
         TaskOutcome::Delivered { pr_url } => {
-            format!("codeg work task {task} is done — {pr_url}{numbers}.")
+            format!("dextra work task {task} is done — {pr_url}{numbers}.")
         }
         TaskOutcome::Accepted { nothing_to_land: true } => {
-            format!("codeg work task {task} is done — accepted with nothing to land.")
+            format!("dextra work task {task} is done — accepted with nothing to land.")
         }
         TaskOutcome::Accepted { nothing_to_land: false } => {
-            format!("codeg work task {task} is done — accepted without merging{numbers}.")
+            format!("dextra work task {task} is done — accepted without merging{numbers}.")
         }
     }
 }
@@ -1365,7 +1365,7 @@ mod tests {
             },
             Some((3, 42, 7)),
         );
-        // A code-spanned id, never `#12`: the number is codeg's, and both
+        // A code-spanned id, never `#12`: the number is dextra's, and both
         // forges would turn the bare form into a link to their own issue 12.
         assert!(merged.contains("work task `12`"), "{merged}");
         assert!(!merged.contains("#12"), "autolinkable task id: {merged}");

@@ -2,7 +2,9 @@
 
 import { clientStorageKey } from "@/lib/web-mount"
 
-const LAST_ACTIVE_CONTEXT_KEY = clientStorageKey("codeg:last-active-context:v1")
+const LAST_ACTIVE_CONTEXT_KEY = clientStorageKey(
+  "dextra:last-active-context:v1"
+)
 
 /** Lightweight, device-local hint describing where the user last had focus while
  *  it was still an unsent draft. Persisted so a fresh launch can restore the

@@ -2401,7 +2401,7 @@ describe("streaming flush window widens with the run it re-renders", () => {
     }
   })
 
-  // Codeg runs several agents at once by design. A window sized from what one
+  // Dextra runs several agents at once by design. A window sized from what one
   // conversation is re-rendering must not be charged to another — least of all
   // to a background one that costs nothing to flush and gains nothing by
   // waiting.

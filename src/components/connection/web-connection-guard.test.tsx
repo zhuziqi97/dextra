@@ -24,7 +24,7 @@ const store = vi.hoisted(() => {
       listeners.clear()
     },
     reconnectWebNow: vi.fn(),
-    redirectToCodegLogin: vi.fn(),
+    redirectToDextraLogin: vi.fn(),
   }
 })
 
@@ -37,8 +37,8 @@ vi.mock("@/lib/transport/web-connection-store", () => ({
 }))
 
 vi.mock("@/lib/transport/web-auth", () => ({
-  redirectToCodegLogin: store.redirectToCodegLogin,
-  getCodegToken: () => "tok",
+  redirectToDextraLogin: store.redirectToDextraLogin,
+  getDextraToken: () => "tok",
 }))
 
 import { WebConnectionGuard } from "./web-connection-guard"
@@ -56,7 +56,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   store.reset()
   store.reconnectWebNow.mockClear()
-  store.redirectToCodegLogin.mockClear()
+  store.redirectToDextraLogin.mockClear()
 })
 
 afterEach(() => {
@@ -102,7 +102,7 @@ describe("WebConnectionGuard", () => {
     expect(screen.getByText("Session expired")).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "Go to login" }))
-    expect(store.redirectToCodegLogin).toHaveBeenCalledTimes(1)
+    expect(store.redirectToDextraLogin).toHaveBeenCalledTimes(1)
   })
 
   it("dismisses automatically once the connection recovers", () => {

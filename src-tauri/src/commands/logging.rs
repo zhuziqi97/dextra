@@ -39,7 +39,7 @@ pub struct LogFileInfo {
 const READ_LOG_MAX_BYTES: usize = 16 * 1024 * 1024;
 
 /// What the Settings UI needs to render the capture controls: the persisted
-/// global level and per-target overrides, plus whether `CODEG_LOG`/`RUST_LOG`
+/// global level and per-target overrides, plus whether `DEXTRA_LOG`/`RUST_LOG`
 /// currently locks them (env owns the live level, so the UI shows them
 /// read-only to avoid silent divergence).
 #[derive(Debug, Clone, Serialize)]
@@ -90,7 +90,7 @@ pub async fn set_log_settings_core(
     app_metadata_service::upsert_value(conn, LOGGING_LEVEL_KEY, &serialized)
         .await
         .map_err(AppCommandError::from)?;
-    // The env var (CODEG_LOG/RUST_LOG) owns the live level when set; persist the
+    // The env var (DEXTRA_LOG/RUST_LOG) owns the live level when set; persist the
     // choice for when it's later removed, but don't override it at runtime — the
     // UI locks the control in that case, so this also guards a stale client.
     if !crate::logging::init::env_level_is_set() {
@@ -147,7 +147,7 @@ pub(crate) fn filter_recent(
 
 /// List `.log` files in the logs dir, newest first. Empty if the dir is absent.
 pub fn list_log_files_core() -> Vec<LogFileInfo> {
-    let dir = crate::paths::codeg_logs_root();
+    let dir = crate::paths::dextra_logs_root();
     let Ok(entries) = std::fs::read_dir(&dir) else {
         return Vec::new();
     };
@@ -182,7 +182,7 @@ pub fn list_log_files_core() -> Vec<LogFileInfo> {
 /// no opener dependency or cfg-gating is needed here, and it compiles in server
 /// mode too.
 pub fn open_logs_dir_core() -> Result<String, AppCommandError> {
-    let dir = crate::paths::codeg_logs_root();
+    let dir = crate::paths::dextra_logs_root();
     std::fs::create_dir_all(&dir).map_err(|e| {
         AppCommandError::io_error("Failed to create log directory").with_detail(e.to_string())
     })?;
@@ -206,7 +206,7 @@ pub fn read_log_file_core(name: &str, max_bytes: Option<usize>) -> Result<String
         return Err(AppCommandError::invalid_input("Not a log file"));
     }
 
-    let dir = crate::paths::codeg_logs_root();
+    let dir = crate::paths::dextra_logs_root();
     let path = dir.join(name);
 
     // Defense in depth: the resolved file's parent must be the logs dir itself,
@@ -359,20 +359,20 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         temp_env::with_vars(
             [
-                ("CODEG_HOME", None::<&str>),
-                ("CODEG_DATA_DIR", Some(tmp.path().to_str().unwrap())),
+                ("DEXTRA_HOME", None::<&str>),
+                ("DEXTRA_DATA_DIR", Some(tmp.path().to_str().unwrap())),
             ],
             || {
-                let logs = crate::paths::codeg_logs_root();
+                let logs = crate::paths::dextra_logs_root();
                 std::fs::create_dir_all(&logs).unwrap();
-                std::fs::write(logs.join("codeg.2026-01-01.log"), b"0123456789").unwrap();
+                std::fs::write(logs.join("dextra.2026-01-01.log"), b"0123456789").unwrap();
                 assert_eq!(
-                    read_log_file_core("codeg.2026-01-01.log", None).unwrap(),
+                    read_log_file_core("dextra.2026-01-01.log", None).unwrap(),
                     "0123456789"
                 );
                 // Capped read returns the newest tail.
                 assert_eq!(
-                    read_log_file_core("codeg.2026-01-01.log", Some(4)).unwrap(),
+                    read_log_file_core("dextra.2026-01-01.log", Some(4)).unwrap(),
                     "6789"
                 );
             },
@@ -384,11 +384,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         temp_env::with_vars(
             [
-                ("CODEG_HOME", None::<&str>),
-                ("CODEG_DATA_DIR", Some(tmp.path().to_str().unwrap())),
+                ("DEXTRA_HOME", None::<&str>),
+                ("DEXTRA_DATA_DIR", Some(tmp.path().to_str().unwrap())),
             ],
             || {
-                let logs = crate::paths::codeg_logs_root();
+                let logs = crate::paths::dextra_logs_root();
                 std::fs::create_dir_all(&logs).unwrap();
                 std::fs::write(logs.join("a.log"), b"a").unwrap();
                 std::fs::write(logs.join("b.txt"), b"b").unwrap();

@@ -39,19 +39,19 @@ impl FileSystemRuntimeError {
 /// Per-agent `env_json` / process-env key selecting the path-containment policy
 /// for the ACP `fs/*` channel. `default` | `strict` | `unrestricted`; anything
 /// else warns and falls back to `default`.
-pub(crate) const FS_POLICY_ENV: &str = "CODEG_ACP_FS_POLICY";
+pub(crate) const FS_POLICY_ENV: &str = "DEXTRA_ACP_FS_POLICY";
 /// Additional **writable** roots, joined with the platform `PATH` separator
 /// (`:` on unix, `;` on Windows — parsed with `std::env::split_paths`, so a
 /// Windows drive letter's colon is not mistaken for a separator).
-pub(crate) const FS_EXTRA_ROOTS_ENV: &str = "CODEG_ACP_FS_EXTRA_ROOTS";
+pub(crate) const FS_EXTRA_ROOTS_ENV: &str = "DEXTRA_ACP_FS_EXTRA_ROOTS";
 
 /// Which paths the ACP `fs/read_text_file` / `fs/write_text_file` handlers will
 /// serve.
 ///
 /// An EMPTY root list means "unrestricted" for that direction — not "deny
 /// everything". Reads default to unrestricted because the gate buys no safety
-/// AS LONG AS codeg also advertises `terminal(true)`: an agent refused a read
-/// simply `cat`s the file through the shell codeg runs for it (empirically what
+/// AS LONG AS dextra also advertises `terminal(true)`: an agent refused a read
+/// simply `cat`s the file through the shell dextra runs for it (empirically what
 /// grok does — it fell back to `run_terminal_command` with a
 /// `cat > … << 'PLAN_EOF'` heredoc, re-sending the whole payload as a shell
 /// command). Writes keep a root list mirroring the agents' own sandbox model
@@ -59,11 +59,11 @@ pub(crate) const FS_EXTRA_ROOTS_ENV: &str = "CODEG_ACP_FS_EXTRA_ROOTS";
 ///
 /// That "buys no safety" reasoning is conditional, and the condition is
 /// [`crate::acp::host_tools_policy::HostToolsPolicy`] — do not read it as "a
-/// read gate can never work". Under `CODEG_ACP_HOST_TOOLS=agent` codeg hosts
+/// read gate can never work". Under `DEXTRA_ACP_HOST_TOOLS=agent` dextra hosts
 /// NEITHER channel, and the `cat` fallback stops working: measured against grok
 /// 1.0.0 with a kernel `deny`, the read failed `EPERM` and so did every
 /// `run_terminal_command` and `grep` retry, because they were children of the
-/// agent's own sandboxed process. The escape hatch is codeg's terminal, not
+/// agent's own sandboxed process. The escape hatch is dextra's terminal, not
 /// some inherent property of shells.
 ///
 /// NOTE: deliberately NOT `Default` — an all-empty policy means "unrestricted",
@@ -80,7 +80,7 @@ pub struct FsAccessPolicy {
 
 impl FsAccessPolicy {
     /// Today's historical behavior: reads and writes both confined to the
-    /// session working directory. Reachable via `CODEG_ACP_FS_POLICY=strict`.
+    /// session working directory. Reachable via `DEXTRA_ACP_FS_POLICY=strict`.
     pub fn strict(workspace_root: &Path) -> Self {
         let roots = vec![canonical_root(workspace_root)];
         Self {
@@ -89,7 +89,7 @@ impl FsAccessPolicy {
         }
     }
 
-    /// No path gate at all in either direction. `CODEG_ACP_FS_POLICY=unrestricted`.
+    /// No path gate at all in either direction. `DEXTRA_ACP_FS_POLICY=unrestricted`.
     pub fn unrestricted() -> Self {
         Self {
             read_roots: Vec::new(),
@@ -99,7 +99,7 @@ impl FsAccessPolicy {
 
     /// The default: unrestricted reads; writes confined to the workspace, the
     /// agent's own data home (so plan files, skills and session state work),
-    /// the temp dirs (attachments), and any `CODEG_ACP_FS_EXTRA_ROOTS` entries.
+    /// the temp dirs (attachments), and any `DEXTRA_ACP_FS_EXTRA_ROOTS` entries.
     pub fn permissive(
         workspace_root: &Path,
         agent_type: AgentType,
@@ -124,9 +124,9 @@ impl FsAccessPolicy {
         }
     }
 
-    /// Resolve the policy for a connection from `CODEG_ACP_FS_POLICY`, checking
+    /// Resolve the policy for a connection from `DEXTRA_ACP_FS_POLICY`, checking
     /// the agent's `runtime_env` first (so it can be set per agent through the
-    /// existing agent-settings `env_json`) then codeg's own process env.
+    /// existing agent-settings `env_json`) then dextra's own process env.
     pub fn from_env(
         workspace_root: &Path,
         agent_type: AgentType,
@@ -179,7 +179,7 @@ impl FsAccessPolicy {
     }
 }
 
-/// Read a knob VERBATIM from the agent's `runtime_env` first, then codeg's
+/// Read a knob VERBATIM from the agent's `runtime_env` first, then dextra's
 /// process env. Used where the value is a path (or path list) and must not be
 /// normalized: trimming `" / "` into `/` would turn a relative entry into the
 /// filesystem root.
@@ -191,15 +191,15 @@ fn raw_env_value(runtime_env: &BTreeMap<String, String>, key: &str) -> Option<Os
     }
 }
 
-/// Read a knob from the agent's `runtime_env` first, then codeg's process env,
+/// Read a knob from the agent's `runtime_env` first, then dextra's process env,
 /// trimmed — for values compared as keywords, never as paths.
 ///
-/// Mirrors `CODEG_ACP_HOST_TOOLS` (`acp::host_tools_policy`): a codeg-only key
+/// Mirrors `DEXTRA_ACP_HOST_TOOLS` (`acp::host_tools_policy`): a dextra-only key
 /// that rides along in the per-agent `env_json`, so it is configurable per agent
 /// from the existing settings UI without a new surface.
 ///
 /// `pub(crate)` so [`crate::acp::host_tools_policy`] resolves its own knob with
-/// exactly this precedence — one notion of "a codeg launch knob" across both.
+/// exactly this precedence — one notion of "a dextra launch knob" across both.
 pub(crate) fn env_value(runtime_env: &BTreeMap<String, String>, key: &str) -> Option<String> {
     runtime_env
         .get(key)
@@ -213,9 +213,9 @@ pub(crate) fn env_value(runtime_env: &BTreeMap<String, String>, key: &str) -> Op
         })
 }
 
-/// Extra writable roots from `CODEG_ACP_FS_EXTRA_ROOTS`. Relative entries are
+/// Extra writable roots from `DEXTRA_ACP_FS_EXTRA_ROOTS`. Relative entries are
 /// dropped for the same reason as relative agent homes: they would be resolved
-/// against codeg's cwd, so `.` or `..` silently widens the policy to an
+/// against dextra's cwd, so `.` or `..` silently widens the policy to an
 /// unrelated tree (or to `/`). Dropping is fail-closed.
 ///
 /// The list is read VERBATIM — `split_paths` does not trim entries, so trimming
@@ -265,9 +265,9 @@ fn temp_roots() -> Vec<PathBuf> {
 /// `<GROK_HOME>/skills/*/SKILL.md`, both outside any workspace.
 ///
 /// Reuses the per-agent resolvers in `crate::parsers` (the same ones
-/// `external_transcript_sources` uses) so codeg has exactly ONE notion of where
+/// `external_transcript_sources` uses) so dextra has exactly ONE notion of where
 /// each agent lives. Where the agent's home is relocatable, the agent's
-/// `runtime_env` wins over codeg's process env — a per-agent `GROK_HOME` in
+/// `runtime_env` wins over dextra's process env — a per-agent `GROK_HOME` in
 /// `env_json` moves the agent's state, so it must move the allowed root too.
 /// Same shape as `commands::acp::pi_agent_dir_for_env`.
 fn agent_data_roots(agent_type: AgentType, runtime_env: &BTreeMap<String, String>) -> Vec<PathBuf> {
@@ -344,26 +344,26 @@ fn resolve_root_slot(slot: &RootSlot, runtime_env: &BTreeMap<String, String>) ->
         // A RELATIVE value yields NO root for this slot — and must not fall
         // through to a lower-precedence candidate or the default.
         //
-        // Absolutizing it would resolve against CODEG's cwd while the child runs
+        // Absolutizing it would resolve against DEXTRA's cwd while the child runs
         // in the workspace cwd, and that mismatch WIDENS rather than merely
-        // mismatching: `CODEX_HOME="."` with codeg launched from `/` yields the
+        // mismatching: `CODEX_HOME="."` with dextra launched from `/` yields the
         // root `/`, which every absolute path passes `starts_with` against.
         // Falling through would be wrong too — the child DID receive this value
         // and uses it, so the default (`~/.codex`) is an inactive profile holding
         // config and credentials, exactly the tree the isolation invariant keeps
         // unwritable. So: refuse the slot. That is fail-closed (the agent's write
         // is rejected), and the user can still name the directory explicitly via
-        // `CODEG_ACP_FS_EXTRA_ROOTS`.
+        // `DEXTRA_ACP_FS_EXTRA_ROOTS`.
         // Expanded against the CHILD's home, for the same reason the
         // `default_rel` branch below uses it: `merge_agent_env` copies every
         // `runtime_env` entry into the child, `HOME` included, and overriding it
         // is the classic way to isolate a CLI's config. With
         // `HOME=/srv/agy GEMINI_HOME=~/profile` the child's `expanduser` answers
-        // `/srv/agy/profile`, so resolving against codeg's own home would
+        // `/srv/agy/profile`, so resolving against dextra's own home would
         // authorize a directory the agent never opens while leaving the one it
         // does use unwritable. `None` means the child's home cannot be named at
         // all, which `child_home_dir` has already warned about — treat the slot
-        // as unresolvable rather than substituting codeg's answer for it.
+        // as unresolvable rather than substituting dextra's answer for it.
         let base = if *expands {
             expand_home_prefix(&value.to_string_lossy(), child_home_dir(runtime_env).as_ref())
         } else {
@@ -390,9 +390,9 @@ fn resolve_root_slot(slot: &RootSlot, runtime_env: &BTreeMap<String, String>) ->
         // `starts_with`. `GEMINI_HOME=~` is a legal setting that really does put
         // Antigravity's tree directly in the home directory, and honoring it
         // here would hand the agent write access to every other agent's
-        // credentials as a side effect. The agent still runs; only codeg's own
+        // credentials as a side effect. The agent still runs; only dextra's own
         // `fs/*` channel declines to authorize the whole home, and
-        // `CODEG_ACP_FS_EXTRA_ROOTS` can still name a narrower directory inside
+        // `DEXTRA_ACP_FS_EXTRA_ROOTS` can still name a narrower directory inside
         // it.
         if is_over_broad_root(&root, runtime_env) {
             tracing::warn!(
@@ -409,7 +409,7 @@ fn resolve_root_slot(slot: &RootSlot, runtime_env: &BTreeMap<String, String>) ->
     }
 
     // No relocation reaches the child, so it falls back to a home-relative
-    // default — resolved against the CHILD's home, not codeg's (see
+    // default — resolved against the CHILD's home, not dextra's (see
     // `child_home_dir`).
     let mut root = child_home_dir(runtime_env)?;
     for segment in slot.default_rel {
@@ -431,7 +431,7 @@ fn resolve_root_slot(slot: &RootSlot, runtime_env: &BTreeMap<String, String>) ->
 /// `..` at all.
 ///
 /// BOTH homes are rejected. The child's is the one whose tree this is, and
-/// codeg's is the one holding every other agent's credentials; authorizing
+/// dextra's is the one holding every other agent's credentials; authorizing
 /// either wholesale defeats the isolation invariant, and they are only the same
 /// path when the launch does not relocate `HOME`.
 ///
@@ -452,7 +452,7 @@ fn is_over_broad_root(root: &Path, runtime_env: &BTreeMap<String, String>) -> bo
 ///
 /// `merge_agent_env` copies EVERY `runtime_env` entry into the child — `HOME`
 /// included, and overriding it is the classic way to isolate a CLI's config — so
-/// the home-relative defaults must follow the child's home. Using codeg's would
+/// the home-relative defaults must follow the child's home. Using dextra's would
 /// both grant the inactive profile (config/credentials the session never opens)
 /// and refuse the active one.
 ///
@@ -467,15 +467,15 @@ pub(crate) fn child_home_dir(runtime_env: &BTreeMap<String, String>) -> Option<P
     const HOME_KEY: &str = "HOME";
 
     // The three states are NOT interchangeable, and collapsing the last two is a
-    // real bug: `dirs::home_dir()` consults CODEG's `$HOME` before falling back to
-    // the passwd entry, so it answers for codeg, not for a child whose `HOME` was
+    // real bug: `dirs::home_dir()` consults DEXTRA's `$HOME` before falling back to
+    // the passwd entry, so it answers for dextra, not for a child whose `HOME` was
     // removed.
     let home = match runtime_env.get(HOME_KEY) {
         // Explicitly REMOVED (blank ⇒ `env_remove`): the child resolves its home
         // from the OS account database, which we cannot read without duplicating a
-        // passwd lookup — and codeg's `$HOME` is NOT that answer whenever the two
+        // passwd lookup — and dextra's `$HOME` is NOT that answer whenever the two
         // differ. Refuse rather than guess; the user can still name the directory
-        // via `CODEG_ACP_FS_EXTRA_ROOTS`.
+        // via `DEXTRA_ACP_FS_EXTRA_ROOTS`.
         Some(value) if value.is_empty() => {
             tracing::warn!(
                 "[ACP] {HOME_KEY} is removed for this launch, so the agent's own \
@@ -486,13 +486,13 @@ pub(crate) fn child_home_dir(runtime_env: &BTreeMap<String, String>) -> Option<P
         }
         // Overridden: the child sees exactly this.
         Some(value) => PathBuf::from(value),
-        // Absent: the child inherits codeg's environment, so codeg's answer is
-        // exact — including its own passwd fallback when codeg has no `HOME`.
+        // Absent: the child inherits dextra's environment, so dextra's answer is
+        // exact — including its own passwd fallback when dextra has no `HOME`.
         None => {
             // On Windows the agents' home also derives from `HOMEDRIVE` +
             // `HOMEPATH` when `USERPROFILE` is absent (Python's rule, which
             // Hermes follows). If the launch relocates that pair without
-            // relocating `USERPROFILE`, codeg's answer may not be the child's, so
+            // relocating `USERPROFILE`, dextra's answer may not be the child's, so
             // fail closed instead of guessing.
             #[cfg(windows)]
             if runtime_env.contains_key("HOMEDRIVE") || runtime_env.contains_key("HOMEPATH") {
@@ -507,7 +507,7 @@ pub(crate) fn child_home_dir(runtime_env: &BTreeMap<String, String>) -> Option<P
     };
 
     // `dirs` accepts a relative `HOME` on unix, and a relative home would be
-    // absolutized against codeg's cwd — the same widening as a relative agent
+    // absolutized against dextra's cwd — the same widening as a relative agent
     // home, so refuse it the same way.
     if !home.is_absolute() {
         tracing::warn!(
@@ -694,8 +694,8 @@ fn agent_root_slots(agent_type: AgentType) -> &'static [RootSlot] {
                 default_rel: &[".pi", "agent", "sessions"],
             },
         ],
-        // A custom ACP agent has no codeg-known private directory layout —
-        // codeg never reads its store (history comes from codeg's own ACP
+        // A custom ACP agent has no dextra-known private directory layout —
+        // dextra never reads its store (history comes from dextra's own ACP
         // transcript), so there is nothing to widen the sandbox roots for.
         AgentType::Custom(_) => &[],
     }
@@ -925,7 +925,7 @@ fn atomic_write_text(path: &Path, bytes: &[u8]) -> Result<(), FileSystemRuntimeE
     }
 
     let temp_path = parent.join(format!(
-        ".codeg-fs-{}.{}.tmp",
+        ".dextra-fs-{}.{}.tmp",
         std::process::id(),
         uuid::Uuid::new_v4().simple()
     ));
@@ -1104,7 +1104,7 @@ mod tests {
     use std::fs;
 
     fn temp_workspace() -> PathBuf {
-        let path = std::env::temp_dir().join(format!("codeg-fs-test-{}", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("dextra-fs-test-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&path).expect("create test workspace");
         path
     }
@@ -1161,7 +1161,7 @@ mod tests {
     }
 
     /// `strict` is the historical behavior — keep a regression net on it, since
-    /// it is what `CODEG_ACP_FS_POLICY=strict` promises to restore.
+    /// it is what `DEXTRA_ACP_FS_POLICY=strict` promises to restore.
     #[tokio::test(flavor = "current_thread")]
     async fn strict_rejects_read_and_write_outside_workspace() {
         let workspace = temp_workspace();
@@ -1478,7 +1478,7 @@ mod tests {
     /// fallback) are covered by `relocation_suffixes_match_the_agents_own_resolvers`.
     #[test]
     fn agent_data_roots_honor_runtime_env_relocation() {
-        let relocated = absolute_path("tmp/codeg-relocated-agent-home");
+        let relocated = absolute_path("tmp/dextra-relocated-agent-home");
         let cases = [
             (AgentType::Grok, "GROK_HOME"),
             (AgentType::ClaudeCode, "CLAUDE_CONFIG_DIR"),
@@ -1508,7 +1508,7 @@ mod tests {
     /// writable, which for `GEMINI_CLI_HOME=$HOME` is the whole home directory.
     #[test]
     fn relocation_suffixes_match_the_agents_own_resolvers() {
-        let base = absolute_path("tmp/codeg-relocation-base");
+        let base = absolute_path("tmp/dextra-relocation-base");
         let cases = [
             (AgentType::Gemini, "GEMINI_CLI_HOME", ".gemini"),
             (AgentType::OpenCode, "XDG_DATA_HOME", "opencode"),
@@ -1578,7 +1578,7 @@ mod tests {
         }
     }
 
-    /// A `~` follows the CHILD's home, not codeg's.
+    /// A `~` follows the CHILD's home, not dextra's.
     ///
     /// `merge_agent_env` copies `HOME` into the child like any other variable,
     /// and overriding it is the standard way to isolate a CLI's config — so
@@ -1588,8 +1588,8 @@ mod tests {
     /// leaving the one it does use unwritable. The `default_rel` branch already
     /// went through `child_home_dir`; this makes the override branch agree.
     #[test]
-    fn tilde_expands_against_the_childs_home_not_codegs() {
-        let codeg_home = dirs::home_dir().expect("home dir");
+    fn tilde_expands_against_the_childs_home_not_dextras() {
+        let dextra_home = dirs::home_dir().expect("home dir");
         // Platform-native: `child_home_dir` refuses a relative home, and a
         // unix-style `/srv/agy` is NOT absolute on Windows (no drive prefix),
         // so a shared literal would make this pass on unix and fail in the
@@ -1606,8 +1606,8 @@ mod tests {
             "the child's own home must anchor the expansion, got {roots:?}"
         );
         assert!(
-            !roots.contains(&codeg_home.join("profile")),
-            "codeg's home must not: {roots:?}"
+            !roots.contains(&dextra_home.join("profile")),
+            "dextra's home must not: {roots:?}"
         );
     }
 
@@ -1657,7 +1657,7 @@ mod tests {
     /// `GEMINI_HOME=~/relocated` the agent's files really are at
     /// `$HOME/relocated`. Treating the value verbatim judged it RELATIVE and
     /// refused the slot, which left the agent unable to write its own directory
-    /// — while codeg, separately, created a literal `~` folder next to wherever
+    /// — while dextra, separately, created a literal `~` folder next to wherever
     /// it happened to be running.
     ///
     /// A BARE `~` is still refused. It is a legal setting that puts the tree
@@ -1696,7 +1696,7 @@ mod tests {
     }
 
     /// A blank relocation value must fall back to Hermes' default home, not
-    /// re-inherit codeg's process env — mirroring the launch contract.
+    /// re-inherit dextra's process env — mirroring the launch contract.
     #[test]
     fn hermes_blank_relocation_falls_back_to_default_home() {
         let runtime_env = BTreeMap::from([("HERMES_HOME".to_string(), "   ".to_string())]);
@@ -1710,7 +1710,7 @@ mod tests {
     /// inactive tree holds config and credentials, so it must not stay writable.
     #[test]
     fn relocation_excludes_the_inactive_default_root() {
-        let relocated = absolute_path("tmp/codeg-isolated-profile");
+        let relocated = absolute_path("tmp/dextra-isolated-profile");
         let cases = [
             (AgentType::Codex, "CODEX_HOME"),
             (AgentType::Grok, "GROK_HOME"),
@@ -1763,7 +1763,7 @@ mod tests {
 
     /// A BLANK value in `env_json` is not "unset, use ours" — the spawn layer
     /// (`acp::agent_process`) `env_remove`s it, so the child falls back to its
-    /// OWN default. Reading through to codeg's process env would aim the root
+    /// OWN default. Reading through to dextra's process env would aim the root
     /// at a profile the child never opens, re-breaking the writes this change
     /// exists to allow.
     #[test]
@@ -1808,7 +1808,7 @@ mod tests {
     /// not to the masked key's inherited value.
     #[test]
     fn blank_runtime_value_falls_through_to_the_next_candidate() {
-        let xdg = absolute_path("tmp/codeg-xdg");
+        let xdg = absolute_path("tmp/dextra-xdg");
         let roots = agent_data_roots(
             AgentType::Cursor,
             &BTreeMap::from([
@@ -1827,26 +1827,26 @@ mod tests {
     /// don't. Uses a private key so it cannot race another test.
     #[test]
     fn child_env_value_models_the_spawn_layers_env_remove() {
-        let key = "CODEG_TEST_FS_CHILD_ENV";
+        let key = "DEXTRA_TEST_FS_CHILD_ENV";
         let os = OsString::from;
 
         temp_env::with_var(key, Some("/parent/value"), || {
             let runtime = |value: &str| BTreeMap::from([(key.to_string(), value.to_string())]);
 
-            // Silent in runtime_env ⇒ the child inherits codeg's value.
+            // Silent in runtime_env ⇒ the child inherits dextra's value.
             assert_eq!(
                 child_env_value(&BTreeMap::new(), key, false),
                 Some(os("/parent/value"))
             );
             // EXACTLY empty ⇒ `env_remove` ⇒ the child sees NOTHING, and we must
-            // NOT read through to codeg's value.
+            // NOT read through to dextra's value.
             assert_eq!(child_env_value(&runtime(""), key, false), None);
             // Whitespace-only is NOT removed by the spawn layer — it reaches the
             // child verbatim, so a non-trimming resolver must see it verbatim.
             assert_eq!(child_env_value(&runtime("  "), key, false), Some(os("  ")));
             // …but IS unset for the resolvers that trim (Hermes, Cline).
             assert_eq!(child_env_value(&runtime("  "), key, true), None);
-            // Non-empty replaces codeg's value, verbatim when not trimming.
+            // Non-empty replaces dextra's value, verbatim when not trimming.
             assert_eq!(
                 child_env_value(&runtime(" /child/value "), key, false),
                 Some(os(" /child/value "))
@@ -1863,8 +1863,8 @@ mod tests {
     }
 
     /// A RELATIVE agent home must never become a root. It would be resolved
-    /// against codeg's cwd while the child runs in the workspace cwd, and that
-    /// mismatch widens: `"."` with codeg launched from `/` yields `/`, which every
+    /// against dextra's cwd while the child runs in the workspace cwd, and that
+    /// mismatch widens: `"."` with dextra launched from `/` yields `/`, which every
     /// absolute path passes `starts_with` against; `".."` grants an unrelated tree.
     #[test]
     fn relative_agent_root_is_refused_not_absolutized() {
@@ -1916,13 +1916,13 @@ mod tests {
 
     /// `merge_agent_env` copies every `runtime_env` entry into the child, `HOME`
     /// included — the classic way to isolate a CLI's config. The home-relative
-    /// defaults must therefore follow the CHILD's home: anchoring them on codeg's
+    /// defaults must therefore follow the CHILD's home: anchoring them on dextra's
     /// would grant the inactive profile and refuse the active one.
     #[cfg(not(windows))]
     #[test]
     fn home_relative_defaults_follow_the_childs_home() {
-        let codeg_home = dirs::home_dir().expect("home dir");
-        let isolated = PathBuf::from("/tmp/codeg-isolated-home");
+        let dextra_home = dirs::home_dir().expect("home dir");
+        let isolated = PathBuf::from("/tmp/dextra-isolated-home");
         // This test exercises the home-relative defaults, even when the test
         // runner itself inherits an agent-specific home such as CODEX_HOME.
         let runtime_env = BTreeMap::from([
@@ -1944,14 +1944,14 @@ mod tests {
                 isolated.join(rel).display()
             );
             assert!(
-                !roots.contains(&codeg_home.join(rel)),
+                !roots.contains(&dextra_home.join(rel)),
                 "{agent_type:?}: inactive {} must not stay writable, got {roots:?}",
-                codeg_home.join(rel).display()
+                dextra_home.join(rel).display()
             );
         }
     }
 
-    /// A relative child `HOME` would be absolutized against codeg's cwd — the same
+    /// A relative child `HOME` would be absolutized against dextra's cwd — the same
     /// widening as a relative agent home — so the slot is refused instead.
     #[cfg(not(windows))]
     #[test]
@@ -1972,17 +1972,17 @@ mod tests {
     }
 
     /// A BLANK `HOME` is `env_remove`d, so the child resolves its home from the OS
-    /// account database — which codeg cannot read without duplicating a passwd
-    /// lookup, and `dirs::home_dir()` does NOT answer because it consults codeg's
+    /// account database — which dextra cannot read without duplicating a passwd
+    /// lookup, and `dirs::home_dir()` does NOT answer because it consults dextra's
     /// own `$HOME` first. So the slot is refused rather than guessed at.
     ///
-    /// Asserting "no roots" is stronger than asserting "not codeg's root", and it
+    /// Asserting "no roots" is stronger than asserting "not dextra's root", and it
     /// needs no `temp_env`, so it cannot race other tests that read `$HOME`.
     #[cfg(not(windows))]
     #[test]
     fn removed_child_home_refuses_the_slot() {
         let runtime_env = BTreeMap::from([("HOME".to_string(), String::new())]);
-        let codeg_home = dirs::home_dir().expect("home dir");
+        let dextra_home = dirs::home_dir().expect("home dir");
 
         for agent_type in ALL_AGENT_TYPES {
             if agent_relocated_by_process_env(agent_type) {
@@ -1992,9 +1992,9 @@ mod tests {
             let roots = agent_data_roots(agent_type, &runtime_env);
             assert!(
                 roots.is_empty(),
-                "{agent_type:?}: a removed HOME must yield no root (never codeg's \
+                "{agent_type:?}: a removed HOME must yield no root (never dextra's \
                  {}), got {roots:?}",
-                codeg_home.display()
+                dextra_home.display()
             );
         }
     }
@@ -2037,7 +2037,7 @@ mod tests {
     /// Same hazard through the user-facing knob.
     #[test]
     fn relative_extra_roots_are_dropped() {
-        let absolute = absolute_path("tmp/codeg-abs-extra");
+        let absolute = absolute_path("tmp/dextra-abs-extra");
         let runtime_env = BTreeMap::from([(
             FS_EXTRA_ROOTS_ENV.to_string(),
             std::env::join_paths([Path::new("."), absolute.as_path()])
@@ -2181,7 +2181,7 @@ mod tests {
     /// first match must win rather than both being admitted.
     #[test]
     fn cursor_relocation_respects_resolver_precedence() {
-        let config_dir = absolute_path("tmp/codeg-cursor");
+        let config_dir = absolute_path("tmp/dextra-cursor");
         let runtime_env = BTreeMap::from([
             (
                 "CURSOR_CONFIG_DIR".to_string(),
@@ -2189,7 +2189,7 @@ mod tests {
             ),
             (
                 "XDG_CONFIG_HOME".to_string(),
-                absolute_path("tmp/codeg-xdg").to_string_lossy().to_string(),
+                absolute_path("tmp/dextra-xdg").to_string_lossy().to_string(),
             ),
         ]);
 
@@ -2202,7 +2202,7 @@ mod tests {
     /// roots on its own — the process-env-only resolver cannot see it.
     #[test]
     fn pi_session_dir_relocation_is_honored() {
-        let sessions = absolute_path("tmp/codeg-pi-sessions-elsewhere");
+        let sessions = absolute_path("tmp/dextra-pi-sessions-elsewhere");
         let runtime_env = BTreeMap::from([(
             "PI_CODING_AGENT_SESSION_DIR".to_string(),
             sessions.to_string_lossy().to_string(),
@@ -2301,7 +2301,7 @@ mod tests {
                 entry
                     .file_name()
                     .to_string_lossy()
-                    .starts_with(".codeg-fs-")
+                    .starts_with(".dextra-fs-")
             });
         assert!(!leaked_tmp, "temporary file should be cleaned up");
 

@@ -64,7 +64,7 @@ export function StatusBar() {
         {/* Command launcher (moved from the aux "session details" tab), taking
             the slot the old static branch label (StatusBarSessionInfo) held. */}
         <CommandDropdown />
-        {/* codeg-mcp service health. Sits next to the alerts bell because the
+        {/* dextra-mcp service health. Sits next to the alerts bell because the
             two answer adjacent questions — "is something wrong right now?" —
             and both open a top-anchored popover from this corner. */}
         <StatusBarMcp />

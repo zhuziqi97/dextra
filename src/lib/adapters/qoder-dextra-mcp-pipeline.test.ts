@@ -4,8 +4,8 @@
  * and arrive at the renderer under the canonical name its card dispatches on.
  *
  * `tool-call-normalization.test.ts` pins the identity resolution and
- * `codeg-mcp-tool-card.test.tsx` pins the rendering, but the passes BETWEEN them
- * are where a codeg-mcp call would silently disappear: `dropEmptyInFlightToolCalls`
+ * `dextra-mcp-tool-card.test.tsx` pins the rendering, but the passes BETWEEN them
+ * are where a dextra-mcp call would silently disappear: `dropEmptyInFlightToolCalls`
  * can delete an arg-less in-flight call, and `groupConsecutiveToolCalls` folds a
  * run of tool calls into a single "调用 N 个工具" tally — either one and the card
  * never renders no matter how correct the name is. Both are gated on
@@ -13,11 +13,11 @@
  * predicate.
  *
  * Frames below are the real thing. Captured with a throwaway stdio MCP server
- * named `codeg-mcp` wired into `session/new`, driving one live turn:
+ * named `dextra-mcp` wired into `session/new`, driving one live turn:
  *
- *   TOOL_CALL        {"title":"get_delegation_status (codeg-mcp MCP Server)",
+ *   TOOL_CALL        {"title":"get_delegation_status (dextra-mcp MCP Server)",
  *                     "kind":"other","status":"pending",
- *                     "_meta":{"qoder":{"toolName":"mcp__codeg-mcp__get_delegation_status"}}}
+ *                     "_meta":{"qoder":{"toolName":"mcp__dextra-mcp__get_delegation_status"}}}
  *   TOOL_CALL_UPDATE {"status":"completed"}          ← no `_meta` at all
  *
  * That second frame is why the reducer's `meta: action.meta ?? block.info.meta`
@@ -75,10 +75,10 @@ const QODER_FRAMES: ReadonlyArray<{
 /** Exactly what Qoder's `AOn` puts on the wire for an MCP call. */
 function qoderFrame(tool: string, rawInput: unknown) {
   return {
-    title: `${tool} (codeg-mcp MCP Server)`,
+    title: `${tool} (dextra-mcp MCP Server)`,
     kind: "other",
     rawInput: JSON.stringify(rawInput),
-    meta: { qoder: { toolName: `mcp__codeg-mcp__${tool}` } },
+    meta: { qoder: { toolName: `mcp__dextra-mcp__${tool}` } },
   }
 }
 
@@ -127,7 +127,7 @@ describe("Qoder live frames reach their card through every adapter pass", () => 
     expect(dropEmptyInFlightToolCalls([part])).toEqual([part])
   })
 
-  it("does not let a run of codeg-mcp calls collapse into one tool-group", () => {
+  it("does not let a run of dextra-mcp calls collapse into one tool-group", () => {
     // A real delegation turn is a burst of polls; if they folded, the user would
     // see "调用 5 个工具" instead of five cards.
     const parts: AdaptedContentPart[] = QODER_FRAMES.map(({ tool, rawInput }) =>

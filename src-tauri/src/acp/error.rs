@@ -37,9 +37,9 @@ pub enum AcpError {
     #[error("invalid feedback: {0}")]
     InvalidFeedback(String),
     /// pi was asked to start in a folder that pi's own trust store already marks
-    /// trusted, without anyone in codeg having confirmed that grant. Trusting a
+    /// trusted, without anyone in dextra having confirmed that grant. Trusting a
     /// folder lets the repository execute its `.pi/extensions` at pi startup, and
-    /// older codeg builds wrote those grants automatically for every folder they
+    /// older dextra builds wrote those grants automatically for every folder they
     /// opened — so the launch fails closed until the user answers for it. Carries
     /// the explanation shown to the user; the project-trust notice resolves it.
     #[error("{0}")]
@@ -54,13 +54,13 @@ pub enum AcpError {
     InitializeTimeout,
     #[error("Agent did not publish its configurable options within 60 seconds. The probe was aborted; the agent may be slow, idle, or not ACP-compliant — try again or check the agent binary.")]
     ProbeTimedOut,
-    /// `session/new` failed on a **custom** agent that codeg had just handed
+    /// `session/new` failed on a **custom** agent that dextra had just handed
     /// MCP servers on the wire. That is the exact failure
     /// `CustomAgentDef::supports_mcp` exists to let the user avoid: an
     /// arbitrary third-party ACP binary may reject a non-empty `mcpServers`
     /// outright and never open a session.
     ///
-    /// codeg cannot distinguish this from an unrelated `session/new` failure,
+    /// dextra cannot distinguish this from an unrelated `session/new` failure,
     /// so it is a *hint*, not a diagnosis — the payload stays the agent's own
     /// message and the frontend renders the suggestion alongside it.
     #[error("{0}")]
@@ -73,8 +73,8 @@ pub enum AcpError {
     /// It earns a code of its own because the agent's own wording is the part
     /// the user cannot act on. cursor-agent, for one, answers `Please run
     /// 'agent login' first` — and `agent` is not a command that exists: the
-    /// binary is `cursor-agent`, and codeg's managed copy is not on `$PATH`
-    /// either. The frontend renders codeg's instruction from the code instead
+    /// binary is `cursor-agent`, and dextra's managed copy is not on `$PATH`
+    /// either. The frontend renders dextra's instruction from the code instead
     /// and points at the agent's own settings panel, which knows the path.
     #[error("{0}")]
     AgentAuthRequired(String),

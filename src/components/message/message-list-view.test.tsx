@@ -526,7 +526,7 @@ describe("extractDelegationSources", () => {
     const sources = extractDelegationSources([
       toolCall(
         "tu-1",
-        "mcp__codeg-mcp__delegate_to_agent",
+        "mcp__dextra-mcp__delegate_to_agent",
         '{"agent_type":"codex"}'
       ),
     ])
@@ -560,7 +560,7 @@ describe("extractDelegationSources", () => {
       toolCall("tu-a", "resume_delegation", "{}"),
       toolCall(
         "tu-b",
-        "mcp__codeg-mcp__resume_delegation",
+        "mcp__dextra-mcp__resume_delegation",
         '{"task_id":"t-1"}'
       ),
       toolCall("tu-c", "resume_delegation", '{"task_id":"t-1"}'),

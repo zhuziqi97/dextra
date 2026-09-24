@@ -1056,9 +1056,9 @@
         "additionalProperties": false,
         "description": "不含凭据的 Runner 公开摘要。",
         "properties": {
-          "codeg_version": {
+          "dextra_version": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Codeg Version"
+            "title": "Dextra Version"
           },
           "created_at": { "title": "Created At", "type": "string" },
           "dextra_build": {
@@ -1083,7 +1083,7 @@
           "status",
           "last_seen_at",
           "dextra_build",
-          "codeg_version",
+          "dextra_version",
           "created_at"
         ],
         "title": "RunnerResponse",
@@ -1469,7 +1469,7 @@
         "data": {
           "items": [
             {
-              "codeg_version": "string",
+              "dextra_version": "string",
               "created_at": "string",
               "dextra_build": "string",
               "display_name": "string",
@@ -1493,7 +1493,7 @@
       },
       "response": {
         "data": {
-          "codeg_version": "string",
+          "dextra_version": "string",
           "created_at": "string",
           "dextra_build": "string",
           "display_name": "string",

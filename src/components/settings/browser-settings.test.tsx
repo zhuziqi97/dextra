@@ -165,7 +165,7 @@ describe("BrowserSettings", () => {
       policy: {
         enabled: false,
         managedRules: [{ pattern: "*.internal.example", action: "block" }],
-        managedSource: "/etc/codeg/policy.json",
+        managedSource: "/etc/dextra/policy.json",
       },
     })
     await renderSection()
@@ -496,7 +496,7 @@ describe("BrowserSettings", () => {
     expect(
       await screen.findByText("Using http://127.0.0.1:7890")
     ).toBeInTheDocument()
-    expect(screen.queryByText(/Restart codeg/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Restart Dextra/)).not.toBeInTheDocument()
   })
 
   it("explains when the proxy needs a restart or is not usable", async () => {
@@ -504,14 +504,14 @@ describe("BrowserSettings", () => {
       capabilitiesWith({
         url: "socks5://10.0.0.1:1080",
         applies: "restart",
-        reason: "restart codeg for browser tabs to use the new proxy",
+        reason: "restart dextra for browser tabs to use the new proxy",
       })
     )
     const { unmount } = await renderSection()
     expect(
       await screen.findByText("Using socks5://10.0.0.1:1080")
     ).toBeInTheDocument()
-    expect(screen.getByText(/Restart codeg/)).toBeInTheDocument()
+    expect(screen.getByText(/Restart Dextra/)).toBeInTheDocument()
     unmount()
 
     mocks.browserCapabilitiesNow.mockResolvedValue(

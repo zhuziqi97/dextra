@@ -1,4 +1,4 @@
-//! 将服务端网页流转发给完整 Codeg Web router，不维护业务命令白名单。
+//! 将服务端网页流转发给完整 Dextra Web router，不维护业务命令白名单。
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use base64::{engine::general_purpose::STANDARD, Engine};

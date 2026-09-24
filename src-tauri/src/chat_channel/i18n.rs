@@ -175,16 +175,16 @@ pub fn permission_request_title(lang: Lang) -> &'static str {
 
 pub fn permission_request_body(lang: Lang) -> &'static str {
     match lang {
-        Lang::ZhCn => "智能体正在请求权限，请在 Codeg 中查看并批准。",
-        Lang::ZhTw => "智慧代理正在請求權限，請在 Codeg 中查看並批准。",
-        Lang::Ja => "エージェントが権限を要求しています。Codeg で確認して承認してください。",
-        Lang::Ko => "에이전트가 권한을 요청하고 있습니다. Codeg에서 확인하고 승인하세요.",
-        Lang::Es => "Un agente solicita permiso. Revísalo y apruébalo en Codeg.",
-        Lang::De => "Ein Agent fordert eine Berechtigung an. Bitte in Codeg prüfen und genehmigen.",
-        Lang::Fr => "Un agent demande une autorisation. Vérifiez-la et approuvez-la dans Codeg.",
-        Lang::Pt => "Um agente está solicitando permissão. Revise e aprove no Codeg.",
-        Lang::Ar => "يطلب أحد الوكلاء إذنًا. يرجى مراجعته والموافقة عليه في Codeg.",
-        Lang::En => "An agent is requesting permission. Review and approve it in Codeg.",
+        Lang::ZhCn => "智能体正在请求权限，请在 Dextra 中查看并批准。",
+        Lang::ZhTw => "智慧代理正在請求權限，請在 Dextra 中查看並批准。",
+        Lang::Ja => "エージェントが権限を要求しています。Dextra で確認して承認してください。",
+        Lang::Ko => "에이전트가 권한을 요청하고 있습니다. Dextra에서 확인하고 승인하세요.",
+        Lang::Es => "Un agente solicita permiso. Revísalo y apruébalo en Dextra.",
+        Lang::De => "Ein Agent fordert eine Berechtigung an. Bitte in Dextra prüfen und genehmigen.",
+        Lang::Fr => "Un agent demande une autorisation. Vérifiez-la et approuvez-la dans Dextra.",
+        Lang::Pt => "Um agente está solicitando permissão. Revise e aprove no Dextra.",
+        Lang::Ar => "يطلب أحد الوكلاء إذنًا. يرجى مراجعته والموافقة عليه في Dextra.",
+        Lang::En => "An agent is requesting permission. Review and approve it in Dextra.",
     }
 }
 
@@ -239,16 +239,16 @@ pub fn question_request_title(lang: Lang) -> &'static str {
 
 pub fn question_request_body(lang: Lang) -> &'static str {
     match lang {
-        Lang::ZhCn => "智能体正在向你提问，请在 Codeg 中回答。",
-        Lang::ZhTw => "智慧代理正在向你提問，請在 Codeg 中回答。",
-        Lang::Ja => "エージェントが質問しています。Codeg で回答してください。",
-        Lang::Ko => "에이전트가 질문하고 있습니다. Codeg에서 답변하세요.",
-        Lang::Es => "Un agente te hace una pregunta. Respóndela en Codeg.",
-        Lang::De => "Ein Agent stellt eine Frage. Bitte in Codeg beantworten.",
-        Lang::Fr => "Un agent vous pose une question. Répondez-y dans Codeg.",
-        Lang::Pt => "Um agente está fazendo uma pergunta. Responda no Codeg.",
-        Lang::Ar => "يطرح أحد الوكلاء سؤالاً. يرجى الإجابة عليه في Codeg.",
-        Lang::En => "An agent is asking a question. Answer it in Codeg.",
+        Lang::ZhCn => "智能体正在向你提问，请在 Dextra 中回答。",
+        Lang::ZhTw => "智慧代理正在向你提問，請在 Dextra 中回答。",
+        Lang::Ja => "エージェントが質問しています。Dextra で回答してください。",
+        Lang::Ko => "에이전트가 질문하고 있습니다. Dextra에서 답변하세요.",
+        Lang::Es => "Un agente te hace una pregunta. Respóndela en Dextra.",
+        Lang::De => "Ein Agent stellt eine Frage. Bitte in Dextra beantworten.",
+        Lang::Fr => "Un agent vous pose une question. Répondez-y dans Dextra.",
+        Lang::Pt => "Um agente está fazendo uma pergunta. Responda no Dextra.",
+        Lang::Ar => "يطرح أحد الوكلاء سؤالاً. يرجى الإجابة عليه في Dextra.",
+        Lang::En => "An agent is asking a question. Answer it in Dextra.",
     }
 }
 
@@ -556,16 +556,16 @@ pub fn channel_status_title(lang: Lang) -> &'static str {
 
 pub fn help_title(lang: Lang) -> &'static str {
     match lang {
-        Lang::ZhCn => "Codeg Bot 帮助",
-        Lang::ZhTw => "Codeg Bot 幫助",
-        Lang::Ja => "Codeg Bot ヘルプ",
-        Lang::Ko => "Codeg Bot 도움말",
-        Lang::Es => "Ayuda de Codeg Bot",
-        Lang::De => "Codeg Bot Hilfe",
-        Lang::Fr => "Aide Codeg Bot",
-        Lang::Pt => "Ajuda do Codeg Bot",
-        Lang::Ar => "مساعدة Codeg Bot",
-        Lang::En => "Codeg Bot Help",
+        Lang::ZhCn => "Dextra Bot 帮助",
+        Lang::ZhTw => "Dextra Bot 幫助",
+        Lang::Ja => "Dextra Bot ヘルプ",
+        Lang::Ko => "Dextra Bot 도움말",
+        Lang::Es => "Ayuda de Dextra Bot",
+        Lang::De => "Dextra Bot Hilfe",
+        Lang::Fr => "Aide Dextra Bot",
+        Lang::Pt => "Ajuda do Dextra Bot",
+        Lang::Ar => "مساعدة Dextra Bot",
+        Lang::En => "Dextra Bot Help",
     }
 }
 

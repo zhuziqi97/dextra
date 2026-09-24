@@ -293,7 +293,7 @@ export interface ConnectionState {
    */
   steeredMessageIds: string[]
   pendingQuestion: PendingQuestion | null
-  /** Awaiting-answer multiple-choice `ask_user_question` (the codeg-mcp blocking
+  /** Awaiting-answer multiple-choice `ask_user_question` (the dextra-mcp blocking
    *  tool). Set from a `question_request` event or a snapshot's
    *  `pending_question`; cleared on `question_resolved` or turn end. Distinct
    *  from the free-text `pendingQuestion` above. */
@@ -314,7 +314,7 @@ export interface ConnectionState {
   asyncTasks: AsyncTaskRecord[]
   error: string | null
   /**
-   * Set when the agent rejected `session/load` in a way codeg cannot paper
+   * Set when the agent rejected `session/load` in a way dextra cannot paper
    * over: no record of the session, the session/process died, or it is
    * archived. Distinct from `error` because the UI surfaces it inline in the
    * message list with reload / new-conversation actions, instead of as a
@@ -3462,7 +3462,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
         kind: "sdk_missing",
         // Claude Code / Codex install a separate ACP adapter package, not the
         // vendor CLI — saying "{agent} is not installed" to someone who has
-        // `claude` on their PATH reads as a bug in codeg. Name what's actually
+        // `claude` on their PATH reads as a bug in dextra. Name what's actually
         // missing instead.
         reason: agent.is_acp_adapter
           ? t("blocked.adapterMissing", { agent: agentLabel })
@@ -3758,7 +3758,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
    * in one conversation held every OTHER conversation's deltas for up to
    * `STREAM_FLUSH_MAX_MS` — including a background conversation with no panel
    * mounted, which costs nothing to flush and so bought nothing by waiting.
-   * Codeg runs several agents at once by design, so that is the normal case,
+   * Dextra runs several agents at once by design, so that is the normal case,
    * not a corner of one.
    *
    * Connections are independent — own wire, own seq cursor, own
@@ -3964,7 +3964,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
    * Say so when the agent settled a config-option pick somewhere else.
    *
    * `session/set_config_option` is advisory: the agent answers with the option
-   * list it adopted and codeg renders that verbatim, so a refused or downgraded
+   * list it adopted and dextra renders that verbatim, so a refused or downgraded
    * pick reads as the selector springing back for no reason. pi does this for a
    * model whose reasoning it can't honour; grok does it for a model switch
    * mid-conversation.
@@ -4191,7 +4191,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
             if (nc) {
               const fn = folderNameRef.current
               void notifyDesktop("question_request", {
-                title: fn ? `${fn} - Codeg` : "Codeg",
+                title: fn ? `${fn} - Dextra` : "Dextra",
                 body: t("notificationQuestion", {
                   agent: getAgentLabel(nc.agentType),
                 }),
@@ -4298,7 +4298,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
               const nc = storeRef.current.connections.get(contextKey)
               const agentLabel = nc ? getAgentLabel(nc.agentType) : "Agent"
               const fn = folderNameRef.current
-              const title = fn ? `${fn} - Codeg` : "Codeg"
+              const title = fn ? `${fn} - Dextra` : "Dextra"
               const count = e.settled.length
               const many = tChat("backgroundTasks.notifySettledMany", {
                 agent: agentLabel,
@@ -4328,7 +4328,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
             }
             // 4. flip each async sub-agent's launch card to its terminal
             //    (completed + result) state IN-MEMORY, by rewriting the
-            //    launching tool call's `[[codeg-background-task]]` marker from
+            //    launching tool call's `[[dextra-background-task]]` marker from
             //    the settle payload's own `tool_use_id`/`status`/`result`. This
             //    deliberately replaces the `refetchDetail` this used to do: that
             //    refetch re-parsed the still-open transcript mid-#870-hold,
@@ -4378,7 +4378,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
             if (nc) {
               const agentLabel = getAgentLabel(nc.agentType)
               const fn = folderNameRef.current
-              const title = fn ? `${fn} - Codeg` : "Codeg"
+              const title = fn ? `${fn} - Dextra` : "Dextra"
               // No redacted variant: the body is a fixed localized string
               // plus the agent's name, and names nothing of the user's.
               void notifyDesktop("permission_request", {
@@ -4588,7 +4588,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
             toast.warning(body)
           } else {
             // Everything else, INCLUDING an unrecognized future level: a
-            // notice codeg cannot grade is still one the user should see, and
+            // notice dextra cannot grade is still one the user should see, and
             // `info` is the level that degrades most gracefully.
             toast.info(body)
           }
@@ -4707,7 +4707,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
             if (nc) {
               const agentLabel = getAgentLabel(nc.agentType)
               const fn = folderNameRef.current
-              const title = fn ? `${fn} - Codeg` : "Codeg"
+              const title = fn ? `${fn} - Dextra` : "Dextra"
               void notifyDesktop("turn_complete", {
                 title,
                 body: t("notificationTurnComplete", { agent: agentLabel }),
@@ -4740,7 +4740,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
               // The agent refused to OPEN a session for want of a credential.
               // Deliberately drops the agent's own wording: cursor-agent's
               // says to run `agent login`, which is not a command that exists
-              // (the binary is `cursor-agent`, and codeg's managed copy is not
+              // (the binary is `cursor-agent`, and dextra's managed copy is not
               // on PATH) — so echoing it sends the user somewhere they cannot
               // go. The agent's settings panel is where the real command, and
               // the API-key alternative, live. The raw refusal is not lost —
@@ -4860,7 +4860,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
           // redacted variant drops.
           if (nc && !echo) {
             const fn = folderNameRef.current
-            const title = fn ? `${fn} - Codeg` : "Codeg"
+            const title = fn ? `${fn} - Dextra` : "Dextra"
             void notifyDesktop("error", {
               title,
               body: t("notificationError", {
@@ -5418,7 +5418,7 @@ export function AcpConnectionsProvider({ children }: { children: ReactNode }) {
   // ── Backend keepalive + liveness reconciliation timer ──
   // Frontend is the only side that knows which conversation tabs the
   // user has open. Without this, the backend's idle sweep
-  // (CODEG_ACP_IDLE_TIMEOUT_SECS, default 180s) would reap connections
+  // (DEXTRA_ACP_IDLE_TIMEOUT_SECS, default 180s) would reap connections
   // backing visible tabs whenever the user was just reading without
   // sending — forcing them to re-spawn the agent on next message.
   // Touching only bumps last_activity_at; it does not emit any event.

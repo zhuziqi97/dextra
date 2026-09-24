@@ -102,9 +102,9 @@ describe("groupConsecutiveDelegationStatus", () => {
 
   it("matches host-prefixed historical names", () => {
     const out = groupConsecutiveDelegationStatus([
-      poll("mcp__codeg-mcp__get_delegation_status", "t1"),
-      poll("mcp__codeg-delegate__get_delegation_status", "t1"),
-      poll("codeg-delegate/get_delegation_status", "t1"),
+      poll("mcp__dextra-mcp__get_delegation_status", "t1"),
+      poll("mcp__dextra-delegate__get_delegation_status", "t1"),
+      poll("dextra-delegate/get_delegation_status", "t1"),
     ])
     expect(out).toHaveLength(1)
     expect(pollsOf(out[0])).toHaveLength(3)
@@ -1857,32 +1857,32 @@ const PAGE_BLOCK = [
   "</context>",
 ].join("\n")
 
-describe("extractUserResourcesFromText — codeg references stay inline", () => {
-  it("keeps a codeg://agent link inline (the @-prefixed label no longer lifts it to a chip)", () => {
-    const input = "ask [@Codex](codeg://agent/codex) to review"
+describe("extractUserResourcesFromText — dextra references stay inline", () => {
+  it("keeps a dextra://agent link inline (the @-prefixed label no longer lifts it to a chip)", () => {
+    const input = "ask [@Codex](dextra://agent/codex) to review"
     const { text, resources } = extractUserResourcesFromText(input)
     expect(resources).toEqual([])
     expect(text).toBe(input)
   })
 
-  it("keeps codeg://session and codeg://commit links inline", () => {
+  it("keeps dextra://session and dextra://commit links inline", () => {
     const session = extractUserResourcesFromText(
-      "see [#42](codeg://session/claude_code_abc)"
+      "see [#42](dextra://session/claude_code_abc)"
     )
     expect(session.resources).toEqual([])
-    expect(session.text).toBe("see [#42](codeg://session/claude_code_abc)")
+    expect(session.text).toBe("see [#42](dextra://session/claude_code_abc)")
 
     const commit = extractUserResourcesFromText(
-      "from [a1b2c3d](codeg://commit/%2Frepo@a1b2c3ddeadbeef)"
+      "from [a1b2c3d](dextra://commit/%2Frepo@a1b2c3ddeadbeef)"
     )
     expect(commit.resources).toEqual([])
     expect(commit.text).toBe(
-      "from [a1b2c3d](codeg://commit/%2Frepo@a1b2c3ddeadbeef)"
+      "from [a1b2c3d](dextra://commit/%2Frepo@a1b2c3ddeadbeef)"
     )
   })
 
-  it("keeps a codeg://session link inline even when its label starts with @ (a session titled '@…')", () => {
-    const input = "ping [@周报](codeg://session/codex_99)"
+  it("keeps a dextra://session link inline even when its label starts with @ (a session titled '@…')", () => {
+    const input = "ping [@周报](dextra://session/codex_99)"
     const { text, resources } = extractUserResourcesFromText(input)
     expect(resources).toEqual([])
     expect(text).toBe(input)
@@ -2014,14 +2014,14 @@ describe("extractUserResourcesFromText — codeg references stay inline", () => 
     expect(text).toBe("raw <file:///x/@foo [blocked].txt> ok")
   })
 
-  it("chips a codeg://embedded attachment while keeping its inert badge inline", () => {
+  it("chips a dextra://embedded attachment while keeping its inert badge inline", () => {
     const { text, resources } = extractUserResourcesFromText(
-      "here [report.pdf](codeg://embedded/abc-123) ok"
+      "here [report.pdf](dextra://embedded/abc-123) ok"
     )
     expect(resources).toEqual([
-      { name: "report.pdf", uri: "codeg://embedded/abc-123", mime_type: null },
+      { name: "report.pdf", uri: "dextra://embedded/abc-123", mime_type: null },
     ])
-    expect(text).toBe("here [report.pdf](codeg://embedded/abc-123) ok")
+    expect(text).toBe("here [report.pdf](dextra://embedded/abc-123) ok")
   })
 
   it("still lifts blocked @-mentions to the resource list", () => {
@@ -2035,12 +2035,12 @@ describe("extractUserResourcesFromText — codeg references stay inline", () => 
 
   it("keeps both file:// and session links inline; only the file is also chipped", () => {
     const { text, resources } = extractUserResourcesFromText(
-      "compare [foo.ts](file:///x/foo.ts) with [#42](codeg://session/codex_abc)"
+      "compare [foo.ts](file:///x/foo.ts) with [#42](dextra://session/codex_abc)"
     )
     expect(resources).toEqual([
       { name: "foo.ts", uri: "file:///x/foo.ts", mime_type: null },
     ])
-    expect(text).toContain("[#42](codeg://session/codex_abc)")
+    expect(text).toContain("[#42](dextra://session/codex_abc)")
     expect(text).toContain("[foo.ts](file:///x/foo.ts)")
   })
 
@@ -2075,7 +2075,7 @@ describe("extractUserResourcesFromText — codeg references stay inline", () => 
     expect(resources).toEqual([
       {
         name: "a.title.raw-link.raw-topic-link",
-        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2F",
+        uri: "dextra://embedded/https%3A%2F%2Flinux.do%2F",
         mime_type: null,
       },
     ])
@@ -2096,7 +2096,7 @@ describe("extractUserResourcesFromText — codeg references stay inline", () => 
     expect(resources).toEqual([
       {
         name: "shop.test/orders",
-        uri: "codeg://embedded/https%3A%2F%2Fshop.test%2Forders",
+        uri: "dextra://embedded/https%3A%2F%2Fshop.test%2Forders",
         mime_type: null,
       },
     ])
@@ -2114,7 +2114,7 @@ describe("extractUserResourcesFromText — codeg references stay inline", () => 
     expect(resources).toEqual([
       {
         name: "notes.md-2f8c",
-        uri: "codeg://embedded/clipboard%3A%2F%2Fnotes.md-2f8c",
+        uri: "dextra://embedded/clipboard%3A%2F%2Fnotes.md-2f8c",
         mime_type: null,
       },
     ])
@@ -2145,7 +2145,7 @@ describe("extractUserResourcesFromText — codeg references stay inline", () => 
     expect(resources).toEqual([
       {
         name: "a.title.raw-link.raw-topic-link",
-        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2F",
+        uri: "dextra://embedded/https%3A%2F%2Flinux.do%2F",
         mime_type: null,
       },
     ])
@@ -2176,7 +2176,10 @@ describe("adaptMessageTurn — user reference resources", () => {
         role: "user",
         timestamp: "2026-06-11T00:00:00.000Z",
         blocks: [
-          { type: "text", text: "ask [@Codex](codeg://agent/codex) to review" },
+          {
+            type: "text",
+            text: "ask [@Codex](dextra://agent/codex) to review",
+          },
         ],
       },
       msgText
@@ -2186,7 +2189,7 @@ describe("adaptMessageTurn — user reference resources", () => {
     expect(adapted.content).toHaveLength(1)
     const part = adapted.content[0]
     if (part.type !== "text") throw new Error("expected a text part")
-    expect(part.text).toContain("[@Codex](codeg://agent/codex)")
+    expect(part.text).toContain("[@Codex](dextra://agent/codex)")
   })
 
   it("chips a folded file link AND keeps it inline as a badge; session stays inline", () => {
@@ -2201,7 +2204,7 @@ describe("adaptMessageTurn — user reference resources", () => {
         blocks: [
           {
             type: "text",
-            text: "compare these [#42](codeg://session/codex_abc)",
+            text: "compare these [#42](dextra://session/codex_abc)",
           },
           { type: "text", text: "[foo.ts](file:///x/foo.ts)" },
         ],
@@ -2215,7 +2218,7 @@ describe("adaptMessageTurn — user reference resources", () => {
     const joined = adapted.content
       .map((p) => (p.type === "text" ? p.text : ""))
       .join("\n")
-    expect(joined).toContain("[#42](codeg://session/codex_abc)")
+    expect(joined).toContain("[#42](dextra://session/codex_abc)")
     expect(joined).toContain("[foo.ts](file:///x/foo.ts)")
   })
 
@@ -2241,7 +2244,7 @@ describe("adaptMessageTurn — user reference resources", () => {
     expect(adapted.userResources).toEqual([
       {
         name: "a.title.raw-link.raw-topic-link",
-        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2F",
+        uri: "dextra://embedded/https%3A%2F%2Flinux.do%2F",
         mime_type: null,
       },
     ])
@@ -2250,7 +2253,7 @@ describe("adaptMessageTurn — user reference resources", () => {
     expect(adapted.content).toEqual([
       {
         type: "text",
-        text: "[a.title.raw-link.raw-topic-link](codeg://embedded/https%3A%2F%2Flinux.do%2F) what is this post",
+        text: "[a.title.raw-link.raw-topic-link](dextra://embedded/https%3A%2F%2Flinux.do%2F) what is this post",
       },
     ])
   })
@@ -2307,7 +2310,7 @@ describe("adaptMessageTurn — user reference resources", () => {
     expect(adapted.userResources).toEqual([
       {
         name: "linux.do/t/topic/1",
-        uri: "codeg://embedded/https%3A%2F%2Flinux.do%2Ft%2Ftopic%2F1",
+        uri: "dextra://embedded/https%3A%2F%2Flinux.do%2Ft%2Ftopic%2F1",
         mime_type: null,
       },
     ])

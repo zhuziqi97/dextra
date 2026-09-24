@@ -24,7 +24,7 @@ export function clientStorageKey(key: string): string {
   const clientId =
     typeof window === "undefined"
       ? undefined
-      : (window as Window & { __CODEG_CLIENT_ID__?: string })
-          .__CODEG_CLIENT_ID__
+      : (window as Window & { __DEXTRA_CLIENT_ID__?: string })
+          .__DEXTRA_CLIENT_ID__
   return clientId ? `client:${clientId}:${key}` : key
 }

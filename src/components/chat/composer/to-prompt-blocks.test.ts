@@ -70,7 +70,7 @@ describe("docToPromptBlocks", () => {
     expect(textBlock(blocks)).toContain("@Codex")
   })
 
-  it("keeps an agent reference with a codeg uri inline as a markdown link", () => {
+  it("keeps an agent reference with a dextra uri inline as a markdown link", () => {
     editor
       .chain()
       .insertContent("ask ")
@@ -79,13 +79,13 @@ describe("docToPromptBlocks", () => {
           refType: "agent",
           id: "codex",
           label: "Codex",
-          uri: "codeg://agent/codex",
+          uri: "dextra://agent/codex",
         })
       )
       .run()
     const blocks = docToPromptBlocks(editor)
     expect(links(blocks)).toHaveLength(0)
-    expect(textBlock(blocks)).toContain("[@Codex](codeg://agent/codex)")
+    expect(textBlock(blocks)).toContain("[@Codex](dextra://agent/codex)")
   })
 
   it("keeps a skill reference inline as the /id token", () => {
@@ -97,7 +97,7 @@ describe("docToPromptBlocks", () => {
     expect(textBlock(blocks)).toContain("/code-review")
   })
 
-  it("keeps a session reference inline as a codeg:// link (no resource_link)", () => {
+  it("keeps a session reference inline as a dextra:// link (no resource_link)", () => {
     editor
       .chain()
       .insertContent("see ")
@@ -106,48 +106,48 @@ describe("docToPromptBlocks", () => {
           refType: "session",
           id: "1",
           label: "Login refactor",
-          uri: "codeg://session/1",
+          uri: "dextra://session/1",
         })
       )
       .run()
     const blocks = docToPromptBlocks(editor)
     expect(links(blocks)).toHaveLength(0)
-    expect(textBlock(blocks)).toContain("codeg://session/1")
+    expect(textBlock(blocks)).toContain("dextra://session/1")
   })
 
-  it("keeps a commit reference inline as a codeg:// link (no resource_link)", () => {
+  it("keeps a commit reference inline as a dextra:// link (no resource_link)", () => {
     editor.commands.insertReference(
       ref({
         refType: "commit",
         id: "abc1234def",
         label: "abc1234",
-        uri: "codeg://commit/%2Frepo@abc1234def",
+        uri: "dextra://commit/%2Frepo@abc1234def",
       })
     )
     const blocks = docToPromptBlocks(editor)
     expect(links(blocks)).toHaveLength(0)
-    expect(textBlock(blocks)).toContain("codeg://commit/")
+    expect(textBlock(blocks)).toContain("dextra://commit/")
   })
 
-  it("does not lift a file-typed reference carrying a non-file (codeg) uri", () => {
-    // A pasted/forged node could be refType "file" with a codeg: uri (the node's
-    // parseHTML allow-list permits codeg:). It must stay inline, never become an
+  it("does not lift a file-typed reference carrying a non-file (dextra) uri", () => {
+    // A pasted/forged node could be refType "file" with a dextra: uri (the node's
+    // parseHTML allow-list permits dextra:). It must stay inline, never become an
     // ACP resource_link with a non-fetchable uri.
     editor.commands.insertReference(
       ref({
         refType: "file",
         id: "x",
         label: "x",
-        uri: "codeg://session/9",
+        uri: "dextra://session/9",
       })
     )
     const blocks = docToPromptBlocks(editor)
     expect(links(blocks)).toHaveLength(0)
-    expect(textBlock(blocks)).toContain("codeg://session/9")
+    expect(textBlock(blocks)).toContain("dextra://session/9")
   })
 
   it("drops an embedded-attachment reference from the prose without lifting it", () => {
-    // A path-less pasted attachment badge carries an inert codeg://embedded uri;
+    // A path-less pasted attachment badge carries an inert dextra://embedded uri;
     // its bytes are appended separately by the host, so it must neither survive
     // in the prose nor become a resource_link with the synthetic uri.
     editor
@@ -158,7 +158,7 @@ describe("docToPromptBlocks", () => {
           refType: "file",
           id: "report.pdf",
           label: "report.pdf",
-          uri: "codeg://embedded/abc-123",
+          uri: "dextra://embedded/abc-123",
         })
       )
       .insertContent(" please")
@@ -167,7 +167,7 @@ describe("docToPromptBlocks", () => {
     const text = textBlock(blocks)
     expect(text).toContain("see")
     expect(text).toContain("please")
-    expect(text).not.toContain("codeg://embedded")
+    expect(text).not.toContain("dextra://embedded")
     expect(text).not.toContain("report.pdf")
     expect(links(blocks)).toHaveLength(0)
   })
@@ -295,20 +295,20 @@ describe("serializeDocToDisplayText vs serializeDocToText (embedded)", () => {
           refType: "file",
           id: "report.pdf",
           label: "report.pdf",
-          uri: "codeg://embedded/abc-123",
+          uri: "dextra://embedded/abc-123",
         })
       )
       .insertContent(" please")
       .run()
     // Send text: the synthetic embedded uri never surfaces (bytes go separately).
     const sent = serializeDocToText(editor.state.doc)
-    expect(sent).not.toContain("codeg://embedded")
+    expect(sent).not.toContain("dextra://embedded")
     expect(sent).not.toContain("report.pdf")
     // Display text: the sender still sees the file they attached, as the same
-    // `[label](codeg://embedded/…)` link the transcript renders back to a badge —
+    // `[label](dextra://embedded/…)` link the transcript renders back to a badge —
     // so the queue chip / optimistic bubble isn't blank ("Attached 0 attachment").
     const shown = serializeDocToDisplayText(editor.state.doc)
-    expect(shown).toContain("[report.pdf](codeg://embedded/abc-123)")
+    expect(shown).toContain("[report.pdf](dextra://embedded/abc-123)")
     expect(shown).toContain("see")
     expect(shown).toContain("please")
   })
@@ -319,12 +319,12 @@ describe("serializeDocToDisplayText vs serializeDocToText (embedded)", () => {
         refType: "file",
         id: "report.pdf",
         label: "report.pdf",
-        uri: "codeg://embedded/only-1",
+        uri: "dextra://embedded/only-1",
       })
     )
     expect(serializeDocToText(editor.state.doc).trim()).toBe("")
     expect(serializeDocToDisplayText(editor.state.doc).trim()).toBe(
-      "[report.pdf](codeg://embedded/only-1)"
+      "[report.pdf](dextra://embedded/only-1)"
     )
   })
 

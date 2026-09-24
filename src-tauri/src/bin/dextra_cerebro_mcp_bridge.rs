@@ -8,7 +8,7 @@ async fn main() {
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--help" => {
-                println!("cerebro-mcp-bridge --socket-path <path> --token <temporary-token>");
+                println!("dextra-cerebro-mcp-bridge --socket-path <path> --token <temporary-token>");
                 return;
             }
             "--socket-path" => socket = args.next(),
@@ -23,7 +23,7 @@ async fn main() {
         eprintln!("缺少 --socket-path 或 --token");
         std::process::exit(2);
     };
-    if let Err(error) = codeg_lib::cerebro::mcp_bridge::run(socket, token).await {
+    if let Err(error) = dextra_lib::cerebro::mcp_bridge::run(socket, token).await {
         eprintln!("{error}");
         std::process::exit(1);
     }

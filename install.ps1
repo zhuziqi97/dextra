@@ -1,33 +1,33 @@
 #
-# Codeg Server installer for Windows
+# Dextra Server installer for Windows
 # Usage:
-#   irm https://raw.githubusercontent.com/xintaofei/codeg/main/install.ps1 | iex
+#   .\install.ps1
 #   .\install.ps1 -Version v0.5.0
 #
 
 param(
     [string]$Version = "",
-    [string]$InstallDir = "$env:LOCALAPPDATA\codeg",
+    [string]$InstallDir = "$env:LOCALAPPDATA\dextra",
     [switch]$NoCleanup
 )
 
 $ErrorActionPreference = "Stop"
-$Repo = "xintaofei/codeg"
-$Artifact = "codeg-server-windows-x64"
+$Repo = "xintaofei/dextra"
+$Artifact = "dextra-server-windows-x64"
 
-# Names of binaries this installer manages. codeg-server is the user-facing
-# entry point; codeg-mcp is the stdio MCP companion that the server's ACP
+# Names of binaries this installer manages. dextra-server is the user-facing
+# entry point; dextra-mcp is the stdio MCP companion that the server's ACP
 # layer spawns per session for delegation. Both must live in the same
-# directory — `locate_codeg_mcp_binary()` in src-tauri/src/acp/connection.rs
+# directory — `locate_dextra_mcp_binary()` in src-tauri/src/acp/connection.rs
 # resolves the companion as a sibling of the running server executable.
-$ManagedBins = @("codeg-server", "codeg-mcp", "cerebro-mcp-bridge")
+$ManagedBins = @("dextra-server", "dextra-mcp", "dextra-cerebro-mcp-bridge")
 
-# Stale codeg-server / codeg-mcp binaries elsewhere in PATH are removed by
-# default so the user's `codeg-server` command always runs the freshly
+# Stale dextra-server / dextra-mcp binaries elsewhere in PATH are removed by
+# default so the user's `dextra-server` command always runs the freshly
 # installed binary AND the runtime locates the matching companion via the
-# exe-sibling lookup. Pass -NoCleanup (or set CODEG_NO_CLEANUP=1) to disable.
+# exe-sibling lookup. Pass -NoCleanup (or set DEXTRA_NO_CLEANUP=1) to disable.
 $Cleanup = -not $NoCleanup
-if ($env:CODEG_NO_CLEANUP -eq "1") {
+if ($env:DEXTRA_NO_CLEANUP -eq "1") {
     $Cleanup = $false
 }
 
@@ -42,8 +42,8 @@ function Get-CanonicalPath([string]$Path) {
 
 function Read-BinVersion([string]$BinPath) {
     if (-not (Test-Path -LiteralPath $BinPath)) { return "" }
-    $stdout = Join-Path $env:TEMP ("codeg-ver-" + [Guid]::NewGuid().ToString() + ".txt")
-    $stderr = Join-Path $env:TEMP ("codeg-vererr-" + [Guid]::NewGuid().ToString() + ".txt")
+    $stdout = Join-Path $env:TEMP ("dextra-ver-" + [Guid]::NewGuid().ToString() + ".txt")
+    $stderr = Join-Path $env:TEMP ("dextra-vererr-" + [Guid]::NewGuid().ToString() + ".txt")
     try {
         $proc = Start-Process -FilePath $BinPath -ArgumentList "--version" `
             -NoNewWindow -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
@@ -76,18 +76,18 @@ if (-not $Version) {
 
 $TargetVer = $Version -replace '^v', ''
 
-# ── Scan PATH for codeg-server binaries that shadow the target install ──
+# ── Scan PATH for dextra-server binaries that shadow the target install ──
 #
 # A binary "shadows" the install if it appears in PATH BEFORE the destination
-# directory: that's the binary `Get-Command codeg-server` returns after install.
+# directory: that's the binary `Get-Command dextra-server` returns after install.
 # Unlike install.sh (which doesn't modify PATH), this script appends
 # `$InstallDir` to user PATH below when it's missing, so any pre-existing
-# codeg-server in PATH ends up before the destination after install and must be
+# dextra-server in PATH ends up before the destination after install and must be
 # cleaned. We therefore collect conflicts even when the destination isn't on
 # PATH yet: stop the walk at the destination if present, otherwise scan to the
 # end (post-install, the destination will be at the tail).
 
-$DestBin = Join-Path $InstallDir "codeg-server.exe"
+$DestBin = Join-Path $InstallDir "dextra-server.exe"
 $DestBinReal = Get-CanonicalPath $DestBin
 $InstallDirReal = Get-CanonicalPath $InstallDir
 
@@ -95,9 +95,9 @@ $PathConflicts = @()
 $seenReal = @{}
 $pathDirs = @()
 if ($env:Path) { $pathDirs = $env:Path.Split(';') }
-# Scan PATH for both managed binaries — a stale `codeg-mcp.exe` in an earlier
+# Scan PATH for both managed binaries — a stale `dextra-mcp.exe` in an earlier
 # PATH entry would be picked by the runtime's `which` fallback once
-# `codeg-server.exe` was upgraded out from under it, breaking delegation in
+# `dextra-server.exe` was upgraded out from under it, breaking delegation in
 # subtle ways. Track conflicts uniformly for cleanup.
 foreach ($dir in $pathDirs) {
     if (-not $dir) { continue }
@@ -120,9 +120,9 @@ foreach ($dir in $pathDirs) {
     }
 }
 
-# What does `codeg-server` actually resolve to in the current PATH?
+# What does `dextra-server` actually resolve to in the current PATH?
 $ActiveBin = ""
-$resolved = Get-Command codeg-server -ErrorAction SilentlyContinue
+$resolved = Get-Command dextra-server -ErrorAction SilentlyContinue
 if ($resolved) { $ActiveBin = $resolved.Source }
 
 # ── Version detection — prefer the binary the user actually invokes ──
@@ -145,21 +145,21 @@ if ($VersionCheckBin) {
 if ($CurrentVersion -and ($CurrentVersion -eq $TargetVer) `
         -and ($PathConflicts.Count -eq 0) `
         -and (Test-Path -LiteralPath $DestBin)) {
-    Write-Host "codeg-server is already at version $TargetVer, nothing to do."
+    Write-Host "dextra-server is already at version $TargetVer, nothing to do."
     exit 0
 }
 
 if ($CurrentVersion) {
-    Write-Host "Upgrading codeg-server: $CurrentVersion -> $TargetVer..."
+    Write-Host "Upgrading dextra-server: $CurrentVersion -> $TargetVer..."
 } else {
-    Write-Host "Installing codeg-server $Version (windows/x64)..."
+    Write-Host "Installing dextra-server $Version (windows/x64)..."
 }
 
-# ── Warn about codeg-server binaries shadowing the target install ──
+# ── Warn about dextra-server binaries shadowing the target install ──
 
 if ($PathConflicts.Count -gt 0) {
     Write-Host ""
-    Write-Host "Found other codeg-server binaries in PATH that may shadow ${DestBin}:"
+    Write-Host "Found other dextra-server binaries in PATH that may shadow ${DestBin}:"
     foreach ($c in $PathConflicts) {
         $cv = Read-BinVersion $c
         if ($cv) {
@@ -172,39 +172,39 @@ if ($PathConflicts.Count -gt 0) {
         Write-Host "These will be removed after installation. Pass -NoCleanup to keep them."
     } else {
         Write-Host "Keeping them (-NoCleanup). You may need to remove them manually so that"
-        Write-Host "typing 'codeg-server' runs the new install at $DestBin."
+        Write-Host "typing 'dextra-server' runs the new install at $DestBin."
     }
     Write-Host ""
 }
 
 # ── Stop running service before upgrade ──
 #
-# codeg-mcp.exe is the stdio MCP companion spawned per ACP session.
+# dextra-mcp.exe is the stdio MCP companion spawned per ACP session.
 # On Windows, Copy-Item -Force fails with a sharing violation if the
 # target .exe is currently running (the OS holds an exclusive write
 # lock on executable images). Stop both binaries before overwriting.
 
-$ServerProcesses = Get-Process -Name "codeg-server" -ErrorAction SilentlyContinue
+$ServerProcesses = Get-Process -Name "dextra-server" -ErrorAction SilentlyContinue
 if ($ServerProcesses) {
-    Write-Host "Stopping running codeg-server process(es)..."
+    Write-Host "Stopping running dextra-server process(es)..."
     $WasRunning = $true
     $ServerProcesses | Stop-Process -Force
     Start-Sleep -Seconds 2
     # Verify stopped
-    $StillRunning = Get-Process -Name "codeg-server" -ErrorAction SilentlyContinue
+    $StillRunning = Get-Process -Name "dextra-server" -ErrorAction SilentlyContinue
     if ($StillRunning) {
         $StillRunning | Stop-Process -Force
         Start-Sleep -Seconds 1
     }
-    Write-Host "codeg-server stopped."
+    Write-Host "dextra-server stopped."
 }
 
-$McpProcesses = Get-Process -Name "codeg-mcp", "cerebro-mcp-bridge" -ErrorAction SilentlyContinue
+$McpProcesses = Get-Process -Name "dextra-mcp", "dextra-cerebro-mcp-bridge" -ErrorAction SilentlyContinue
 if ($McpProcesses) {
-    Write-Host "Stopping running codeg-mcp companion process(es)..."
+    Write-Host "Stopping running dextra-mcp companion process(es)..."
     $McpProcesses | Stop-Process -Force
     Start-Sleep -Seconds 1
-    $StillRunning = Get-Process -Name "codeg-mcp", "cerebro-mcp-bridge" -ErrorAction SilentlyContinue
+    $StillRunning = Get-Process -Name "dextra-mcp", "dextra-cerebro-mcp-bridge" -ErrorAction SilentlyContinue
     if ($StillRunning) {
         $StillRunning | Stop-Process -Force
         Start-Sleep -Seconds 1
@@ -214,7 +214,7 @@ if ($McpProcesses) {
 # ── Download and extract ──
 
 $Url = "https://github.com/$Repo/releases/download/$Version/$Artifact.zip"
-$TmpDir = Join-Path $env:TEMP "codeg-install-$(Get-Random)"
+$TmpDir = Join-Path $env:TEMP "dextra-install-$(Get-Random)"
 New-Item -ItemType Directory -Force -Path $TmpDir | Out-Null
 $ZipPath = Join-Path $TmpDir "$Artifact.zip"
 
@@ -272,7 +272,7 @@ if ($UserPath -notlike "*$InstallDir*") {
     Write-Host "Added $InstallDir to user PATH (restart terminal to take effect)"
 }
 # Mirror the change into the current process so the post-install verification
-# below can resolve `codeg-server`. Without this, the first-time install would
+# below can resolve `dextra-server`. Without this, the first-time install would
 # always exit non-zero on Windows because Get-Command runs against the in-process
 # $env:Path that does not yet include $InstallDir.
 if ($env:Path -notlike "*$InstallDir*") {
@@ -289,13 +289,13 @@ $ExitStatus = 0
 
 if ($Cleanup -and $PathConflicts.Count -gt 0) {
     Write-Host ""
-    Write-Host "Removing stale codeg-server binaries..."
+    Write-Host "Removing stale dextra-server binaries..."
     foreach ($c in $PathConflicts) {
         try {
             Remove-Item -LiteralPath $c -Force -ErrorAction Stop
             Write-Host "  removed $c"
         } catch {
-            Write-Host "  failed to remove $c (remove it manually so 'codeg-server' resolves to the new install) — $($_.Exception.Message)"
+            Write-Host "  failed to remove $c (remove it manually so 'dextra-server' resolves to the new install) — $($_.Exception.Message)"
             $ExitStatus = 1
         }
     }
@@ -305,31 +305,31 @@ if ($Cleanup -and $PathConflicts.Count -gt 0) {
 
 if ($WasRunning) {
     Write-Host ""
-    Write-Host "Note: codeg-server was stopped for the upgrade."
-    Write-Host "Please restart it manually to ensure your environment variables (CODEG_PORT, CODEG_TOKEN, etc.) are preserved:"
-    Write-Host "  `$env:CODEG_STATIC_DIR=`"$WebDir`"; codeg-server"
+    Write-Host "Note: dextra-server was stopped for the upgrade."
+    Write-Host "Please restart it manually to ensure your environment variables (DEXTRA_PORT, DEXTRA_TOKEN, etc.) are preserved:"
+    Write-Host "  `$env:DEXTRA_STATIC_DIR=`"$WebDir`"; dextra-server"
 }
 
 # ── Done ──
 
 $InstalledVer = ""
 try {
-    $InstalledVer = (& (Join-Path $InstallDir "codeg-server.exe") --version 2>$null).Trim()
+    $InstalledVer = (& (Join-Path $InstallDir "dextra-server.exe") --version 2>$null).Trim()
 } catch {}
 if (-not $InstalledVer) { $InstalledVer = $TargetVer }
 
 Write-Host ""
-Write-Host "codeg-server installed to $InstallDir\codeg-server.exe"
-Write-Host "codeg-mcp    installed to $InstallDir\codeg-mcp.exe"
-Write-Host "cerebro-mcp-bridge installed to $InstallDir\cerebro-mcp-bridge.exe"
+Write-Host "dextra-server installed to $InstallDir\dextra-server.exe"
+Write-Host "dextra-mcp    installed to $InstallDir\dextra-mcp.exe"
+Write-Host "dextra-cerebro-mcp-bridge installed to $InstallDir\dextra-cerebro-mcp-bridge.exe"
 Write-Host "Version: $InstalledVer"
 
-# Final smoke: codeg-mcp.exe must exist next to codeg-server.exe so the
-# runtime's `locate_codeg_mcp_binary()` exe-sibling lookup hits. A failure
+# Final smoke: dextra-mcp.exe must exist next to dextra-server.exe so the
+# runtime's `locate_dextra_mcp_binary()` exe-sibling lookup hits. A failure
 # here means the zip was malformed or a previous Copy-Item was silently
 # blocked — surface it loudly rather than ship a half-broken install.
-$McpPath = Join-Path $InstallDir "codeg-mcp.exe"
-$BridgePath = Join-Path $InstallDir "cerebro-mcp-bridge.exe"
+$McpPath = Join-Path $InstallDir "dextra-mcp.exe"
+$BridgePath = Join-Path $InstallDir "dextra-cerebro-mcp-bridge.exe"
 if (-not (Test-Path -LiteralPath $BridgePath)) {
     Write-Host "Error: $BridgePath missing after install."
     $ExitStatus = 1
@@ -341,9 +341,9 @@ if (-not (Test-Path -LiteralPath $McpPath)) {
     $ExitStatus = 1
 }
 
-# Verify the user's `codeg-server` command actually resolves to the new binary.
+# Verify the user's `dextra-server` command actually resolves to the new binary.
 $ActiveBinAfter = ""
-$resolvedAfter = Get-Command codeg-server -ErrorAction SilentlyContinue
+$resolvedAfter = Get-Command dextra-server -ErrorAction SilentlyContinue
 if ($resolvedAfter) { $ActiveBinAfter = $resolvedAfter.Source }
 $ActiveBinAfterReal = Get-CanonicalPath $ActiveBinAfter
 
@@ -355,7 +355,7 @@ if (-not $ActiveBinAfter) {
     $ExitStatus = 1
 } elseif ($ActiveBinAfterReal -ne $DestBinReal) {
     Write-Host ""
-    Write-Host "Warning: typing 'codeg-server' still runs $ActiveBinAfter, not $DestBin."
+    Write-Host "Warning: typing 'dextra-server' still runs $ActiveBinAfter, not $DestBin."
     Write-Host "Another binary earlier in PATH is shadowing the new install. To fix, either:"
     Write-Host "  - re-run without -NoCleanup (the default removes shadowing binaries), or"
     Write-Host "  - remove the stale binary manually: Remove-Item '$ActiveBinAfter', or"
@@ -365,9 +365,9 @@ if (-not $ActiveBinAfter) {
 
 Write-Host ""
 Write-Host "Quick start:"
-Write-Host "  `$env:CODEG_STATIC_DIR=`"$WebDir`"; codeg-server"
+Write-Host "  `$env:DEXTRA_STATIC_DIR=`"$WebDir`"; dextra-server"
 Write-Host ""
 Write-Host "Or with custom settings:"
-Write-Host "  `$env:CODEG_PORT=`"3080`"; `$env:CODEG_TOKEN=`"your-secret`"; `$env:CODEG_STATIC_DIR=`"$WebDir`"; codeg-server"
+Write-Host "  `$env:DEXTRA_PORT=`"3080`"; `$env:DEXTRA_TOKEN=`"your-secret`"; `$env:DEXTRA_STATIC_DIR=`"$WebDir`"; dextra-server"
 
 exit $ExitStatus

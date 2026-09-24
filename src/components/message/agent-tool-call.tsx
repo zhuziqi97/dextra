@@ -346,13 +346,13 @@ export const AgentToolCallPart = memo(function AgentToolCallPart({
   // when the child finishes — an asynchronous child can still be working long
   // after. Say so, rather than let a green "completed" claim the sub-agent is
   // done.
-  const isCodexSubagent = parsed?.__codegCodexSubagentLaunch === true
+  const isCodexSubagent = parsed?.__dextraCodexSubagentLaunch === true
 
   // …and codex DOES eventually say how the child ended
   // (`SubAgentActivity{kind}`), which both paths stamp here. Present only once
   // that has been heard; while it is absent the child's fate is genuinely
   // unknown, which is what the launch note describes.
-  const codexSubagentState = asText(parsed?.__codegCodexSubagentState)
+  const codexSubagentState = asText(parsed?.__dextraCodexSubagentState)
 
   // codex spawn capsules carry the sub-agent's UUID (`agent_id`); show it in the
   // pill so the execution capsule reads uniformly with the live/wait collab

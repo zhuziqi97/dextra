@@ -127,7 +127,7 @@ impl BinaryDirEntry {
 pub struct AcpAgentMeta {
     pub agent_type: AgentType,
     /// 是否经 ACP 线缆（session/new 的 `mcpServers` 字段）向该 agent 转发 MCP
-    /// 服务器——既包括用户配置的服务器，也包括内置 codeg-mcp 伴生进程。
+    /// 服务器——既包括用户配置的服务器，也包括内置 dextra-mcp 伴生进程。
     /// OpenClaw 拒绝 `mcpServers` 中的任何服务器条目（会使 session/new 失败），
     /// 故置 false。注意空列表 `[]` 仍会按 ACP schema 序列化、OpenClaw 可接受——
     /// 闸门只是保证该列表对 OpenClaw 恒为空（不含任何条目）。
@@ -246,7 +246,7 @@ pub fn builtin_acp_agents() -> Vec<AgentType> {
     ]
 }
 
-/// Every agent codeg can currently drive: the fifteen built-ins followed by
+/// Every agent dextra can currently drive: the fifteen built-ins followed by
 /// the user's registered custom ACP agents (sorted by id).
 pub fn all_acp_agents() -> Vec<AgentType> {
     let mut agents = builtin_acp_agents();
@@ -302,17 +302,17 @@ pub fn from_registry_id(id: &str) -> Option<AgentType> {
     }
 }
 
-/// The vendor CLI wrapped by a codeg entry that is really a THIRD-PARTY ACP
+/// The vendor CLI wrapped by a dextra entry that is really a THIRD-PARTY ACP
 /// *adapter*.
 ///
 /// All but two of the built-ins distribute the vendor's own CLI (or, for
 /// Antigravity, the vendor's own ACP server), so a user's existing global
 /// install is found by the launch gate as-is. Claude Code and
-/// Codex are the exceptions: neither `claude` nor `codex` speaks ACP, so codeg
+/// Codex are the exceptions: neither `claude` nor `codex` speaks ACP, so dextra
 /// installs a separate adapter package (`claude-agent-acp` / `codex-acp`,
 /// maintained by the Agent Client Protocol org) whose command name has nothing
 /// to do with the vendor CLI's. That mismatch is the single most reported
-/// confusion ("I have claude installed, why does codeg say it isn't?"), so
+/// confusion ("I have claude installed, why does dextra say it isn't?"), so
 /// preflight and diagnostics probe the vendor CLI too and explain the split.
 #[derive(Debug, Clone, Copy)]
 pub struct AcpAdapterRelation {
@@ -330,7 +330,7 @@ pub struct AcpAdapterRelation {
     pub docs_url: &'static str,
 }
 
-/// Adapter relation for an agent, or `None` when codeg's entry IS the vendor's
+/// Adapter relation for an agent, or `None` when dextra's entry IS the vendor's
 /// own CLI (every agent except these two).
 ///
 /// Adding an entry here changes what preflight/diagnostics report — keep the
@@ -358,16 +358,16 @@ pub fn acp_adapter_relation(agent_type: AgentType) -> Option<AcpAdapterRelation>
 }
 
 /// Home-relative directories a vendor's OWN installer drops the agent binary
-/// into, for agents codeg can also manage itself.
+/// into, for agents dextra can also manage itself.
 ///
 /// Distinct from [`AcpAdapterRelation::extra_dirs`], which describes a vendor
-/// CLI codeg never launches; these are launchable binaries, just not where a
+/// CLI dextra never launches; these are launchable binaries, just not where a
 /// GUI-inherited PATH can see them. OpenCode's official install script uses
 /// `INSTALL_DIR=$HOME/.opencode/bin` and appends it to the user's shell rc — a
 /// file a desktop app launched from Finder or the Dock never reads, which is
 /// exactly how a working install reads as missing.
 ///
-/// Probed after PATH and `~/.local/bin`, so a codeg-managed copy and anything
+/// Probed after PATH and `~/.local/bin`, so a dextra-managed copy and anything
 /// genuinely on PATH still win.
 pub fn binary_system_dirs(agent_type: AgentType) -> &'static [&'static str] {
     match agent_type {
@@ -382,14 +382,14 @@ const ACP_ADAPTER_DOCS_URL: &str = "https://docs.codeg.app/guide/supported-agent
 
 /// Minimum adapter version whose `_session/steering` honors the
 /// `_meta.steering.idleBehavior = "promptRequired"` opt-in — one of the three
-/// gates for codeg's NATIVE live-feedback push channel (synthesized into
+/// gates for dextra's NATIVE live-feedback push channel (synthesized into
 /// `SessionState.native_steering_available` at initialize; see
 /// `connection.rs::init_advertises_steering`).
 ///
 /// `None` means "never steer natively" even when the adapter advertises
 /// `_meta.steering.supported`: an adapter that ignores the opt-in falls back
 /// to `startedNewTurn` on the turn-end race — a detached turn no host request
-/// owns, which codeg's turn-scoped runtime must never trigger. codex-acp
+/// owns, which dextra's turn-scoped runtime must never trigger. codex-acp
 /// ships `_session/steering` but not `promptRequired` — re-verified against
 /// the published 1.3.0 tarball (zero hits, same as 1.1.9) — so it stays
 /// `None` until a release implements the opt-in — then this is a one-line
@@ -412,7 +412,7 @@ pub fn steering_prompt_required_min_version(agent_type: AgentType) -> Option<&'s
         // ordinary result settled the owning `session/prompt` as a clean
         // `end_turn` while the steered work was still going — the continuation
         // then streamed with no turn in flight (#934, reported and reproduced
-        // from codeg). 0.65.0 records a steered turn's results instead of
+        // from dextra). 0.65.0 records a steered turn's results instead of
         // settling on them and settles at the SDK `idle` spanning both cycles,
         // so the floor is the FIRST release carrying that fix, not the one that
         // introduced the opt-in. Every 0.64.x — including 0.64.2, which only
@@ -505,7 +505,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (#881): when advertised (see `build_client_capabilities`),
             // subagent text/thought chunks stream with update-level
             // `_meta.claudeCode.parentToolUseId` instead of being filtered;
-            // codeg routes them into the live Agent capsule. Independent of
+            // dextra routes them into the live Agent capsule. Independent of
             // the capability, every tool_call now carries
             // `_meta.claudeCode.subagent: true` on Agent/Task launches and
             // `_meta.claudeCode.title` (the Bash `description` input) on
@@ -538,10 +538,10 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // turn settles at the SDK `idle` spanning both the interrupted and
             // the steered cycle, so the owning prompt stays in flight until the
             // steered work is actually done. That is the fix for #934, which
-            // had forced codeg's native push channel off; it is back on for
+            // had forced dextra's native push channel off; it is back on for
             // Claude alone via `steering_prompt_required_min_version` (see
             // `manager::submit_feedback` for the two channels). Its other
-            // releases carry nothing else for codeg: 0.64.2 reverted #938's
+            // releases carry nothing else for dextra: 0.64.2 reverted #938's
             // ExitPlanMode `plan_update` experiment outright, and 0.65.0's
             // remaining commits are devDependency bumps — the runtime deps and
             // the Node floor still match 0.64.0's.
@@ -552,7 +552,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // — {objective, status (active|paused|blocked|limited|complete),
             // iterations?, lastReason?, createdAt/updatedAt (Unix ms),
             // tokenBudget?, tokensUsed?, timeUsedSeconds?, controlMethod},
-            // `goal: null` clears. codeg picks the goal channel per connection
+            // `goal: null` clears. dextra picks the goal channel per connection
             // at initialize (advertised ⇒ neutral only; see the
             // SessionInfoUpdate arm in connection.rs), the same selection that
             // keeps codex goals alive after its silent 1.2.0 switch. #967
@@ -567,7 +567,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // records ONLY, no resolve/tombstone wire; publication is STRICTLY
             // gated on the client advertising
             // `clientCapabilities._meta.jetbrains.air = {version >= 1,
-            // capabilities: ["sessionFailure"]}`. codeg advertises it
+            // capabilities: ["sessionFailure"]}`. dextra advertises it
             // (`build_client_capabilities`) and projects the records into the
             // session-failure banner (`AcpEvent::SessionFailure`); on
             // session/load the adapter re-publishes still-active failures
@@ -592,12 +592,12 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // "notReported", "providerError", plus the new
             // `dist/file-change-audit.js`) — the AIR `agentFileChangeReport`
             // capability, shipped in lockstep with codex-acp 1.4.0. It is
-            // OFF unless the client asks for it twice, and codeg deliberately
+            // OFF unless the client asks for it twice, and dextra deliberately
             // asks for neither; see `build_client_capabilities` in
             // connection.rs for the reasoning. The only ambient change is that
             // `airSessionFailureCapabilityMeta` became variadic so the agent
             // can advertise `["sessionFailure", "agentFileChangeReport"]` — an
-            // ADDITIVE element in an array codeg only ever membership-tests,
+            // ADDITIVE element in an array dextra only ever membership-tests,
             // so the session-failure gate is unaffected.
             //
             // 0.70.0–0.73.0 is a large release (the package grows 692K → 1.1M
@@ -606,7 +606,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `sessionCapabilities.subagents: {}` and two new AIR capability
             // names. `sessionCapabilities.fork` was already there in 0.69.0, so
             // `supports_fork` has been on for Claude all along. Wire-visible
-            // changes, in the order they matter to codeg:
+            // changes, in the order they matter to dextra:
             //
             // (a) The permission layer was rebuilt into `dist/permissions/**`
             // and option-level `_meta.permission.changes[]` is GONE — the whole
@@ -626,7 +626,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // for <prefix> commands"), which the button already renders. The
             // option IDs were renamed too (`allow-once`, `allow-with-updates`,
             // `allow-skill-exact`, `allow-skill-prefix`, `exit-plan-*`,
-            // `reject`) — inert, codeg only echoes the selected id back.
+            // `reject`) — inert, dextra only echoes the selected id back.
             // `parsePermissionOptionChanges` is NOT dead code: `supports_custom_version()`
             // is true for npx, so a user pinned to 0.64.1–0.72.0 still gets
             // `changes[]`.
@@ -639,7 +639,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `session_info_update.title` — the channel `acp::session_title`
             // already consumes. It generates at most ONCE per session and adopts
             // `info.customTitle` (a user `/rename` or an earlier generated title)
-            // without re-titling, so codeg needs no extra guard.
+            // without re-titling, so dextra needs no extra guard.
             //
             // (c) `fork-session.js` reads the SAME AIR fork point codex 1.8.0
             // does — `_meta.jetbrains.air.fork = {version: 1, messageId}`, with
@@ -649,13 +649,13 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // sending all three is forward-compatible. The `messageId` to send
             // is the top-level one `applyMessageId` stamps on message/thought
             // chunks (present since ≤0.69.0; typed as the stable
-            // `ContentChunk::message_id` in the 1.x schema). codeg derives it
+            // `ContentChunk::message_id` in the 1.x schema). dextra derives it
             // from the parsed transcript rather than the live chunks — see
             // `acp::fork::ForkPoint`.
             //
             // (d) The AIR capability array grew to `["sessionFailure",
             // "agentFileChangeReport", "nativeSubagentSessions", "asyncTasks"]`
-            // (0.76.0 appends a fifth, "recommendedValue" — see (k)). codeg
+            // (0.76.0 appends a fifth, "recommendedValue" — see (k)). dextra
             // adopted `asyncTasks` and deliberately leaves the other two out, so
             // `native-subagents.js` and `file-change-audit.js` stay dark. See
             // `build_client_capabilities` for why each is in or out.
@@ -706,7 +706,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `auth_status` now also clears (agent-side bookkeeping; nothing
             // goes on the wire) when a real model answers, so an out-of-band
             // sign-in no longer leaves a stale row that makes the adapter
-            // dedupe away the NEXT sign-out — and codeg's `login` action is
+            // dedupe away the NEXT sign-out — and dextra's `login` action is
             // exactly that case, since it opens /settings/agents and the
             // credential is then fixed outside the query process. And
             // `createSession` now discards a query it spawned but never
@@ -716,7 +716,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (g) Inert here. `--hide-claude-auth` (new `hide-claude-auth.js`:
             // refuse turns a claude.ai subscription would pay for, plus the
             // sign-out respawn machinery) is argv-gated and `args` below is
-            // empty — codeg has no per-agent argv override, and a user who
+            // empty — dextra has no per-agent argv override, and a user who
             // builds a CUSTOM agent around that flag gets `AgentType::Custom`,
             // which is not advertised AIR at all. That also makes the record's
             // new `reason` field unreachable: `CLAUDE_SUBSCRIPTION_NOT_SUPPORTED_REASON`
@@ -725,12 +725,12 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // legacy gateway `authenticate` (an absent payload still succeeds;
             // a PRESENT one must now carry an absolute http(s) `baseUrl`) and
             // the containment of a per-session failure during
-            // `providers/set`/`providers/disable` — codeg calls neither method
+            // `providers/set`/`providers/disable` — dextra calls neither method
             // on claude.
             //
             // 0.75.0 + 0.75.1 (four feature commits) are additive: an
             // `initialize` handshake replayed against both 0.74.0 and 0.75.1
-            // with codeg's own `clientCapabilities` differs by exactly two
+            // with dextra's own `clientCapabilities` differs by exactly two
             // things — the version string and a new
             // `agentCapabilities._meta.authStatus: {}`. `sessionCapabilities`,
             // the AIR capability array, `steering`, `goal` and
@@ -776,7 +776,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // (j) `authStatus` (upstream #1080) — the agent pushes its own
             // sign-in identity over `_auth/status_update`, the connection-level
-            // notification codex-acp 1.9.0 introduced. codeg registers that
+            // notification codex-acp 1.9.0 introduced. dextra registers that
             // handler unconditionally (not per agent), so claude's pushes are
             // already claimed and nothing changes; see `handle_auth_status_update`
             // for what claude adds over codex (a per-prompt probe, so a push can
@@ -789,7 +789,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // adapter goes 2.1.257 → 2.1.270 (`manifest.json` `version`).
             //
             // (k) `recommendedValue` (upstream #1111), the release's headline
-            // and a NEW AIR capability codeg now advertises — to claude here,
+            // and a NEW AIR capability dextra now advertises — to claude here,
             // and to codex from 1.11.0, which shipped its own half of the same
             // capability (see the codex entry (a)); 1.10.0's bundle contained
             // zero occurrences of the string, so this was claude-only for
@@ -813,7 +813,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // The ambiguous row is the point. `current_model_id_from_opts` reads
             // the model selector's `current_value`, and that is the model id
-            // `record_turn_end` stamps onto every turn codeg journals — on the
+            // `record_turn_end` stamps onto every turn dextra journals — on the
             // `default` row it is the literal string `"default"`, which no
             // consumer can resolve to a model. With the capability on, a session
             // still riding the SDK default reports the concrete model instead.
@@ -826,13 +826,13 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `modelSettings.effortLevel` first, then the legacy top-level one,
             // and only falls through to the recommendation when both are absent.
             //
-            // Stale `"default"` picks in `codeg:selector-prefs` are the
+            // Stale `"default"` picks in `dextra:selector-prefs` are the
             // migration hazard: the connect-time replay would re-send a value
             // the agent now rejects, on every connect, forever, and the row the
             // user would have to re-pick to overwrite it is the one that went
             // away. `config_option_rejects_value` handles it off the agent's
             // OWN advertised value list rather than off this pin — which
-            // matters, because the pin only governs what codeg installs, while
+            // matters, because the pin only governs what dextra installs, while
             // `resolve_npx_command` launches whatever `claude-agent-acp` is on
             // PATH.
             //
@@ -847,11 +847,11 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // option is gone, along with custom-agent discovery. This one is NOT
             // gated on the capability — 0.77.0 answers `set_config_option(agent,
             // …)` with `Unknown config option: agent` no matter what the client
-            // advertised (verified on the same live build). codeg never built a
+            // advertised (verified on the same live build). dextra never built a
             // picker for it, but the option WAS advertised (and rendered by the
             // generic selector path) whenever the cwd had a custom agent
             // configured, so a user who picked a persona has it saved in
-            // `codeg:selector-prefs`.
+            // `dextra:selector-prefs`.
             //
             // That preference is deliberately left alone. The option is no
             // longer advertised at all, so `config_option_rejects_value` cannot
@@ -866,8 +866,8 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (m) `_meta.permission.defaultToNo` (SDK 0.3.268+, forwarded by
             // `presentation.js`): "the ask must not be approvable by a stray
             // keystroke". The adapter already lists the reject options FIRST for
-            // such an ask, and codeg renders options in wire order and
-            // pre-selects nothing, so the hard half was free. What codeg adds is
+            // such an ask, and dextra renders options in wire order and
+            // pre-selects nothing, so the hard half was free. What dextra adds is
             // the emphasis: `PermissionDialog` paints the decline as the primary
             // button and demotes every approve option to an outline, so the one
             // accent-coloured control on a dangerous card is not "Allow". Read
@@ -878,7 +878,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // always-allow button simply is not offered.
             //
             // (n) `<system-reminder>` blocks are stripped from replayed prompts
-            // (upstream #1040) — a codeg-visible fix that arrives for free. The
+            // (upstream #1040) — a dextra-visible fix that arrives for free. The
             // CLI appends them to a user turn to steer the model; live they
             // never reach a client, but `session/load` replayed them verbatim
             // INSIDE the user's own bubble. `parsers::claude` has stripped them
@@ -892,14 +892,14 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `inferLiveToolName` reads, and upstream explicitly keeps that key
             // populated "for clients that key off it". Schema 1.9 types it
             // (`ToolCall::name`, stable), so reading it no longer needs a raw
-            // reader — it would simply be a second source for information codeg
+            // reader — it would simply be a second source for information dextra
             // already has, and one the other agents fill differently (see the
             // codex entry's (d)). The
             // multi-select custom-answer fix (#1031) lands in `elicitation.ts`,
-            // which claude never reaches: codeg advertises
+            // which claude never reaches: dextra advertises
             // `elicitation.form` for Codex and DeepSeek only. The `TaskList`
             // ReDoS fix (#1006) and the `allowDangerouslySkipPermissions: false`
-            // host opt-out (#1129) are adapter-internal — codeg WANTS the
+            // host opt-out (#1129) are adapter-internal — dextra WANTS the
             // `bypassPermissions` mode in the catalog, so it deliberately does
             // not send the opt-out.
             //
@@ -928,7 +928,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `clientCapabilities.session.compaction` being an object — a real
             // typed field, NOT an `_meta` key, so unlike every other opt-in on
             // this list it cannot be smuggled through `ClientCapabilities.meta`:
-            // the `agent-client-protocol-schema` 0.11.7 codeg pinned at the
+            // the `agent-client-protocol-schema` 0.11.7 dextra pinned at the
             // time had no `session` field on `ClientCapabilities` at all, and no
             // `CompactionUpdate` / `CompactionSummaryChunk` on `SessionUpdate`
             // (both arrived in schema 1.9 behind `unstable_session_compaction`).
@@ -936,7 +936,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // ⚠️ THIS ENTRY USED TO CALL THAT "out of reach at this schema pin".
             // It is not, and the correction is worth stating because the same
             // wrong inference was drawn twice more below. The pin limits what
-            // the TYPED STRUCTS can say, not what codeg can put on the wire:
+            // the TYPED STRUCTS can say, not what dextra can put on the wire:
             // `session/new` and `session/load` already go out as
             // `UntypedMessage`s, and `air_async_task_delta` already reads three
             // variants this very `SessionUpdate` cannot deserialize. Opting in
@@ -1003,7 +1003,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // because it is easy to get backwards. Claude's opening `tool_call`
             // carries `rawInput` (a deep clone of the SDK tool input), but the
             // `tool_call_update` the PostToolUse hook emits for Edit/Write
-            // carries the diff content and NO `rawInput` at all. codeg's update
+            // carries the diff content and NO `rawInput` at all. dextra's update
             // arm reads `raw_input` off THAT frame, finds none, and so runs
             // `synthesize_edit_input_from_diffs`, whose result REPLACES the
             // opening frame's input — so the card's "+N −M" ends up being
@@ -1014,9 +1014,9 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // collapsed count and the expanded body are held to a per-input
             // parity contract by the shared `exceedsLineDiffBudget` gate, and
             // both sides of it re-diff that text here; taking the adapter's
-            // numbers for the header while the body stays codeg's own re-diff
+            // numbers for the header while the body stays dextra's own re-diff
             // reintroduces exactly the drift the gate exists to prevent, for a
-            // number codeg can already compute exactly. And it would help
+            // number dextra can already compute exactly. And it would help
             // precisely where it is absent: the per-hunk blocks it marks are far
             // too small to reach the LCS budget, while the whole-file `Write`
             // fallback (`oldText: originalFile`) — the one shape that could — is
@@ -1051,11 +1051,11 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // and the text rides beside it as the tool's own
             // `annotations[question].notes` — and the "Other" box is relabelled
             // to say so. It lands in `elicitation.ts`, which claude never
-            // reaches, because codeg advertises `elicitation.form` for Codex and
+            // reaches, because dextra advertises `elicitation.form` for Codex and
             // DeepSeek only. Recorded because it is the near-twin of codex-acp
             // 1.12.0's `request_user_input` reshape (codex entry (a)): the same
             // "a free-text note must not eat the selection" idea, arriving in
-            // the same fortnight, on the one adapter where codeg is not the
+            // the same fortnight, on the one adapter where dextra is not the
             // client that sees it.
             //
             // 0.79.0 is two upstream changes (#1070, #1143) plus the release
@@ -1071,7 +1071,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // (t) **A shell approval's heading is now the COMMAND, not the
             // model's summary** (#1070, upstream #1068) — the one delta in this
-            // release that costs codeg code. Through 0.78.0
+            // release that costs dextra code. Through 0.78.0
             // `buildClaudePermissionPresentation` gave a `Bash`/`PowerShell`
             // request `shellTitle = compactText(input.description) ?? toolName`
             // and used it for BOTH the presentation's `toolCall.title` and its
@@ -1090,10 +1090,10 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // the summary to the command the moment it started. They are now the
             // same string.
             //
-            // The other half is a regression codeg has to absorb, and it lands
+            // The other half is a regression dextra has to absorb, and it lands
             // exactly where the client was most careful. `_meta.permission.title`
             // is now byte-identical to `toolCall.title` AND to the command
-            // codeg renders in the card's own block; `parsePermissionToolCall`
+            // dextra renders in the card's own block; `parsePermissionToolCall`
             // prefers that meta title over the title precisely BECAUSE the title
             // used to be the command. So the heading turns into a second copy of
             // the command block, and the model's one-line label leaves the card
@@ -1120,10 +1120,10 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (`_meta.claudeCode.title` = the description), the terminal
             // `_meta` on the opening frame, and the error-result arm that yields
             // to the terminal channel. The terminal half is gated on the client
-            // `_meta.terminal_output` capability, which codeg does not advertise,
+            // `_meta.terminal_output` capability, which dextra does not advertise,
             // so it stays inert and the description keeps riding `content`.
             //
-            // codeg only half-knew the name, and the halves it knew were the
+            // dextra only half-knew the name, and the halves it knew were the
             // cheap ones. `getToolIcon` and `classifyToolKind` both carried a
             // `powershell` arm (added for pi, which swaps the same name in on
             // Windows), but `normalizeToolName` did not — so every dispatch
@@ -1145,22 +1145,22 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // runs. Settling the deferred turn on one of those would release
             // `session/prompt` with the promised text still ahead — the
             // out-of-turn delivery class upstream fixed in #864–#866 — so the
-            // hold now waits for `num_turns > 0`. codeg advertises `asyncTasks`
+            // hold now waits for `num_turns > 0`. dextra advertises `asyncTasks`
             // and runs claude background shells/workflows/monitors through it,
-            // so this is a fix codeg gets by bumping.
+            // so this is a fix dextra gets by bumping.
             //
             // `_meta.claudeCode.mcpServer` (SDK 0.3.274's `McpServerProvenance`,
             // `{name, source}`) is NOT consumed. It answers "which server serves
             // this `mcp__*` tool, and was it registered in-process by the host
-            // (`source: "sdk"`) or configured"; codeg injects codeg-mcp over
+            // (`source: "sdk"`) or configured"; dextra injects dextra-mcp over
             // stdio, which is a configured source and never reads `sdk`, and the
-            // only trust question codeg asks of an MCP tool call — is this one of
+            // only trust question dextra asks of an MCP tool call — is this one of
             // the companions I minted? — it already answers from the tool name
             // it chose itself. What DOES change without asking is its sibling:
             // the block is now emitted when `mcpServer` is present even with no
             // `parentToolUseId`, so `_meta.claudeCode.toolName` reaches a
             // top-level MCP tool's PERMISSION frame for the first time. That is
-            // the signal `inferLiveToolName` resolves the codeg-mcp companion
+            // the signal `inferLiveToolName` resolves the dextra-mcp companion
             // cards on, so a pending MCP approval now shows the right card
             // instead of flipping to it once the call runs and the streamed
             // frame (which always carried `toolName`) refines it.
@@ -1171,7 +1171,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `@anthropic-ai/claude-agent-sdk` goes 0.3.274 → 0.3.280, i.e. CLI
             // 2.1.274 → **2.1.280** (`manifest.json`); `engines.node` stays
             // ">=22". Three of the four need nothing here; the fourth is the
-            // only item in this whole bump that costs codeg code, and it costs
+            // only item in this whole bump that costs dextra code, and it costs
             // it in the HISTORY parser rather than on the wire.
             //
             // (w) **The subagent hand-back frame** (CLI-side, arrives with the
@@ -1181,7 +1181,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // provenance paragraph and indents every line of the report two
             // spaces. 0.81.0's `tools.ts` unwraps it (`unwrapHandbackFrame`)
             // before the report reaches a client, so the LIVE path is clean by
-            // bumping — but codeg also renders `Agent`/`Task` results from the
+            // bumping — but dextra also renders `Agent`/`Task` results from the
             // CLI's own JSONL (`parsers::claude::extract_tool_result_text` takes
             // the tool_result text; `toolUseResult` is only mined for
             // `structuredPatch` and agent stats), and there the frame is still
@@ -1192,13 +1192,13 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // of the 2.1.280 binary rather than transcribed from the adapter.
             // Note this is NOT gated on the adapter: a user whose standalone
             // Claude Code CLI reaches 2.1.277 writes the frame into every
-            // transcript codeg imports, adapter or no adapter.
+            // transcript dextra imports, adapter or no adapter.
             //
             // (x) `terminal_output_delta` (#1150, the twin of codex-acp 1.13.0's
             // #528). A client may now advertise `_meta.terminal_output_delta`
             // instead of `_meta.terminal_output`; the adapter treats EITHER as
             // "this client takes terminal output" and renames the key it emits.
-            // codeg advertises neither to claude, deliberately — see
+            // dextra advertises neither to claude, deliberately — see
             // `build_client_capabilities`, and (u) above for what the `content`
             // channel is still carrying because of it. Inert.
             //
@@ -1206,7 +1206,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // cancelled or errored turn calls `ContextCompactionLifecycle
             // ::interrupt()`, which settles the entity and refuses the late,
             // uncorrelated hooks the abandoned work keeps emitting until a new
-            // turn's dispatch calls `resume()`. codeg renders compaction from
+            // turn's dispatch calls `resume()`. dextra renders compaction from
             // the legacy `_meta.contextCompaction` tool call (the
             // the `compaction_update` presentation too, see (p)),
             // and that call is exactly what used to be left `in_progress`
@@ -1220,7 +1220,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // that as "the running total restarted" and take the reading itself
             // as the increment. `lastModelUsageReading` is now `undefined` on a
             // resumed session and the first result's rows come from its own
-            // per-turn `usage` instead. This lands straight in codeg's
+            // per-turn `usage` instead. This lands straight in dextra's
             // `_meta.quota.model_usage` consumer — the per-model rows on the
             // first turn after a resume were inflated by the entire prior
             // session. Nothing to do beyond the bump.
@@ -1242,7 +1242,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // * It takes over the AIR lane. The model-fallback advisory is
             //   `if (!supportsNotices && supportsAirSessionFailures(...))`, so
-            //   turning notices on stops feeding codeg's existing
+            //   turning notices on stops feeding dextra's existing
             //   `SessionFailure` banner; codex-acp says the same in its
             //   readme-dev ("notices take precedence over AIR advisory
             //   records"). PAID: `sessionFailureFromNotice` mirrors
@@ -1266,11 +1266,11 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // #1166) and moves NO dependency: `@anthropic-ai/claude-agent-sdk`
             // stays 0.3.280 (so the CLI is still 2.1.280), the ACP SDK stays
             // 1.5.0, `engines.node` stays ">=22", and the `initialize` response
-            // to codeg's handshake matches 0.81.0's field for field apart from
+            // to dextra's handshake matches 0.81.0's field for field apart from
             // the version (both probed live over stdio). Two items cost
-            // codeg code, (bb) and (cc). The rest arrive free or are inert, and
+            // dextra code, (bb) and (cc). The rest arrive free or are inert, and
             // they are written down because three of them settle something
-            // codeg reported upstream or already works around.
+            // dextra reported upstream or already works around.
             //
             // (bb) **File-tool argument aliases** (#1161). CLI 2.1.280 accepts
             // `path` for Write's `file_path` and `file_text` / `file_content`
@@ -1279,7 +1279,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // block, and with it `rawInput` and the JSONL, keeps the model's
             // spelling. The adapter fixed only its OWN title, diff and
             // locations (`normalizeWriteInput`); `rawInput` is still the raw
-            // clone, and every codeg card reads `rawInput`, so an aliased
+            // clone, and every dextra card reads `rawInput`, so an aliased
             // Write rendered with no path and no body. Edit has carried the
             // same kind of renames for longer — `path`, `old_str`, `new_str`,
             // `replace_name`, all already in the 2.1.274 binary — and the
@@ -1292,7 +1292,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // keyed on `_meta.claudeCode.toolName`. A permission request needs
             // nothing: the CLI parses, and so coerces, the input before
             // `canUseTool` sees it. Like (w), this is not gated on the adapter:
-            // any 2.1.280 CLI writes these spellings into the transcripts codeg
+            // any 2.1.280 CLI writes these spellings into the transcripts dextra
             // reads. On success the CLI also appends a model-directed note to
             // the Write result ("Note: Write's parameters are named `file_path`
             // and `content`. …"); it is short and true, and stays visible.
@@ -1317,7 +1317,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // for good. `session_modes_reject_id` screens it off the session's
             // own mode list, the same way.
             //
-            // (dd) Plan approval: two of the three defects codeg reported as
+            // (dd) Plan approval: two of the three defects dextra reported as
             // #1077 are fixed, and the third is not. #1163 — an allowed
             // ExitPlanMode now publishes the mode it leaves the session in, as
             // a `current_mode_update` plus a `mode` `config_option_update`, and
@@ -1325,7 +1325,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // fell back to acceptEdits reads as acceptEdits. Through 0.81.0
             // only the clear-context options did, and the composer kept
             // showing Plan while the session ran in Auto. Both frames land on
-            // paths codeg already has; claude's composer is driven by its
+            // paths dextra already has; claude's composer is driven by its
             // `mode` config option, which is not re-asserted at send time, so
             // the published mode holds for the rest of the connection. #1164 —
             // bypass is offered NEXT TO Auto instead of being dead code behind
@@ -1336,11 +1336,11 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // still gives the Claude-side session a fresh uuid
             // (`options.sessionId = publicSessionId ? randomUUID() :
             // sessionId`), so a later `session/load` of the public id is
-            // silently truncated at the plan. codeg still does not work
+            // silently truncated at the plan. dextra still does not work
             // around it.
             //
             // (ee) A steered turn settles on the result that answers the steer
-            // (#1166). codeg steers claude natively
+            // (#1166). dextra steers claude natively
             // (`steering_prompt_required_min_version`), and through 0.81.0 a
             // steered turn settled only at an SDK `idle` after the steer's
             // echo — so a steer the CLI never replayed, or an idle swallowed by
@@ -1348,7 +1348,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `session/prompt` parked until cancel or the next prompt (#1114).
             // A result whose `user_message_uuids` names the steer now settles
             // it, and the idle stays as the fallback. A free fix to exactly
-            // the turn boundary codeg's in-flight tracking keys on.
+            // the turn boundary dextra's in-flight tracking keys on.
             //
             // (ff) Usage. #1132: the CLI's synthetic frames (spend limit,
             // sign-in prompt, local command output — `model: "<synthetic>"`,
@@ -1372,11 +1372,11 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `systemPrompt` / `disableBuiltInTools`,
             // `_meta.claudeCode.emitRawSDKMessages` and every process-level
             // `_meta.claudeCode.options` key, skills normalized as a set — not
-            // just cwd and MCP servers. codeg sends the same `_meta`
+            // just cwd and MCP servers. dextra sends the same `_meta`
             // (`emitRawSDKMessages: true`, nothing else) on new, load and
             // resume, and the resume that follows a fork creates its session
             // cold (`unstable_forkSession` never enters the adapter's session
-            // map, so there is no fingerprint to compare), so no codeg flow
+            // map, so there is no fingerprint to compare), so no dextra flow
             // rebuilds a query it did not rebuild before.
             //
             // (hh) The rest need nothing. #1035: a marker-only custom slash-
@@ -1387,10 +1387,10 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // history path, so the two paths now agree. #1055 tags the
             // informational fallback line with `_meta.claudeCode.kind =
             // "informational"`, which only a client WITHOUT the notices
-            // capability ever receives; codeg advertises it (see (aa)). #1103:
+            // capability ever receives; dextra advertises it (see (aa)). #1103:
             // a successful result that merely MENTIONS `Please run /login` no
             // longer fails the turn as `auth_required`, nor rolls a goal back.
-            // #1104 touches only `providers/set`, which codeg never sends.
+            // #1104 touches only `providers/set`, which dextra never sends.
             // #1146: an unreadable managed-policy tier no longer kills the
             // adapter before it answers `initialize`.
             distribution: AgentDistribution::Npx {
@@ -1411,12 +1411,12 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // agentclientprotocol org (TypeScript rewrite, npx-distributed).
             // 1.1.8 depends on `@openai/codex` ^0.145.0 and drives `codex
             // app-server`; since 1.0.1 it also resolves the resumed
-            // `model_provider` from `~/.codex/config.toml` (#224), so codeg no
+            // `model_provider` from `~/.codex/config.toml` (#224), so dextra no
             // longer injects `MODEL_PROVIDER` to keep resumed sessions on the
             // custom provider. 1.1.0 (#263) reports `/goal` transitions as a
             // structured `session_info_update` (`_meta.codex.goal`) rather than
             // live agent text — see `crate::acp::codex_goal`. 1.1.3+ adds three
-            // new live signals codeg handles in `connection::emit_conversation_update`:
+            // new live signals dextra handles in `connection::emit_conversation_update`:
             // `subAgentActivity` tool calls (#304, suppressed via
             // `is_codex_subagent_activity` — redundant with the collab capsule),
             // retryable turn errors (#289, `_meta.codex.error` → a transient
@@ -1425,17 +1425,17 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // call → a dedicated frontend card). 1.1.x also adds Plan mode: the
             // `collaboration_mode` config option (rendered by the generic
             // config-option path) and native `request_user_input`, delivered as
-            // an ACP `elicitation/create` request — codeg advertises
+            // an ACP `elicitation/create` request — dextra advertises
             // `elicitation.form` for Codex and bridges the WHOLE form surface
             // (Plan-mode questions, MCP-server forms, MCP tool-call approvals)
             // in `handle_elicitation_request` / `question::classify_elicitation`.
             // 1.1.5 (#322) also widened codex-acp's MCP config filtering to
-            // project `.codex` layers, which is why codeg forces
+            // project `.codex` layers, which is why dextra forces
             // `DISABLE_MCP_CONFIG_FILTERING` (see `apply_codex_env_policy`) so
-            // the injected `codeg-mcp` server always survives. 1.1.6 adds
+            // the injected `dextra-mcp` server always survives. 1.1.6 adds
             // steering (#309): `_session/steering` injects a user prompt into
             // the LIVE turn (initialize advertises `_meta.steering.supported`)
-            // — codeg keeps codex on the MCP pull channel because 1.1.9 still
+            // — dextra keeps codex on the MCP pull channel because 1.1.9 still
             // lacks the `promptRequired` idle opt-in
             // (`steering_prompt_required_min_version` → None; flipping it on
             // is a one-liner once a release implements the opt-in AND its
@@ -1451,18 +1451,18 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // sends a `session/request_permission` marked
             // `_meta.codex = {kind:"plan_review", planItemId}` whose `toolCall`
             // (`plan-review:<itemId>`, kind `switch_mode`, `rawInput.plan`) was
-            // NEVER announced as a `tool_call` — codeg seeds it from the request
+            // NEVER announced as a `tool_call` — dextra seeds it from the request
             // (see `is_codex_plan_review` / `handle_permission_request`) so the
             // follow-up `tool_call_update` has a card to merge into. On approval
             // codex flips the mode back to default (a mid-turn
             // `config_option_update`) and runs the implementation turn inside
             // the SAME `session/prompt`. 1.1.8 (#342) also hangs a structured
             // `_meta.permission = {version, changes[]}` on each permission
-            // option, whose `changes[].description` codeg surfaces in the
+            // option, whose `changes[].description` dextra surfaces in the
             // permission card — the contract claude-agent-acp joined in 0.64.1
             // (#930), so that rendering is no longer codex-only. The
             // `clientCapabilities.plan` path (structured
-            // `plan_update`s) does NOT apply: codeg does not advertise that
+            // `plan_update`s) does NOT apply: dextra does not advertise that
             // capability (see `build_client_capabilities`), so plans keep
             // arriving as `agent_message_chunk`s. That also makes 1.1.9 (#354,
             // which coalesces streamed plan snapshots to one `plan_update`
@@ -1475,7 +1475,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // transitions move to the provider-neutral
             // `session_info_update._meta.goal` snapshot the claude adapter
             // speaks since 0.66.0 — the legacy `_meta.codex.goal` key is GONE,
-            // so codeg's initialize-pinned channel selection (SessionInfoUpdate
+            // so dextra's initialize-pinned channel selection (SessionInfoUpdate
             // arm, connection.rs) is what keeps GoalCard alive from this
             // release on. The neutral snapshot collapses usageLimited/
             // budgetLimited into status "limited", adds paused/blocked,
@@ -1486,7 +1486,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // to the final record shape in 1.3.0/#393, same wire as
             // claude-agent-acp 0.67.0 — see that entry): typed session
             // failures gated STRICTLY on the client advertising
-            // `clientCapabilities._meta.jetbrains.air`, which codeg does
+            // `clientCapabilities._meta.jetbrains.air`, which dextra does
             // (`build_client_capabilities`). Advertising REPLACES the legacy
             // surfaces on the wire: `_meta.codex.error` (both willRetry
             // branches), warning/config-warning text chunks and dropped
@@ -1510,7 +1510,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // switching). New in the bundle and fine on generic cards:
             // synthetic "Guardian Review" tool calls (kind "think") and
             // fuzzyFileSearch ids. Structured plan_update stays inert — its
-            // gate is the TOP-LEVEL `clientCapabilities.plan`, which codeg does
+            // gate is the TOP-LEVEL `clientCapabilities.plan`, which dextra does
             // not advertise. 1.3.0 still ships NO steering `promptRequired`
             // opt-in (tarball grep: zero hits ⇒ the arm below stays None) and
             // still declares no `engines.node`, so the 20.0.0 floor is
@@ -1525,7 +1525,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `sandbox: "read-only"`, `ephemeral: true`) and running an extra
             // turn on the fork; claude uses a Stop hook plus a hidden
             // continuation. Either way it is an extra model round-trip per
-            // prompt, and it is gated on a client advertisement codeg does not
+            // prompt, and it is gated on a client advertisement dextra does not
             // make — see `build_client_capabilities` in connection.rs.
             // 1.6.0/1.6.2 (no 1.5.0 or 1.6.1 was published) add NO new modules
             // and nothing wire-visible: `@openai/codex` moves to ^0.148.0,
@@ -1554,7 +1554,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // still emits `changes[]`, so that parser stays. Codex's option
             // IDs were also renamed (`allow_for_session`,
             // `accept_execpolicy_amendment`, `apply_network_policy_amendment:N`
-            // …) — inert here, codeg only echoes back the selected id — and
+            // …) — inert here, dextra only echoes back the selected id — and
             // network deny amendments introduce codex's first `reject_always`
             // option kind, which `handle_permission_request` already maps.
             // `_meta.codex = {kind: "plan_review", planItemId}` is unchanged,
@@ -1577,16 +1577,16 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // accepts Codex's current nested context-management and multi-agent
             // feature configuration; 0.152.x rejects those tables before
             // `session/new` with "invalid type: map, expected a boolean".
-            // The later ACP additions remain capability-scoped: codeg does not
+            // The later ACP additions remain capability-scoped: dextra does not
             // advertise session forks, native subagent sessions, AIR async
             // tasks, or recommended-value reports. Auth status is an extension
             // notification and unknown extensions remain inert. AI title
             // updates, MCP OAuth fixes, usage reporting, history pagination,
-            // and simplified model labels use surfaces codeg already accepts.
+            // and simplified model labels use surfaces dextra already accepts.
             //
             // NOT adopted: native ACP subagent sessions (the draft subagent
             // RFD). The gate is bilateral — `clientCapabilities.subagents: {}`
-            // or AIR `nativeSubagentSessions` — and codeg advertises neither,
+            // or AIR `nativeSubagentSessions` — and dextra advertises neither,
             // so the lifecycle stays the legacy `subAgentActivity` tool call
             // whose shape (`_meta.codex.subagent = {threadId, path, activity}`)
             // is byte-identical to 1.4.0's. This entry used to call opting in
@@ -1595,7 +1595,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `subagent_state_update`. The v1 schema still carries neither (as
             // of 1.9), but that was never the blocker — a raw pre-dispatch
             // reader gets past it, as the AIR task frames show. What keeps it
-            // out is that advertising DELETES the tool call codeg anchors the
+            // out is that advertising DELETES the tool call dextra anchors the
             // sub-agent capsule on; `build_client_capabilities` records the
             // whole trade.
             // Likewise still not adopted: `agentFileChangeReport` (unchanged
@@ -1622,7 +1622,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // It resolves the id against `thread.turns[].items[].id` (stripping
             // a `:segment:\d+$` suffix first), then falls back to hashing each
             // `agentMessage` text and taking the Nth match. Absent the block it
-            // forks at the tail — codeg's current behaviour. claude-agent-acp
+            // forks at the tail — dextra's current behaviour. claude-agent-acp
             // 0.73.0 reads the same block (messageId only), so ONE client-side
             // implementation covers both.
             //
@@ -1673,7 +1673,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // stdio, WITH and WITHOUT the advertisement — see the wire trace in
             // `build_client_capabilities`. The control run is the argument for
             // opting in: without it the launching `execute` tool call sits at
-            // `in_progress` for the rest of the connection and codeg learns
+            // `in_progress` for the rest of the connection and dextra learns
             // nothing at all about the process behind it.
             //
             // (b) 1.9.0 — **`_auth/status_update`**, a connection-level (NO
@@ -1681,7 +1681,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // the `initialize` response, then on each authenticate / logout /
             // session create, and on the app-server's `account/updated`. It is
             // NOT capability-gated in either direction; the agent only
-            // ANNOUNCES it via `agentCapabilities._meta.authStatus = {}`. codeg
+            // ANNOUNCES it via `agentCapabilities._meta.authStatus = {}`. dextra
             // claims and drops it in `handle_auth_status_update` — see there for
             // why a silent drop is not an option.
             //
@@ -1689,16 +1689,16 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // refreshes the rate limits before printing instead of showing
             // whatever the last turn happened to report, prints an extra
             // "individual spend limit" line, and flips the context line from
-            // "N% left" to "N% used". All three are agent TEXT that codeg
+            // "N% left" to "N% used". All three are agent TEXT that dextra
             // renders as markdown — the whole repo has no `/status` parser
-            // (`lib/codex-command-action.ts`, codeg's only codex-text reader,
+            // (`lib/codex-command-action.ts`, dextra's only codex-text reader,
             // handles tool-call titles and command-result envelopes, never a
             // slash-command's reply), so this is display-only.
             //
             // (d) 1.9.0 — `sessionState.lastTokenUsage` is reset when a turn
             // actually STARTS rather than when a prompt is received, so a prompt
             // that dies before its turn opens no longer blanks the last usage.
-            // codeg reads `usage_update` frames and is unaffected.
+            // dextra reads `usage_update` frames and is unaffected.
             //
             // `thread/backgroundTerminals/{list,terminate}` are the app-server
             // half of (a) and never reach ACP. Steering STILL ships no
@@ -1712,7 +1712,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // and the literal-set delta is six strings in (`recommendedValue`,
             // `thread/turns/list`, `paginated`, `legacy`, `desc`, the version)
             // against three out (`GPT`, `Mini`, the version). Four changes reach
-            // codeg:
+            // dextra:
             //
             // (a) AIR **`recommendedValue`** — the reason for the bump, and the
             // only new client-facing surface. `createSessionConfigOptions` now
@@ -1732,7 +1732,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // See `build_client_capabilities` for the live three-run trace and
             // why it is safe.
             //
-            // (b) Model display names are REFORMATTED, and codeg shows them
+            // (b) Model display names are REFORMATTED, and dextra shows them
             // verbatim. `MODEL_NAME_TOKEN_OVERRIDES` (gpt→GPT, mini→Mini,
             // codex→Codex, dashes kept) is replaced by `formatModelDisplayName`,
             // which STRIPS a leading `gpt-`, splits on `[-/]+` and title-cases
@@ -1742,7 +1742,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // VALUES (`gpt-6-astra`, …) are unchanged, and the model picker
             // groups by value prefix (`lib/model-config-groups.ts`), so nothing
             // regroups — but the composer chip now reads `5.5` rather than
-            // `GPT-5.5`, which is a deliberate upstream change, not a codeg bug.
+            // `GPT-5.5`, which is a deliberate upstream change, not a dextra bug.
             //
             // (c) `session/load` history now pages through `thread/turns/list`
             // (50/page, `sortDirection: "desc"`, `itemsView: "full"`, with a
@@ -1750,7 +1750,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `historyMode: "paginated"`, instead of one `thread/read
             // {includeTurns: true}`. `session/resume`, `session/fork` and the
             // audit fork additionally pass `excludeTurns: true`, so the turns no
-            // longer ride the resume response at all. codeg's codex sessions
+            // longer ride the resume response at all. dextra's codex sessions
             // take the resume path and do not drain a replay (see the "No drain"
             // note in connection.rs), so this is invisible to the timeline and
             // strictly cheaper on long threads.
@@ -1758,14 +1758,14 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (d) A standalone MCP-elicitation tool call is now FINALIZED. When
             // codex falls back to `session/request_permission` for an
             // elicitation — a message-only form, or a `url` elicitation, both of
-            // which codeg hits because it advertises `elicitation.form` but
+            // which dextra hits because it advertises `elicitation.form` but
             // deliberately not `elicitation.url` — 1.10.0 posted a `pending`
             // tool call and never updated it, leaving it pending for the life of
             // the connection. 1.11.0 answers with a `tool_call_update`
             // (`completed`, `rawOutput: {action}`) and the request now carries a
             // `title` ("MCP tool call approval" / "Question from MCP server" /
             // "MCP server requests to open a URL") plus `rawInput.description`.
-            // Pure gain for codeg's permission card and tool-call row; no client
+            // Pure gain for dextra's permission card and tool-call row; no client
             // change needed.
             //
             // Everything else holds: no literal was removed except the two
@@ -1776,21 +1776,21 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // moves ^0.153.3 → ^0.153.4 (a patch).
             //
             // 1.12.0 is a MUCH bigger bump than 1.11.0 — +624/-599 bundle lines
-            // — and unlike that one it carries a REGRESSION for codeg as well as
+            // — and unlike that one it carries a REGRESSION for dextra as well as
             // gains. Five deltas, in descending order of what they cost us:
             //
             // (a) **`request_user_input` was reshaped**, and reading it the old
             // way is not cosmetic. `buildUserInputRequest` swapped its two
             // strings — `title` was the short tab header and `description` the
             // question; now `title` IS the question and `description` the
-            // header (emitted only when the model supplied one). codeg reads
+            // header (emitted only when the model supplied one). dextra reads
             // `description`-first, so the card would have shown a codex ask
             // BACKWARDS: on a single-question ask there is no tab strip, so the
             // only thing on screen would be the header ("Approach") and the
             // question itself would never be displayed. The companion field
             // moved too: `<id>__other` / `_meta.codex.isOtherAnswer` (titled
             // "Other") became `<id>_note` / `_meta.codex.role = "user_note"`
-            // (titled "Additional answer or note"), so codeg's companion skip
+            // (titled "Additional answer or note"), so dextra's companion skip
             // missed it and rendered it as a duplicate question; and an
             // `isOther` question's `oneOf` now ends with an injected "None of
             // the above" pointing at that hidden note field. `question.rs`
@@ -1808,7 +1808,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // WHETHER any of it applies at all is a separate gate, and a
             // stricter one: `ElicitationPeer`, taken from the connection's agent
-            // type. codeg advertises `elicitation.form` to DeepSeek too, and
+            // type. dextra advertises `elicitation.form` to DeepSeek too, and
             // either adapter can relay an arbitrary MCP server's form down the
             // same handler, so the parser may not decide "this is codex" from
             // `_meta.codex.*` in the payload — `_meta` is an open namespace and
@@ -1817,10 +1817,10 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // regardless of what the form carries.
             //
             // Two more deltas of the same rework need no client change: every
-            // question is now in `required` (codeg's card requires an answer or
+            // question is now in `required` (dextra's card requires an answer or
             // a decline either way), and the request `message` is the constant
             // "Codex needs your input to continue." instead of the single
-            // question's text — which codeg drops on the Questions path and
+            // question's text — which dextra drops on the Questions path and
             // never displayed.
             //
             // (b) The AIR **`agentFileChangeReport`** is no longer a model
@@ -1829,7 +1829,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (`AgentFileChangeReportBudget`, a 30s budget, interrupt/unsubscribe
             // plumbing); 1.12.0 deletes all of that and parses the
             // `turn/diff/updated` unified diff instead, buffered per turn behind
-            // the same capability gate (`collectTurnDiffs`), 8MiB cap. codeg
+            // the same capability gate (`collectTurnDiffs`), 8MiB cap. dextra
             // still does not advertise it, and the cost half of that decision is
             // now moot — but the coverage half got STRONGER, not weaker: the
             // report hard-codes `uncertainty` to "Codex turn diffs may omit
@@ -1837,21 +1837,21 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // including shell commands, version-control commands, generators,
             // and child processes", i.e. it is now explicitly narrower than the
             // model audit it replaced, and far narrower than the recursive
-            // `notify` watcher codeg already runs. See `build_client_capabilities`.
+            // `notify` watcher dextra already runs. See `build_client_capabilities`.
             //
             // (c) **`diffStats`** — a new AIR key, and the only one here that is
             // NOT capability-gated: `withAirMeta(…, AIR_DIFF_STATS_KEY, …)` is
             // called unconditionally on every add/update/delete file-change
             // `_meta` (`{version: 1, added, removed}`, derived from the real
             // patch hunks; `null` and therefore omitted when the patch does not
-            // parse). So it already arrives, and codeg already ignores it —
+            // parse). So it already arrives, and dextra already ignores it —
             // deliberately. The edit card's collapsed "+N −M" and its expanded
             // diff body are held to a hard per-input parity contract
             // (`exceedsLineDiffBudget`, one shared budget across
             // `estimateChangedLineStats` and `generateUnifiedDiff`), and codex
-            // ships FULL old/new file text in the ACP `Diff` block, which codeg
+            // ships FULL old/new file text in the ACP `Diff` block, which dextra
             // re-diffs itself. Taking the agent's hunk counts for the header
-            // while the body stays codeg's own re-diff is exactly the drift that
+            // while the body stays dextra's own re-diff is exactly the drift that
             // contract exists to prevent. claude-agent-acp 0.78.0 shipped the
             // same key from the other direction (claude entry (r)) — per
             // structuredPatch hunk rather than per file — and is declined for
@@ -1863,15 +1863,15 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `request_permissions`, and `<namespace><tool>` for dynamic tool
             // calls — on the live stream, the completion updates, the permission
             // request and the `session/load` function-call replay alike. When
-            // this was written the schema crate codeg pinned (0.11.x) dropped
+            // this was written the schema crate dextra pinned (0.11.x) dropped
             // the field; schema 1.9 types it as a stable `ToolCall::name`, so
             // reading it no longer takes a raw reader — but it is still not
             // read, because it adds nothing: every surface it names is one
-            // codeg already classifies from `kind` + `title` — command
+            // dextra already classifies from `kind` + `title` — command
             // executions are `kind: "execute"` with the command as the title,
             // `view_image` is `kind: "read"` with a resource_link, and a dynamic
             // tool call's title already IS the tool name (`name` only adds the
-            // namespace prefix, which codeg does not render). MCP tool calls,
+            // namespace prefix, which dextra does not render). MCP tool calls,
             // the one place an exact name would help, get NO `name` at all —
             // they keep `mcp.<server>.<tool>` plus `_meta.is_mcp_tool_call`.
             //
@@ -1892,7 +1892,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `engines.node`, so the 20.0.0 floor stays. One config delta needs
             // no action: `forceGitRootTurnDiffPaths` now pins
             // `features.cwd_relative_turn_diffs = false` in the merged config so
-            // turn-diff paths are git-root relative — codeg writes no such key
+            // turn-diff paths are git-root relative — dextra writes no such key
             // (repo grep: zero hits) and reads no turn diff.
             //
             // 1.13.0 is six upstream changes (#515, #523, #525, #528, #531,
@@ -1913,7 +1913,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // What codex adds to the claude-side note is the LIST of what
             // moves: with notices on, config warnings, deprecation notices,
             // plain warnings, model rerouting and the legacy `thread/compacted`
-            // advisory all leave the channels codeg reads today for `notice`
+            // advisory all leave the channels dextra reads today for `notice`
             // updates. Two of those are a straight UPGRADE rather than a
             // trade, because their current channel is not a surface at all:
             // `modelRerouted` is a THOUGHT chunk today (it pollutes reasoning
@@ -1931,14 +1931,14 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // the legacy `_meta.contextCompaction` shape, so none of that costs
             // the card a line.
             //
-            // (g) **codeg now reads codex's terminal output channel** (#528 is
+            // (g) **dextra now reads codex's terminal output channel** (#528 is
             // what made this legible, but the channel itself is older). codex
-            // has always had pi's #519 shape and codeg never noticed, because
+            // has always had pi's #519 shape and dextra never noticed, because
             // codex ALSO repeats the output as `rawOutput` at the end:
             // `createTerminalCommandEvent` names a terminal by the item's own id
-            // (codeg never created it — every poll misses and ages out at
+            // (dextra never created it — every poll misses and ages out at
             // `TERMINAL_POLL_MISSING_LIMIT`), and the real output streams as
-            // `_meta.terminal_output_delta` deltas that codeg dropped on the
+            // `_meta.terminal_output_delta` deltas that dextra dropped on the
             // floor. So a codex shell card sat on the `[Terminal: …]`
             // placeholder for the whole command and then filled in at once.
             // `hosted_terminal_*` in `connection.rs` now covers codex alongside
@@ -1951,7 +1951,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // returns `terminal_output_delta` by DEFAULT, so the streaming above
             // needed nothing on the wire; what the flag buys is that
             // `completeCommandExecutionEvent` stops repeating the whole
-            // aggregated output as `rawOutput`, which codeg used to parse only to
+            // aggregated output as `rawOutput`, which dextra used to parse only to
             // discard. It was first held back for the `search`/`listFiles`
             // cards, on the premise that they render from the
             // `{formatted_output, exit_code}` envelope — but that premise was
@@ -1982,19 +1982,19 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // interrupted now closes ALL child sessions rather than only the one
             // whose thread id matched (`closingChildSessions`), and `wait()`
             // returns `"timed_out"` so the caller finalizes pending child
-            // updates before closing them — both of which used to leave codeg's
+            // updates before closing them — both of which used to leave dextra's
             // collab capsules hanging. `/compact` now reports a real turn
             // (`onTurnStarted` + a returned `turn/completed`) instead of
             // resolving with nothing. `thread/attachment/updated` and the
             // `ThreadAttachment*` app-server v2 types are new upstream surface
             // the adapter itself maps to nothing (`return null`), and
             // `FeedbackUploadResponse.promptHash` belongs to a feedback upload
-            // codeg does not drive.
+            // dextra does not drive.
             //
             // 1.13.1 is one upstream change (#541): `@openai/codex` ^0.155.1 →
             // **^0.156.1** (a caret on a 0.x minor, so it stays inside
             // 0.156.x). The adapter's own code moves by a single function (see
-            // (l)), and the `initialize` response to codeg's handshake matches
+            // (l)), and the `initialize` response to dextra's handshake matches
             // 1.13.0's field for field apart from the version (both probed
             // live over stdio). `engines` is still absent, so the 20.0.0 floor
             // stays.
@@ -2029,7 +2029,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (k) Inert: codex 0.156 retires the `friendly` / `pragmatic`
             // personality styles and removes the deprecated `thread/rollback`
             // API (a legacy `thread_rolled_back` rollout record still parses).
-            // codeg exposes no personality, never calls the API, and
+            // dextra exposes no personality, never calls the API, and
             // `parsers::codex` has never read the record. `ThreadResumeResponse`
             // gains `collaborationMode`, which 1.13.1 does not read: its
             // `collaboration_mode` option still comes from the
@@ -2038,12 +2038,12 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (l) Rollout and replay shapes. A user image can now be a FILE
             // reference — `input_image` with `file_id` instead of `image_url`,
             // and `user_message` gains `file_ids` / `image_order` — which only
-            // a client uploading to the Files API produces; codeg sends inline
+            // a client uploading to the Files API produces; dextra sends inline
             // and local images. `parsers::codex` skips an image with no inline
             // data (an image-only turn still renders as "Attached resources").
             // The adapter's one code change renders such an input as
             // `image:<fileId>` text in `session/load` replay (and audio /
-            // mention inputs as nothing), which never reaches codeg: codex
+            // mention inputs as nothing), which never reaches dextra: codex
             // sessions are resumed without draining a replay. The other new
             // fields (`root_turn_id`, MCP `turn_id` / `mcp_app_ui`,
             // `disabledPluginIds`, `availableAccessPrograms`, MCP
@@ -2064,7 +2064,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             name: "Gemini CLI",
             description: "Google's official CLI for Gemini",
             // 0.59.0 → 0.60.0 is a sandbox / path-security release and touches
-            // nothing codeg reads. Verified by slicing both bundles on their
+            // nothing dextra reads. Verified by slicing both bundles on their
             // `// packages/<pkg>/src/<file>.ts` source markers and diffing per
             // source file, after normalising two esbuild artefacts that make an
             // unnormalised diff useless here: identifier renumbering (`fs30` →
@@ -2076,7 +2076,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // What survives is all sandbox managers (new, per-OS), the
             // extensions registry, MCP OAuth, the policy engine and path
-            // security. Of the surfaces codeg depends on:
+            // security. Of the surfaces dextra depends on:
             //
             // - `loadConversationRecord` (the parser's contract — the four
             //   record kinds) is byte-identical modulo the renumbering.
@@ -2093,7 +2093,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `mcp-client.ts` now drops MCP-server env entries whose key is in
             // `BLOCKED_EXECUTION_ENVS`. That list is loader/interpreter hijacks
             // (`NODE_OPTIONS`, `LD_PRELOAD`, `DYLD_*`, `PYTHONPATH`, `BASH_ENV`,
-            // …); codeg injects `codeg-mcp` with `CODEG_*`, so nothing we send
+            // …); dextra injects `dextra-mcp` with `DEXTRA_*`, so nothing we send
             // is dropped. `engines.node` stays `>=20`.
             distribution: AgentDistribution::Npx {
                 version: "0.60.0",
@@ -2107,7 +2107,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
         AgentType::OpenClaw => AcpAgentMeta {
             agent_type,
             // OpenClaw 拒绝 `mcpServers` 中的任何服务器条目（会使 session/new 失败），
-            // 故不向其转发任何 MCP 条目（含 codeg-mcp 伴生进程）。详见 supports_mcp 字段注释。
+            // 故不向其转发任何 MCP 条目（含 dextra-mcp 伴生进程）。详见 supports_mcp 字段注释。
             supports_mcp: false,
             name: "OpenClaw",
             description: "OpenClaw is a personal AI assistant you run on your own devices.",
@@ -2125,7 +2125,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
                 // `NODE_RELEASE_FLOORS` are literally `{24,16,0}` and
                 // `{26,1,0}`. A Node 22 user with the old floor would pass
                 // preflight and then hard-fail at launch, so the floor tracks
-                // the LOWEST supported release. (codeg's `node_required` is a
+                // the LOWEST supported release. (dextra's `node_required` is a
                 // single minimum, so it cannot express the excluded 25.x and
                 // 26.0.x windows.) 2026.9.4 leaves that range untouched, and
                 // the `supports_mcp: false` anchor still reads verbatim:
@@ -2236,7 +2236,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // Launch preference: `resolve_npx_command("hermes")` checks PATH
             // first, so an official-installer `hermes` (which self-updates)
             // naturally outranks the npm-managed copy; the npm global install
-            // is the managed/one-click channel codeg's Install button drives.
+            // is the managed/one-click channel dextra's Install button drives.
             distribution: AgentDistribution::Npx {
                 version: "0.21.4",
                 package: "hermes-agent@0.21.4",
@@ -2271,8 +2271,8 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `session/new` (and `session/load` / `session/resume`) with "ACP
             // stdio MCP server <name> does not declare a runtime identity" as
             // soon as any stdio server rides the wire — for Kimi that is always
-            // the codeg-mcp companion, so the whole agent was unusable, not
-            // just delegation. codeg sat on 0.36.1 until 0.39.0 restored it.
+            // the dextra-mcp companion, so the whole agent was unusable, not
+            // just delegation. dextra sat on 0.36.1 until 0.39.0 restored it.
             //
             // Root cause, if it ever regresses: 0.37.x added a SECOND converter
             // (`acpMcpServersToConfigRecord`), pointed the three session entry
@@ -2281,7 +2281,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // threw on an absent `type` — which is how ACP spells stdio. 0.39.0
             // gives it a stdio arm again (`{transport:"stdio", …,
             // runtime_id:"local"}`), feeding the `runtime_id` that Kimi's own
-            // session-scoped connection manager demands; codeg sends nothing
+            // session-scoped connection manager demands; dextra sends nothing
             // extra. Diffing the old converter or the handshake proves nothing
             // — both were byte-identical across the break.
             //
@@ -2303,7 +2303,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // through it (`session/fork` deliberately warns and ignores
             // `mcpServers`, inheriting the source session's), and the "does not
             // declare a runtime identity" throw is nowhere in the bundle. The
-            // rest of the surface codeg touches is unmoved too: the same
+            // rest of the surface dextra touches is unmoved too: the same
             // `mcp.json` Zod schema (see `commands/mcp.rs`) and an `initialize`
             // answering `sessionCapabilities: {list, resume, close, delete,
             // fork, additionalDirectories}` with image + embeddedContext
@@ -2320,7 +2320,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // on xstate actors and the whole LLM provider layer is replaced
             // (`KimiChatProvider` and friends are gone as named classes), which
             // drops ~2.2 MB off `dist/main.mjs` and moves hundreds of symbols.
-            // None of it reaches codeg: every surface we touch is byte-identical
+            // None of it reaches dextra: every surface we touch is byte-identical
             // once bundler renumbering (`init_src$7` → `init_src$8`) is ignored.
             // The mandated check passes verbatim — same absent-`type` stdio arm
             // with `runtime_id:"local"`, same three entry points routing through
@@ -2366,7 +2366,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // anywhere in the bundle), and `engines.node` is still >=22.19.0.
             // Region-by-region the whole `packages/acp-server` set is
             // byte-identical to 0.43.1 except one line of `slash.ts`, and every
-            // other surface codeg touches (`config.toml`'s provider/model Zod
+            // other surface dextra touches (`config.toml`'s provider/model Zod
             // schemas — `max_context_size` still `int().min(1)` and still the
             // same six provider types; `mcp.json`; the credentials gate;
             // `skillRoots`; `wire/wireService`) differs only by bundler
@@ -2376,11 +2376,11 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // an improvement: skills carrying the new `scopes: ("tui"|"web")[]`
             // field are dropped from ACP `availableCommands`, so the TUI-only
             // `custom-theme` theme editor (and the new `/desktop`) stop showing
-            // up in codeg's slash menu. Live A/B confirms it — 17 commands on
+            // up in dextra's slash menu. Live A/B confirms it — 17 commands on
             // 0.43.1, the same 16 minus `custom-theme` on 2.0.0.
             //
             // Backed by a live run as for 0.39.0 and 0.42.0, because a major
-            // bump deserves one: `kimi acp` driven with the codeg-managed
+            // bump deserves one: `kimi acp` driven with the dextra-managed
             // config.toml block and the synthetic gate token answers
             // `initialize` / `session/new` / `session/prompt` / `session/list`
             // with byte-identical payloads (same capabilities, same four modes,
@@ -2393,7 +2393,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // layout. The upstream steering fixes in this release ride on
             // `transcript`'s `groupTurns`, which the ACP replay does not use
             // (`replay.ts` projects the raw context history), so they do not
-            // reach codeg.
+            // reach dextra.
             //
             // 2.0.1 is a patch release and reads like one. The mandated check
             // passes verbatim — the converter's absent-`type` arm is
@@ -2426,7 +2426,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // are DELETED outright — all of them `packages/kap-server/` (ws v3,
             // projection, protocol messages, history routes). That is the
             // `kimi web` server, booted only from `cli/sub/web` and the TUI
-            // `/web` command; codeg drives `kimi acp` over stdio and never
+            // `/web` command; dextra drives `kimi acp` over stdio and never
             // reaches it. Every `packages/acp-server/` region is renumber-only,
             // as are `wire/record` + `wireService`, `skillRoots`, config.toml's
             // `max_context_size` Zod and `mcp.json`. The 24 real regions are
@@ -2465,9 +2465,9 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // (`KIMI_CODE_WATCH=1` or `[watch] enabled = true` turn it back
             // on), so config.toml, `mcp.json` and skill roots are no longer
             // watched mid-process.
-            // Nothing codeg does at launch depends on that — config.toml is
-            // written before the spawn and codeg-mcp rides `session/new` — but
-            // an MCP server or skill added from codeg's settings while a Kimi
+            // Nothing dextra does at launch depends on that — config.toml is
+            // written before the spawn and dextra-mcp rides `session/new` — but
+            // an MCP server or skill added from dextra's settings while a Kimi
             // session is open now lands on the next connect. The bundled
             // models.dev catalog grew, yet its `moonshotai` rows are untouched,
             // so the `infer_context_window_max_tokens` mirror still holds. A
@@ -2477,18 +2477,18 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `mcp__<server>__<tool>`), and the `agents/main/wire.jsonl` record
             // and loop-event type sets.
             //
-            // ONE change does reach codeg: a new symlink-escape guard in the
+            // ONE change does reach dextra: a new symlink-escape guard in the
             // `Read` / `Glob` / `Grep` / `ReadMediaFile` / `Edit` / `Write`
             // tools refuses a path that is lexically inside `cwd` +
             // `additionalDirectories` + the skill roots but whose real path
             // lands outside all of them ("… through a symbolic link that
             // points outside the working directory. Access is blocked; use the
             // real path directly or add the target directory to the
-            // workspace."). codeg builds two things in exactly that shape, and
+            // workspace."). dextra builds two things in exactly that shape, and
             // 2.0.2 read through both: a multi-folder workspace's folders are
-            // real symlinks under the cwd (codeg sends no
+            // real symlinks under the cwd (dextra sends no
             // `additionalDirectories`), and an expert or office skill is
-            // `~/.kimi-code/skills/<id>` linked to `~/.codeg/skills/<id>` —
+            // `~/.kimi-code/skills/<id>` linked to `~/.dextra/skills/<id>` —
             // still listed as `skill:<id>`, but a `Read` of the skill's own
             // supporting files through the link is now refused. Both degrade
             // rather than break: the error names the real path, and reading
@@ -2516,7 +2516,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `true` only to satisfy the `only_openclaw_opts_out_of_mcp`
             // invariant — actual wire forwarding is short-circuited in
             // `connection.rs` (see the skip-list), so neither user servers nor
-            // the codeg-mcp companion are futilely forwarded.
+            // the dextra-mcp companion are futilely forwarded.
             supports_mcp: true,
             name: "Pi",
             description: "Self-extensible coding agent (ACP via pi-acp)",
@@ -2549,7 +2549,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // which predates the `grok agent stdio` ACP subcommand — so the pinned
             // version isn't resolvable there.
             //
-            // Both concerns are handled by codeg's shared `npm install -g` path
+            // Both concerns are handled by dextra's shared `npm install -g` path
             // (`install_npm_global_package_streaming` in commands/acp.rs), which
             // always passes `--include=optional` (pulls the platform binary) and
             // `--registry=https://registry.npmjs.org` (bypasses lagging mirrors)
@@ -2558,7 +2558,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // leading `KEY=value` argv and the spawn layer's `parse_env_var` only accepts
             // `[A-Za-z0-9_]` env names, which npm's `@scope:registry` key is not.)
             //
-            // 1.0.0 changed ONE thing that reaches codeg without any code change
+            // 1.0.0 changed ONE thing that reaches dextra without any code change
             // here: its `initialize` advertises `sessionCapabilities.resume`
             // (0.2.118 advertised only `list`), so reconnecting to an existing
             // Grok session takes `connect_agent`'s resume → load → new chain at
@@ -2567,7 +2567,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // reply carries the `_meta["x.ai/sessionConfig"]` and per-model
             // `models` that the composer's selectors and context ring read, and
             // prompting straight after it works. It also skips `session/load`'s
-            // history replay, which codeg only drained to discard. The 1.0.1–
+            // history replay, which dextra only drained to discard. The 1.0.1–
             // 1.0.41 patches add nothing further here: re-probed live against
             // the 1.0.41 binary, `initialize` still answers
             // `sessionCapabilities: {list, resume, close}` plus the same
@@ -2580,7 +2580,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // number; at 1.0.41 `latest` and `alpha` point at the same version,
             // so nothing is staged ahead of it.
             //
-            // 1.0.40 DID add one thing that reaches codeg, and it needed a fix
+            // 1.0.40 DID add one thing that reaches dextra, and it needed a fix
             // on our side: it narrates `session/new` progress on the
             // `_x.ai/session/setup` notification, whose first five phases carry
             // `"sessionId": null` because they run before the id exists. The
@@ -2626,7 +2626,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // entry is a shell script that resolves its own directory and
             // execs the sibling `node`, so the tree must stay intact —
             // `dir_entry` switches the binary cache to whole-tree extraction.
-            // codeg deliberately does NOT run Cursor's official install
+            // dextra deliberately does NOT run Cursor's official install
             // script: it symlinks `~/.local/bin/agent`, which collides with
             // Grok's CLI of the same name (observed overwriting it).
             // URL layout follows the ACP registry's `cursor` entry
@@ -2688,7 +2688,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `deepseek-acp` is the community editor bridge for DeepSeek
             // Harness (DSH): the harness's own `@deepseek-ai/dsh-acp` is an
             // automation-only transport (no streaming, no tool presentation,
-            // rejects MCP), so codeg drives this adapter instead. It speaks
+            // rejects MCP), so dextra drives this adapter instead. It speaks
             // ACP over stdio with NO arguments; auth is the `DEEPSEEK_API_KEY`
             // env (or `~/.dsh/.credentials.yaml`), and per-session model /
             // reasoning-effort / sandbox selection arrives through standard
@@ -2698,7 +2698,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // It advertises loadSession + sessionCapabilities.list/resume and
             // accepts wire `mcpServers` (stdio + streamable HTTP; SSE and the
             // `acp` transport are explicitly rejected), so both the resume rung
-            // and the codeg-mcp companion work out of the box. Since 0.3.0 it
+            // and the dextra-mcp companion work out of the box. Since 0.3.0 it
             // mounts the upstream skills chain (`skill_storage_spec` mirrors
             // its roots) and, since 0.2.0, offers `--setup` terminal auth for
             // storing the key in `$DSH_HOME/.credentials.yaml`.
@@ -2708,18 +2708,18 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // first fragment's id/name and dispatch an empty tool name); 0.5.0
             // sends a terminal `tool_call`'s `rawInput` as the
             // `{command, description?, cwd?}` OBJECT rather than a bare command
-            // string, i.e. the codex-acp shape codeg's tool cards already parse.
+            // string, i.e. the codex-acp shape dextra's tool cards already parse.
             //
             // 0.6.0 is the first bump that MOVES the handshake, because its
             // `dsh-*` deps went 0.1.0-rc.7 → 0.1.1-rc.2 and it wired up what
-            // that unlocked. Four of the five new capabilities cost codeg
+            // that unlocked. Four of the five new capabilities cost dextra
             // nothing — they land on paths that already read the agent's own
             // advertisement:
             //
             // * `sessionCapabilities.fork` is now advertised unconditionally,
             //   so `supports_fork` flips on by itself and `acp::fork`'s
             //   `{sessionId, cwd}` request is exactly what it accepts (it
-            //   rejects `additionalDirectories`, which codeg never sends).
+            //   rejects `additionalDirectories`, which dextra never sends).
             // * `promptCapabilities.image` went from a hardwired `false` to
             //   "true whenever the attachment store is mounted", which the
             //   stock composition always does — so the composer's upload path
@@ -2732,7 +2732,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //   `deriveModelGroups` already yields to server groups verbatim,
             //   and single-provider installs (i.e. nearly all of them) keep
             //   emitting bare model ids, so the selector is unaffected either
-            //   way. codeg does not drive the new `providers/*` UNSTABLE plane;
+            //   way. dextra does not drive the new `providers/*` UNSTABLE plane;
             //   routes are configured in `settings.yaml`, and the DeepSeek
             //   settings panel still owns `DEEPSEEK_BASE_URL`/`DEEPSEEK_API_KEY`
             //   for the built-in `deepseek-official` route.
@@ -2761,7 +2761,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // shapes: `image` content blocks (bytes live in the content-
             // addressed `$DSH_HOME/attachments/v1` store, the log keeps only a
             // `sha256:` ref) and the `compaction/*` lifecycle. The three
-            // upstream layouts codeg mirrors — `dsh-home-paths`'
+            // upstream layouts dextra mirrors — `dsh-home-paths`'
             // `resolveDshHome`, `dsh-skill-filesystem`'s roots,
             // `dsh-session-persistence-jsonl`'s `session.jsonl[.zstd]` tree —
             // are unchanged across rc.7 → rc.2, so nothing else moved.
@@ -2773,14 +2773,14 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // * `session/load` + `session/fork` 的 cwd 校验从裸字符串相等换成
             //   `sameWorkspace()`（realpath.native，fail-closed）。这是**放宽**：
-            //   codeg 送的工作区路径以前只要拼写与日志里记的不同就被拒——macOS
+            //   dextra 送的工作区路径以前只要拼写与日志里记的不同就被拒——macOS
             //   的 `/var` → `/private/var`、Windows 8.3 短名——恢复会莫名失败。
             //   `session/list` 的 cwd 过滤同样改成按目录判定。
             // * Windows 上模型面向的 shell 工具从 `bash` 换成 `pwsh`
             //   (`composition/shell.js` 的 `mountNativeShell`)；非 Windows 仍是
             //   `bash`。`dsh-tool-pwsh` 的 `presentCall` 与 `dsh-tool-bash` 逐字
             //   同形（前台 `card: "terminal"` + `{title, description, cwd?}`，
-            //   后台才是 `card: "generic"` + 裸字符串 `rawInput`），所以 codeg
+            //   后台才是 `card: "generic"` + 裸字符串 `rawInput`），所以 dextra
             //   的终端工具卡在两个平台上拿到的形状一致。
             //
             // 0.8.0 加的是**消息级 fork**，读的就是 claude-agent-acp 0.73.0 与
@@ -2791,24 +2791,24 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // * id 侧**两种都认**：它自己盖在 message/thought chunk 上的 wire id
             //   （`<turn>:<step>`），以及会话日志里那条 `message.id`。后者是
             //   `parsers::deepseek` 现在记进 `agent_message_id` 的那个——上游把它
-            //   明写成「留给直接读 JSONL 的客户端」，codeg 正是。
+            //   明写成「留给直接读 JSONL 的客户端」，dextra 正是。
             //   `dependencies` 与 0.7.0 逐字节相同（`dsh-*` 全停在 0.1.1-rc.2，
             //   `@agentclientprotocol/sdk` 停在 1.4.0），日志布局因此没动。
             // * 指纹侧**同时按逐条消息和逐回合两种口径算**，两边都中且指向不同回合
             //   时报 `-32602`（而不是被 `rethrowMissingSession` 误判成 `-32002`，
-            //   那会让客户端把一条好会话从列表里摘掉）。codeg 一个日志回合只渲染
+            //   那会让客户端把一条好会话从列表里摘掉）。dextra 一个日志回合只渲染
             //   一条 assistant 气泡，命中的是逐回合那一档；id 命中时指纹压根不看，
             //   所以那条歧义路径实际走不到。
             // * `initialize.js` 的 diff 只有 `AGENT_INFO.version` 一行，
             //   `sessionCapabilities`（含无条件的 `fork: {}`）与
             //   `promptCapabilities` 都没动，上面那串能力断言仍然成立。
             // * `agent_message_chunk` / `agent_thought_chunk` / `user_message_chunk`
-            //   现在带 `messageId`。对 codeg 是**惰性**的：1.x schema 里它是稳定的
+            //   现在带 `messageId`。对 dextra 是**惰性**的：1.x schema 里它是稳定的
             //   `ContentChunk::message_id`（当年 pin 的 0.11 把它放在没开的
             //   `unstable_message_id` feature 后面、被 serde 当未知字段丢掉），但
-            //   codeg 不读它——分叉点取自解析出来的日志而不是 live 转写。
+            //   dextra 不读它——分叉点取自解析出来的日志而不是 live 转写。
             //
-            // 0.9.0 唯一需要 codeg 跟着改的是**模型目录**，而它落在设置面板那条线上
+            // 0.9.0 唯一需要 dextra 跟着改的是**模型目录**，而它落在设置面板那条线上
             // （`commands::deepseek_settings`），不在协议层：
             //
             // * 目录的来源换人了。`boot.ts` 现在把自己的 `DEEPSEEK_MODELS` 作为
@@ -2827,7 +2827,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // * 新增 `systemPromptUpdate: "in-history"`，agent 自己的默认条目就带着
             //   它；漏写不报错，只是让那个模型静默换一种系统提示投递方式。
             // * prompt 现在等 `sessions.flush()` 才结算，落盘失败以 `-32603` 拒绝
-            //   而不是照回 `end_turn`。codeg 把它渲染成一次失败的回合，正是要的
+            //   而不是照回 `end_turn`。dextra 把它渲染成一次失败的回合，正是要的
             //   结局——回成功再把这一轮历史丢掉才是无声的。
             // * **`assistant/chunk` / `*-chunks` 不再逐条落库**（紧凑流搬进
             //   `assistant/message` 的 `stream` 字段）。`parsers::deepseek` 里那条
@@ -2857,7 +2857,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // community bridge): verified handshake advertises `loadSession`
             // plus the full `sessionCapabilities` set (list/resume/fork/close/
             // delete/additionalDirectories), image + embeddedContext prompts,
-            // and MCP http+sse — so the resume rung and the codeg-mcp
+            // and MCP http+sse — so the resume rung and the dextra-mcp
             // companion work with no adapters in between. Auth is the qoder
             // account (`qoder login`, or the IDE's qoder-browser flow); there
             // is no API-key env to manage. Model, mode (default/acceptEdits/
@@ -2874,7 +2874,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             //
             // `QODER_EXPOSE_TOKEN_USAGE` turns OFF qoder's own token-count
             // redaction, and without it every qoder session reports zero tokens
-            // everywhere codeg can see. The CLI passes each response's usage
+            // everywhere dextra can see. The CLI passes each response's usage
             // through a sanitizer that keeps the real counters only when the
             // model came from a BYO/custom provider or that env is truthy
             // (`1`/`true`/`yes`); otherwise it rewrites `input_tokens`,
@@ -2940,7 +2940,7 @@ pub fn get_agent_meta(agent_type: AgentType) -> AcpAgentMeta {
             // `-32000 Authentication required` unless
             // `$GEMINI_HOME/antigravity-acp/settings.json` declares
             // `auth.type` (env-based selection was removed upstream; the
-            // server's own message says so). codeg does not implement the ACP
+            // server's own message says so). dextra does not implement the ACP
             // `authenticate` request, so the launch path writes that file
             // instead — see `sync_antigravity_settings_file` in connection.rs
             // and the Antigravity settings panel that feeds it. With
@@ -3283,7 +3283,7 @@ mod tests {
 
     #[test]
     fn goal_control_is_out_of_band_gates_codex_only() {
-        // codex changes the goal through an app-server RPC, so codeg may follow
+        // codex changes the goal through an app-server RPC, so dextra may follow
         // a pause/clear with the interrupt that actually stops the work. claude
         // delivers the same request as the prompt text "/goal clear" — killing
         // that turn would kill the clear — and every unverified adapter fails
@@ -3338,7 +3338,7 @@ mod tests {
             Some("22.0.0"),
         );
         // Kimi Code must never land on 0.37.0–0.38.0: every session in that
-        // range dies on the codeg-mcp stdio entry (see the registry entry).
+        // range dies on the dextra-mcp stdio entry (see the registry entry).
         assert_npx_version(
             AgentType::KimiCode,
             "2.1.0",
@@ -3452,7 +3452,7 @@ mod tests {
                 "unexpected adapter relation for {agent_type:?}"
             );
             // The whole point is that the vendor CLI's name differs from the
-            // adapter command codeg actually launches.
+            // adapter command dextra actually launches.
             if let Some(relation) = relation {
                 match get_agent_meta(agent_type).distribution {
                     AgentDistribution::Npx { cmd, .. } => {

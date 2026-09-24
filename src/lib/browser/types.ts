@@ -5,7 +5,7 @@
 export type SurfaceKind = "child" | "window"
 
 /** What a tab shows: a web page, or a local HTML file through the document
- *  guest (`codeg-doc:`), which the file column hosts in place of the inline
+ *  guest (`dextra-doc:`), which the file column hosts in place of the inline
  *  HTML preview. */
 export type TabKind = "page" | "document"
 
@@ -329,7 +329,7 @@ export interface BrowserCapabilities {
   downloadsDir: string
   policy: BrowserPolicyStatus
   /** Local HTML files can be shown through the document guest (an embedded
-   *  surface with a handler for `codeg-doc:`). */
+   *  surface with a handler for `dextra-doc:`). */
   docGuest: boolean
   /** More than the default browser profile can exist (macOS 14+, Windows,
    *  Linux); the settings offer to create, clear and delete them. */
@@ -468,7 +468,7 @@ export interface BrowserOpenRequestPayload {
 /** Where a detected address was printed. */
 export type ServiceSource = "terminal" | "agent"
 
-/** A loopback address something codeg started printed, and that answered a
+/** A loopback address something dextra started printed, and that answered a
  *  connection when the backend probed it.
  *
  *  Carried both by `browser://service-detected` (one, as it appears) and by

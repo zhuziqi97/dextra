@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 import { defaultRehypePlugins } from "streamdown"
 
-import { rehypePluginsAllowingCodeg } from "./rehype-allow-codeg"
+import { rehypePluginsAllowingDextra } from "./rehype-allow-dextra"
 
 /** Pull the href protocol allow-list out of a `[rehypeSanitize, schema]` tuple. */
 function hrefProtocols(plugin: unknown): string[] | undefined {
@@ -17,19 +17,19 @@ function spanAttributes(plugin: unknown): unknown[] | undefined {
   return schema?.attributes?.span
 }
 
-describe("rehypePluginsAllowingCodeg", () => {
-  it("adds `codeg` to the sanitize schema's href protocol allow-list", () => {
+describe("rehypePluginsAllowingDextra", () => {
+  it("adds `dextra` to the sanitize schema's href protocol allow-list", () => {
     // Guards against an upstream rename of the `sanitize` key — the whole fix
     // hinges on this entry existing.
     const sanitizeIndex = Object.keys(defaultRehypePlugins).indexOf("sanitize")
     expect(sanitizeIndex).toBeGreaterThanOrEqual(0)
 
     const href = hrefProtocols(
-      rehypePluginsAllowingCodeg(defaultRehypePlugins)[sanitizeIndex]
+      rehypePluginsAllowingDextra(defaultRehypePlugins)[sanitizeIndex]
     )
-    expect(href).toContain("codeg")
+    expect(href).toContain("dextra")
     // Exactly once — no duplicate even if re-derived.
-    expect(href?.filter((p) => p === "codeg")).toHaveLength(1)
+    expect(href?.filter((p) => p === "dextra")).toHaveLength(1)
     // Pre-existing protocols are preserved (https is always present).
     expect(href).toContain("https")
   })
@@ -37,17 +37,17 @@ describe("rehypePluginsAllowingCodeg", () => {
   it("allows the local-image span attributes under both hast spellings", () => {
     const sanitizeIndex = Object.keys(defaultRehypePlugins).indexOf("sanitize")
     const span = spanAttributes(
-      rehypePluginsAllowingCodeg(defaultRehypePlugins)[sanitizeIndex]
+      rehypePluginsAllowingDextra(defaultRehypePlugins)[sanitizeIndex]
     )
     // The camelCased names are what sanitize sees while `rehype-raw` runs
     // ahead of it; the dashed ones are what it would see without that
     // round-trip. Neither spelling alone is safe to rely on across upgrades.
     expect(span).toEqual(
       expect.arrayContaining([
-        "dataCodegLocalImage",
-        "dataCodegImageLinked",
-        "data-codeg-local-image",
-        "data-codeg-image-linked",
+        "dataDextraLocalImage",
+        "dataDextraImageLinked",
+        "data-dextra-local-image",
+        "data-dextra-image-linked",
       ])
     )
     // The shipped schema's own `span` entries (if any) are preserved.
@@ -59,7 +59,7 @@ describe("rehypePluginsAllowingCodeg", () => {
 
   it("preserves plugin count and order, passing raw/harden through by reference", () => {
     const keys = Object.keys(defaultRehypePlugins)
-    const result = rehypePluginsAllowingCodeg(defaultRehypePlugins)
+    const result = rehypePluginsAllowingDextra(defaultRehypePlugins)
     expect(result).toHaveLength(keys.length)
     keys.forEach((key, i) => {
       if (key !== "sanitize") {
@@ -69,10 +69,10 @@ describe("rehypePluginsAllowingCodeg", () => {
   })
 
   it("clones rather than mutating the shipped sanitize schema", () => {
-    // The shipped default must not already contain codeg, else the fix is moot.
-    expect(hrefProtocols(defaultRehypePlugins.sanitize)).not.toContain("codeg")
-    rehypePluginsAllowingCodeg(defaultRehypePlugins)
+    // The shipped default must not already contain dextra, else the fix is moot.
+    expect(hrefProtocols(defaultRehypePlugins.sanitize)).not.toContain("dextra")
+    rehypePluginsAllowingDextra(defaultRehypePlugins)
     // Still absent on the original after deriving — we built a new schema.
-    expect(hrefProtocols(defaultRehypePlugins.sanitize)).not.toContain("codeg")
+    expect(hrefProtocols(defaultRehypePlugins.sanitize)).not.toContain("dextra")
   })
 })

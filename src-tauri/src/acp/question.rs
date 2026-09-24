@@ -2,7 +2,7 @@
 //!
 //! Mid-turn an agent can ask the user one or more multiple-choice questions and
 //! BLOCK until the user answers — the `ask_user_question` MCP tool exposed by
-//! `codeg-mcp`. Unlike live-feedback ([`crate::acp::feedback`]), which is a
+//! `dextra-mcp`. Unlike live-feedback ([`crate::acp::feedback`]), which is a
 //! non-blocking pull the user pushes into, a question PAUSES the agent's tool
 //! call: the questions render as an interactive card above the conversation
 //! input box (driven by [`crate::acp::session_state::SessionState`], in-memory
@@ -83,7 +83,7 @@ pub struct QuestionSpec {
     /// The choices (0..=[`MAX_OPTIONS`]). Empty means free-text: the card
     /// renders only its always-present "Other" input (codex `request_user_input`
     /// and MCP-server elicitations both ask open questions this way; the
-    /// codeg-mcp ask tool still requires [`MIN_OPTIONS`] at its own parse
+    /// dextra-mcp ask tool still requires [`MIN_OPTIONS`] at its own parse
     /// layer).
     pub options: Vec<QuestionOption>,
     /// True when the answer is a secret (codex `request_user_input` marks API
@@ -339,7 +339,7 @@ pub fn validate_specs(specs: &[QuestionSpec]) -> Result<(), String> {
                 "questions[{qi}] `header` exceeds {MAX_HEADER_CHARS} characters"
             ));
         }
-        // Unlike `parse_questions` (the codeg-mcp tool contract, which keeps
+        // Unlike `parse_questions` (the dextra-mcp tool contract, which keeps
         // its [`MIN_OPTIONS`] floor), typed specs allow 0..=[`MAX_OPTIONS`]:
         // a question with no options is a legal free-text ask — the card
         // renders its always-present "Other" input alone (codex elicitation
@@ -442,7 +442,7 @@ pub fn build_outcome(questions: &[QuestionSpec], answer: &QuestionAnswer) -> Que
     }
 }
 
-/// Some native asks carry NO `header` (the short category chip codeg renders):
+/// Some native asks carry NO `header` (the short category chip dextra renders):
 /// grok's `ask_user_question` tool and pi's extension-UI `select` both send bare
 /// question text. Synthesize one from the leading characters, bounded to
 /// [`MAX_HEADER_CHARS`]. Always returns a non-empty, in-bounds string so
@@ -457,13 +457,13 @@ pub(crate) fn synthesize_header(question: &str) -> String {
     }
 }
 
-/// Convert grok's native `_x.ai/ask_user_question` ext-request params into codeg
+/// Convert grok's native `_x.ai/ask_user_question` ext-request params into dextra
 /// [`QuestionSpec`]s, so grok's own questions render in the SAME interactive card
-/// as the `codeg-mcp` ask tool (grok emits an ACP ext request and blocks on the
-/// reply; if codeg doesn't answer it, grok falls back to inert fire-and-forget
+/// as the `dextra-mcp` ask tool (grok emits an ACP ext request and blocks on the
+/// reply; if dextra doesn't answer it, grok falls back to inert fire-and-forget
 /// rendering — see the connection handler). Grok's wire shape per question is
 /// `{question, options:[{label, description}], multiSelect}` — no `header`, which
-/// we synthesize. Counts are clamped to codeg's bounds because
+/// we synthesize. Counts are clamped to dextra's bounds because
 /// [`crate::acp::manager::ConnectionManager::register_question`] re-runs
 /// [`validate_specs`] and would otherwise decline the whole ask: more than
 /// [`MAX_QUESTIONS`] questions or [`MAX_OPTIONS`] options are truncated (logged,
@@ -581,7 +581,7 @@ pub struct PiSelectAsk {
 
 /// Recognize a `session/request_permission` that is really pi asking the user a
 /// multiple-choice question, and convert it into a [`QuestionSpec`] so it renders
-/// in the SAME interactive card as the codeg-mcp ask tool.
+/// in the SAME interactive card as the dextra-mcp ask tool.
 ///
 /// pi has no dedicated question channel: `ctx.ui.select` from an extension
 /// becomes an `extension_ui_request`, which pi-acp translates into a permission
@@ -679,29 +679,29 @@ pub fn pi_select_option_id(outcome: &QuestionOutcome, ask: &PiSelectAsk) -> Opti
         .map(|(_, option_id)| option_id.clone())
 }
 
-/// True when a host's name for a tool is codeg's OWN `ask_user_question`
+/// True when a host's name for a tool is dextra's OWN `ask_user_question`
 /// companion tool, in whatever spelling the host composed it
-/// (`mcp__codeg-mcp__ask_user_question` from claude-agent-acp,
-/// `codeg-mcp/ask_user_question`, `codeg-mcp: ask_user_question`, …). Separators
+/// (`mcp__dextra-mcp__ask_user_question` from claude-agent-acp,
+/// `dextra-mcp/ask_user_question`, `dextra-mcp: ask_user_question`, …). Separators
 /// are folded and case is ignored, so only the two identifying words matter.
 ///
-/// BOTH halves have to be present — the server name codeg itself injects
-/// (`codeg-mcp`, see `acp::connection::inject_codeg_mcp`) AND the tool name.
+/// BOTH halves have to be present — the server name dextra itself injects
+/// (`dextra-mcp`, see `acp::connection::inject_dextra_mcp`) AND the tool name.
 /// The frontend can afford a bare `*ask_user_question` suffix rule because a
 /// wrong match there only picks a nicer card; this one unlocks an AUTO-APPROVAL
 /// of a blocked `session/request_permission`, and a third-party MCP server's
-/// similarly named tool is the user's to approve, not codeg's.
+/// similarly named tool is the user's to approve, not dextra's.
 ///
-/// Auto-approving codeg's own ask tool is not a permission being skipped: the
+/// Auto-approving dextra's own ask tool is not a permission being skipped: the
 /// tool's entire effect is to put the interactive question card on screen and
 /// block until the user answers it. The consent IS the next dialog, so gating it
 /// behind a generic "run this tool?" card asks the user to approve being asked.
-pub fn is_codeg_ask_tool_name(name: &str) -> bool {
+pub fn is_dextra_ask_tool_name(name: &str) -> bool {
     let normalized = name
         .trim()
         .to_ascii_lowercase()
         .replace(['-', ' ', '.', '/', ':'], "_");
-    normalized.ends_with("ask_user_question") && normalized.contains("codeg_mcp")
+    normalized.ends_with("ask_user_question") && normalized.contains("dextra_mcp")
 }
 
 /// Serialize a resolved [`QuestionOutcome`] into grok's `AskUserQuestionExtResponse`
@@ -876,7 +876,7 @@ pub const ELICITATION_DECLINE_OPTION_ID: &str = "__decline";
 /// ask card: an MCP tool-call approval (`_meta.codex_approval_kind ==
 /// "mcp_tool_call"`) or a message-only confirm (a form with no renderable
 /// fields). Routing these through the permission flow keeps MCP approvals
-/// looking exactly like they did before codeg advertised `elicitation.form`
+/// looking exactly like they did before dextra advertised `elicitation.form`
 /// (codex-acp then used `session/request_permission` with the same options).
 pub struct ElicitationApproval {
     /// The human prompt ("Allow tool call?" / the MCP server's message).
@@ -956,7 +956,7 @@ fn codex_companion_role(raw: &Value, id: &str) -> Option<CodexUserInputShape> {
 /// actual question would never be displayed at all.
 ///
 /// The connection pins this at `initialize` from the RUNNING adapter's
-/// `agentInfo.version` (`SessionState::codex_user_input_shape`) — codeg's pin is
+/// `agentInfo.version` (`SessionState::codex_user_input_shape`) — dextra's pin is
 /// 1.12.0, but launch may resolve an older PATH install or a custom pinned
 /// version, and both are supported configurations.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -975,7 +975,7 @@ pub enum CodexUserInputShape {
 ///
 /// The identity has to come from the connection, not from the payload. `_meta`
 /// is an OPEN namespace: the ACP spec tells implementations to make no
-/// assumptions about keys they do not own, and this parser is shared — codeg
+/// assumptions about keys they do not own, and this parser is shared — dextra
 /// advertises `elicitation.form` to DeepSeek as well as Codex, and EITHER
 /// adapter also forwards arbitrary MCP-server forms through it. Deciding "this
 /// is codex" from `_meta.codex.*` in the request would let a third party, by
@@ -1047,7 +1047,7 @@ fn codex_property_meta<'a>(raw: &'a Value, id: &str) -> Option<&'a Value> {
 ///      question.
 ///   3. The pinned adapter's shape, which is 1.12.0's — the last resort for an
 ///      undatable form from an unidentified adapter, and the likeliest truth
-///      since the pin is what codeg launches.
+///      since the pin is what dextra launches.
 fn codex_form_shape(raw: &Value, peer: ElicitationPeer) -> Option<CodexUserInputShape> {
     // Identity first, and unconditionally: a non-codex peer gets the generic
     // reading no matter what its `_meta` says.
@@ -1081,7 +1081,7 @@ fn codex_form_shape(raw: &Value, peer: ElicitationPeer) -> Option<CodexUserInput
 /// The synthetic choice codex-acp ≥1.12.0 appends to an `isOther` question's
 /// `oneOf`, verbatim — label and description both.
 ///
-/// codeg's card already offers a free-text "Other" input on every question and
+/// dextra's card already offers a free-text "Other" input on every question and
 /// writes it to the MAIN field, while the note field this option points at is
 /// skipped as a companion. So the option is a dead end here: picking it sends
 /// codex the bare string "None of the above" and no elaboration.
@@ -1161,7 +1161,7 @@ fn is_codex_synthetic_other_choice(raw: &Value, id: &str, label: &str, value: &s
 /// agent namespace so every AskUserQuestion bridge can be recognized the same
 /// way; its own companion fields are named `question_<n>_custom`, which
 /// [`is_other_companion`]'s `__other` heuristic does not match. Reading the
-/// marker means codeg keeps collapsing the companion into the card's built-in
+/// marker means dextra keeps collapsing the companion into the card's built-in
 /// "Other" input no matter which adapter produced the form.
 ///
 /// Like [`is_secret_property`], this reads the raw JSON: the typed schema
@@ -1196,7 +1196,7 @@ fn is_mcp_tool_call_approval(raw: &Value) -> bool {
 ///   * MCP tool-call approvals (`_meta.codex_approval_kind`) → [`ElicitationApproval`]
 ///     with the persist choices (`once`/`session`/`always`) + Decline — the
 ///     permission card, exactly like the pre-capability `request_permission`
-///     fallback. This includes approvals for codeg-mcp's OWN tools in
+///     fallback. This includes approvals for dextra-mcp's OWN tools in
 ///     consent-requiring permission modes, so declining them here would break
 ///     ask/delegation for codex outright.
 ///   * Forms with no renderable fields (message-only MCP confirms) →
@@ -1216,7 +1216,7 @@ fn is_mcp_tool_call_approval(raw: &Value) -> bool {
 /// then dates the form from its own markers and falls back to the pinned
 /// adapter's shape.
 ///
-/// Counts are clamped to codeg's bounds because
+/// Counts are clamped to dextra's bounds because
 /// [`crate::acp::manager::ConnectionManager::register_question`] re-runs
 /// [`validate_specs`]. Errors only on non-form / undeserializable requests,
 /// which the connection handler turns into a graceful decline.
@@ -1227,7 +1227,7 @@ pub fn classify_elicitation(
     let req: CreateElicitationRequest = serde_json::from_value(raw.clone())
         .map_err(|e| format!("unparseable elicitation request: {e}"))?;
     let ElicitationMode::Form(form) = &req.mode else {
-        // codeg only advertises `elicitation.form` — URL mode goes down
+        // dextra only advertises `elicitation.form` — URL mode goes down
         // codex-acp's `request_permission` fallback and never reaches here.
         return Err("elicitation is not form mode".to_string());
     };
@@ -1554,7 +1554,7 @@ fn parse_bool_answer(v: &str) -> Option<bool> {
 /// Every value is written under the MAIN field id, including a free-text
 /// "Other": the companion property skipped by [`is_custom_answer_property`] /
 /// [`is_other_companion`] is never written back. That is correct for codex,
-/// which falls back to the main field. If codeg ever advertises
+/// which falls back to the main field. If dextra ever advertises
 /// `elicitation.form` to an agent that requires the answer under the companion
 /// key instead (claude-agent-acp reads `question_<n>_custom` separately), this
 /// has to route the free-text answer there using the marker's `questionId`.
@@ -1662,7 +1662,7 @@ pub fn elicitation_cancel_response() -> CreateElicitationResponse {
 }
 
 /// Build the `raw_input` (questions) for the in-stream `AskQuestionResultCard`
-/// codeg synthesizes for a native ask that resolves out-of-band rather than as a
+/// dextra synthesizes for a native ask that resolves out-of-band rather than as a
 /// completed stream tool_call. Three callers: grok (answers over the
 /// `_x.ai/ask_user_question` ext round-trip — `handle_grok_ask_user_question`),
 /// codex `request_user_input` (answers over the `elicitation/create` round-trip
@@ -1695,7 +1695,7 @@ pub fn grok_result_card_input(specs: &[QuestionSpec]) -> Value {
 }
 
 /// Build the `raw_output` (`{answers, declined}` envelope) for the in-stream
-/// `AskQuestionResultCard` — the codeg-mcp `structuredContent` shape the frontend
+/// `AskQuestionResultCard` — the dextra-mcp `structuredContent` shape the frontend
 /// already parses (`parseAskQuestionOutcome`). Emits `header:""` to match
 /// [`grok_result_card_input`] (see its docs). Companion to [`grok_result_card_input`].
 pub fn grok_result_card_output(outcome: &QuestionOutcome) -> Value {
@@ -1716,7 +1716,7 @@ pub fn grok_result_card_output(outcome: &QuestionOutcome) -> Value {
 
 /// The hot-swappable feature config read at MCP injection time. Kept tiny and
 /// separate from `FeedbackConfig` / `DelegationConfig` so the three features
-/// toggle independently — `codeg-mcp` is injected when ANY is enabled, and each
+/// toggle independently — `dextra-mcp` is injected when ANY is enabled, and each
 /// tool is listed only when its own feature is on.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct QuestionConfig {
@@ -2086,7 +2086,7 @@ mod tests {
     /// The gate is the PEER, not the payload. `_meta` is an open namespace, so
     /// a non-codex speaker — DeepSeek, or any MCP server whose form either
     /// adapter relays — can carry a `codex` block of its own meaning. If that
-    /// were enough to unlock the codex fixups, a third party could make codeg
+    /// were enough to unlock the codex fixups, a third party could make dextra
     /// hide one of its fields (the companion skip), read its questions upside
     /// down (the orientation flip) and delete one of its options (the synthetic
     /// filter). None of those may fire on `ElicitationPeer::Other`.
@@ -2236,7 +2236,7 @@ mod tests {
     }
 
     /// A generic MCP server's form has no `codex` namespace at all, so it keeps
-    /// the JSON Schema reading codeg has always used — `description` is the
+    /// the JSON Schema reading dextra has always used — `description` is the
     /// prose, `title` the short label. The swap is codex-only.
     #[test]
     fn classify_elicitation_generic_mcp_form_keeps_description_as_the_question() {
@@ -2955,7 +2955,7 @@ mod tests {
 
     #[test]
     fn parse_grok_ext_clamps_questions_and_options_to_bounds() {
-        // 6 questions, each with 6 options — both past codeg's maxima.
+        // 6 questions, each with 6 options — both past dextra's maxima.
         let many: Vec<Value> = (0..6)
             .map(|qi| {
                 let opts: Vec<Value> = (0..6)
@@ -3118,44 +3118,44 @@ mod tests {
     }
 
     #[test]
-    fn is_codeg_ask_tool_name_accepts_every_host_spelling_of_codegs_own_tool() {
+    fn is_dextra_ask_tool_name_accepts_every_host_spelling_of_dextras_own_tool() {
         for spelling in [
             // claude-agent-acp: an MCP tool's permission card title IS the
             // raw tool name.
-            "mcp__codeg-mcp__ask_user_question",
-            "codeg-mcp/ask_user_question",
-            "codeg-mcp: ask_user_question",
-            "mcp.codeg-mcp.ask_user_question",
+            "mcp__dextra-mcp__ask_user_question",
+            "dextra-mcp/ask_user_question",
+            "dextra-mcp: ask_user_question",
+            "mcp.dextra-mcp.ask_user_question",
             // Hosts that title-case or pad it.
-            "  MCP__Codeg-MCP__Ask_User_Question  ",
+            "  MCP__Dextra-MCP__Ask_User_Question  ",
         ] {
             assert!(
-                is_codeg_ask_tool_name(spelling),
-                "{spelling} is codeg's own ask tool"
+                is_dextra_ask_tool_name(spelling),
+                "{spelling} is dextra's own ask tool"
             );
         }
     }
 
     #[test]
-    fn is_codeg_ask_tool_name_rejects_tools_that_are_not_codegs_ask() {
+    fn is_dextra_ask_tool_name_rejects_tools_that_are_not_dextras_ask() {
         for other in [
             // A third-party MCP server's similarly named tool: approving it is
             // the user's decision, so the bare suffix must NOT be enough.
             "mcp__other-server__ask_user_question",
             "ask_user_question",
             // grok's NATIVE ask arrives on its own ext channel, never as a
-            // permission request — and it is not codeg-mcp's tool either.
+            // permission request — and it is not dextra-mcp's tool either.
             "_x.ai/ask_user_question",
-            // Codeg's other companion tools keep their approval gate.
-            "mcp__codeg-mcp__delegate_to_agent",
-            "mcp__codeg-mcp__check_user_feedback",
+            // Dextra's other companion tools keep their approval gate.
+            "mcp__dextra-mcp__delegate_to_agent",
+            "mcp__dextra-mcp__check_user_feedback",
             // Right server, right words, wrong tool — the match is anchored at
             // the END so a longer name cannot borrow it.
-            "mcp__codeg-mcp__ask_user_question_twice",
+            "mcp__dextra-mcp__ask_user_question_twice",
             "",
         ] {
             assert!(
-                !is_codeg_ask_tool_name(other),
+                !is_dextra_ask_tool_name(other),
                 "{other} must keep its approval card"
             );
         }

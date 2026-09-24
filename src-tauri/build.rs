@@ -8,7 +8,7 @@ fn main() {
 }
 
 /// Tauri's bundler validates that every `bundle.externalBin` path resolves
-/// to an existing file at build.rs time. The real `codeg-mcp` sidecar is
+/// to an existing file at build.rs time. The real `dextra-mcp` sidecar is
 /// produced by `pnpm tauri:prepare-sidecars` (invoked from
 /// `beforeBuildCommand` / `beforeDevCommand` and the CI release matrix) —
 /// but plain `cargo check --features tauri-runtime` doesn't go through that
@@ -19,7 +19,7 @@ fn main() {
 /// `cargo check` / clippy / rust-analyzer succeed. Production paths
 /// overwrite the placeholder with the real binary before Tauri bundles it:
 ///   * `pnpm tauri build`  → `beforeBuildCommand` → `prepare-sidecars.mjs`
-///   * release.yml         → explicit "Stage codeg-mcp sidecar" step
+///   * release.yml         → explicit "Stage dextra-mcp sidecar" step
 ///   * `pnpm tauri dev`    → `beforeDevCommand` → `prepare-sidecars.mjs`
 ///
 /// If you ever bypass those wrappers (e.g. invoking the Tauri CLI directly
@@ -40,7 +40,7 @@ fn ensure_sidecar_placeholder() {
         ""
     };
     let dir = PathBuf::from("binaries");
-    let path = dir.join(format!("codeg-mcp-{triple}{ext}"));
+    let path = dir.join(format!("dextra-mcp-{triple}{ext}"));
 
     println!("cargo:rerun-if-changed={}", path.display());
 
@@ -65,7 +65,7 @@ fn ensure_sidecar_placeholder() {
             let _ = fs::set_permissions(&path, fs::Permissions::from_mode(0o755));
         }
         println!(
-            "cargo:warning=codeg-mcp sidecar missing at {}; wrote 0-byte placeholder. \
+            "cargo:warning=dextra-mcp sidecar missing at {}; wrote 0-byte placeholder. \
              Run `pnpm tauri:prepare-sidecars` before `tauri build` to ship a working binary.",
             path.display()
         );

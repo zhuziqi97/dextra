@@ -1,5 +1,5 @@
 #[cfg(feature = "tauri-runtime")]
-const SERVICE_NAME: &str = "codeg";
+const SERVICE_NAME: &str = "dextra";
 
 fn token_key(account_id: &str) -> String {
     format!("github-token:{}", account_id)
@@ -49,11 +49,11 @@ pub fn delete_token(account_id: &str) -> Result<(), String> {
 
 #[cfg(not(feature = "tauri-runtime"))]
 fn tokens_file_path() -> std::path::PathBuf {
-    tokens_file_path_for(std::env::var("CODEG_DATA_DIR").ok().as_deref())
+    tokens_file_path_for(std::env::var("DEXTRA_DATA_DIR").ok().as_deref())
 }
 
 /// Resolve the on-disk `tokens.json` path given an explicit
-/// `CODEG_DATA_DIR` value (or `None` to fall back to the platform
+/// `DEXTRA_DATA_DIR` value (or `None` to fall back to the platform
 /// default). Always returns an absolute path so subprocess credential
 /// helpers — which inherit our env but run in git's CWD, not ours —
 /// don't end up looking for `tokens.json` in the user's repo. Factored
@@ -63,8 +63,8 @@ fn tokens_file_path() -> std::path::PathBuf {
 fn tokens_file_path_for(env_value: Option<&str>) -> std::path::PathBuf {
     let dir = env_value.map(std::path::PathBuf::from).unwrap_or_else(|| {
         dirs::data_dir()
-            .map(|d| d.join("codeg"))
-            .unwrap_or_else(|| std::path::PathBuf::from(".codeg-data"))
+            .map(|d| d.join("dextra"))
+            .unwrap_or_else(|| std::path::PathBuf::from(".dextra-data"))
     });
     crate::git_credential::absolutize(&dir).join("tokens.json")
 }
@@ -376,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_tokens_file_path_absolutizes_relative_env() {
-        // Regression: a relative `CODEG_DATA_DIR=data` previously made
+        // Regression: a relative `DEXTRA_DATA_DIR=data` previously made
         // `tokens.json` resolve against the helper subprocess's CWD (i.e.
         // git's repo dir), even after we'd absolutized the path used for
         // the database. The token store must always land on an absolute
@@ -393,7 +393,7 @@ mod tests {
 
     #[test]
     fn test_tokens_file_path_absolute_env_unchanged() {
-        let data_dir = std::env::current_dir().expect("cwd").join("codeg-data");
+        let data_dir = std::env::current_dir().expect("cwd").join("dextra-data");
         let data_dir_str = data_dir.to_string_lossy().to_string();
         let resolved = tokens_file_path_for(Some(&data_dir_str));
         assert_eq!(resolved, data_dir.join("tokens.json"));

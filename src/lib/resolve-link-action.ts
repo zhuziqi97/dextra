@@ -12,8 +12,8 @@
 //      rather than handed to the OS.
 //   2. terminal rules — a `block` site rule (the administrator's table is
 //      consulted before the user's), or a loopback/private address seen from a
-//      window bound to a REMOTE codeg-server, or a loopback http address seen
-//      from a browser whose codeg-server bridges its ports. These cannot be
+//      window bound to a REMOTE dextra-server, or a loopback http address seen
+//      from a browser whose dextra-server bridges its ports. These cannot be
 //      inverted by the modifier key: flipping a remote `localhost:3000` to
 //      the system browser would only ever hit the local machine's loopback.
 //   3. base target — an explicit menu choice, else a site rule, else the
@@ -44,9 +44,9 @@ export interface LinkSurface {
   fileColumnVisible: boolean
   /** A session viewer host can render the file/browser drawer instead. */
   viewerHostAvailable: boolean
-  /** The window is bound to a remote codeg-server (`isRemoteDesktopMode()`). */
+  /** The window is bound to a remote dextra-server (`isRemoteDesktopMode()`). */
   remoteDesktop: boolean
-  /** Web mode, and the codeg-server bridges its loopback ports so a dev
+  /** Web mode, and the dextra-server bridges its loopback ports so a dev
    *  server there can be shown in a tab (`bridgeStatus().enabled`). */
   bridgeAvailable?: boolean
 }
@@ -81,7 +81,7 @@ export type LinkAction =
       url: string
       placement: "tab" | "drawer"
       /** Chosen by a terminal rule rather than a preference: the address is
-       *  loopback or private and only reachable from the codeg host (a
+       *  loopback or private and only reachable from the dextra host (a
        *  remote-workspace window, or a browser with the port bridge). */
       remoteOverride: boolean
     }

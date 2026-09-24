@@ -773,7 +773,7 @@ fn json_scalar_to_string(value: &serde_json::Value) -> Option<String> {
 fn telegram_topic_title(title: &str) -> String {
     let title = title.trim();
     let title = if title.is_empty() {
-        "Codeg session"
+        "Dextra session"
     } else {
         title
     };
@@ -941,11 +941,11 @@ mod tests {
     #[test]
     fn chat_filter_matches_configured_username_case_insensitively() {
         let message = serde_json::json!({
-            "chat": { "id": -100123, "username": "CodegTopics" }
+            "chat": { "id": -100123, "username": "DextraTopics" }
         });
 
-        assert!(telegram_message_chat_matches(&message, "@codegtopics"));
-        assert!(telegram_message_chat_matches(&message, "CODEGTOPICS"));
+        assert!(telegram_message_chat_matches(&message, "@dextratopics"));
+        assert!(telegram_message_chat_matches(&message, "DEXTRATOPICS"));
         assert!(!telegram_message_chat_matches(&message, "other"));
     }
 
@@ -983,14 +983,14 @@ mod tests {
     fn text_filter_preserves_legacy_group_mention_requirement() {
         assert!(telegram_should_process_text_message(
             "supergroup",
-            "/task@codeg_bot build",
-            "codeg_bot",
+            "/task@dextra_bot build",
+            "dextra_bot",
             false
         ));
         assert!(!telegram_should_process_text_message(
             "supergroup",
             "/task build",
-            "codeg_bot",
+            "dextra_bot",
             false
         ));
     }
@@ -998,15 +998,15 @@ mod tests {
     #[test]
     fn strip_bot_mention_removes_the_mention_in_either_case() {
         assert_eq!(
-            strip_bot_mention("/task@codeg_bot build", "codeg_bot"),
+            strip_bot_mention("/task@dextra_bot build", "dextra_bot"),
             "/task build"
         );
         assert_eq!(
-            strip_bot_mention("/task@CodeG_Bot build", "codeg_bot"),
+            strip_bot_mention("/task@Dextra_Bot build", "dextra_bot"),
             "/task build"
         );
-        assert_eq!(strip_bot_mention("/task build", "codeg_bot"), "/task build");
-        assert_eq!(strip_bot_mention("/task@codeg_bot", ""), "/task@codeg_bot");
+        assert_eq!(strip_bot_mention("/task build", "dextra_bot"), "/task build");
+        assert_eq!(strip_bot_mention("/task@dextra_bot", ""), "/task@dextra_bot");
     }
 
     /// The long-poll loop runs unattended, and any member of a bound group
@@ -1019,33 +1019,33 @@ mod tests {
     fn strip_bot_mention_survives_text_whose_lowercase_is_a_different_length() {
         // capital I with dot above, 2 bytes -> 3
         assert_eq!(
-            strip_bot_mention("\u{130}@codeg_bot hi", "codeg_bot"),
+            strip_bot_mention("\u{130}@dextra_bot hi", "dextra_bot"),
             "\u{130} hi"
         );
         // Kelvin sign, 3 bytes -> 1
         assert_eq!(
-            strip_bot_mention("\u{212A}@codeg_bot hi", "codeg_bot"),
+            strip_bot_mention("\u{212A}@dextra_bot hi", "dextra_bot"),
             "\u{212A} hi"
         );
         // capital sharp s, 3 bytes -> 2
         assert_eq!(
-            strip_bot_mention("\u{1E9E}@codeg_bot hi", "codeg_bot"),
+            strip_bot_mention("\u{1E9E}@dextra_bot hi", "dextra_bot"),
             "\u{1E9E} hi"
         );
         // Enough drift to run the old offset off the end of the string.
         assert_eq!(
-            strip_bot_mention("\u{130}\u{130}@codeg_bot", "codeg_bot"),
+            strip_bot_mention("\u{130}\u{130}@dextra_bot", "dextra_bot"),
             "\u{130}\u{130}"
         );
         assert_eq!(
-            strip_bot_mention("\u{212A}\u{212A}@codeg_bot x", "codeg_bot"),
+            strip_bot_mention("\u{212A}\u{212A}@dextra_bot x", "dextra_bot"),
             "\u{212A}\u{212A} x"
         );
         // A mention whose tail is a wide character is not a mention, and
         // deciding that must not slice through the character.
         assert_eq!(
-            strip_bot_mention("@codeg_bo\u{65E5}", "codeg_bot"),
-            "@codeg_bo\u{65E5}"
+            strip_bot_mention("@dextra_bo\u{65E5}", "dextra_bot"),
+            "@dextra_bo\u{65E5}"
         );
     }
 
@@ -1054,7 +1054,7 @@ mod tests {
         assert!(telegram_should_process_text_message(
             "supergroup",
             "plain follow-up",
-            "codeg_bot",
+            "dextra_bot",
             true
         ));
     }

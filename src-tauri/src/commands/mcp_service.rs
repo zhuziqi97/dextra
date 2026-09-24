@@ -1,11 +1,11 @@
-//! Health report for the codeg-mcp service, and the one action that can fix
+//! Health report for the dextra-mcp service, and the one action that can fix
 //! it from the UI.
 //!
-//! "The codeg-mcp service" is really three things stacked, and a session loses
-//! its codeg tools if ANY of them is missing:
+//! "The dextra-mcp service" is really three things stacked, and a session loses
+//! its dextra tools if ANY of them is missing:
 //!
-//!   1. the **companion binary** on disk — `codeg-mcp`, which the agent CLI
-//!      spawns as a stdio MCP server (see `acp::connection::inject_codeg_mcp`);
+//!   1. the **companion binary** on disk — `dextra-mcp`, which the agent CLI
+//!      spawns as a stdio MCP server (see `acp::connection::inject_dextra_mcp`);
 //!   2. the **broker socket** inside this process, which every companion
 //!      round-trips through (see `acp::delegation::service`);
 //!   3. at least one **enabled tool group** — with all of them off, injection
@@ -14,12 +14,12 @@
 //! Each fails differently and each is invisible today: a missing binary logs
 //! one line at spawn time, a dead socket logs nothing at all, and "everything
 //! is off in settings" looks identical to both from a conversation. This
-//! module collapses the three into one [`CodegMcpServiceStatus`] the status-bar
-//! indicator renders, with a single headline [`CodegMcpServiceState`] so the
+//! module collapses the three into one [`DextraMcpServiceStatus`] the status-bar
+//! indicator renders, with a single headline [`DextraMcpServiceState`] so the
 //! popover can offer exactly one next step.
 //!
 //! Only #2 is startable from here — #1 needs a reinstall. #3 is a settings
-//! write, which [`set_codeg_mcp_tool_group_core`] performs through the very
+//! write, which [`set_dextra_mcp_tool_group_core`] performs through the very
 //! same `_core` setters the settings window uses.
 
 // Only the Tauri command signatures (and the tests) name `Arc` directly; the
@@ -47,13 +47,13 @@ use crate::web::event_bridge::EventEmitter;
 /// state hides is still reported field-by-field alongside it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum CodegMcpServiceState {
+pub enum DextraMcpServiceState {
     /// The broker socket isn't answering. Companions would launch and fail to
-    /// reach codeg. Fixable here — see [`start_codeg_mcp_service_core`].
+    /// reach dextra. Fixable here — see [`start_dextra_mcp_service_core`].
     Stopped,
-    /// The socket is fine but the `codeg-mcp` binary isn't on disk, so nothing
+    /// The socket is fine but the `dextra-mcp` binary isn't on disk, so nothing
     /// gets injected into an agent's MCP config. Needs a reinstall or
-    /// `CODEG_MCP_BIN`; there is nothing to start.
+    /// `DEXTRA_MCP_BIN`; there is nothing to start.
     Unavailable,
     /// Everything is in place, but every tool group is switched off, so no
     /// companion is injected. Fixed in settings, not here.
@@ -67,7 +67,7 @@ pub enum CodegMcpServiceState {
 /// render whatever the backend currently supports without a lockstep frontend
 /// change.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CodegMcpToolGroup {
+pub struct DextraMcpToolGroup {
     pub key: String,
     pub enabled: bool,
     /// The slug this one is part of, when it is part of one: `browser_eval`
@@ -78,7 +78,7 @@ pub struct CodegMcpToolGroup {
     pub requires: Option<String>,
 }
 
-impl CodegMcpToolGroup {
+impl DextraMcpToolGroup {
     fn group(key: &str, enabled: bool) -> Self {
         Self {
             key: key.to_string(),
@@ -97,16 +97,16 @@ impl CodegMcpToolGroup {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CodegMcpServiceStatus {
-    pub state: CodegMcpServiceState,
+pub struct DextraMcpServiceStatus {
+    pub state: DextraMcpServiceState,
     /// Whether the broker socket answered a liveness ping just now.
     pub listening: bool,
     /// UDS path (unix) or named-pipe name (Windows) the companions dial.
     pub socket_path: String,
-    /// Resolved `codeg-mcp` path, or `None` when the lookup came up empty.
+    /// Resolved `dextra-mcp` path, or `None` when the lookup came up empty.
     pub binary_path: Option<String>,
     /// Tool groups and their current switches, in companion `--features` order.
-    pub tool_groups: Vec<CodegMcpToolGroup>,
+    pub tool_groups: Vec<DextraMcpToolGroup>,
     /// Companions currently holding a valid token, and how many distinct agent
     /// sessions they belong to.
     pub companion_count: u32,
@@ -130,7 +130,7 @@ pub struct CodegMcpServiceStatus {
 /// they arrive from different places in each runtime (Tauri managed state vs
 /// `AppState` fields) and seven positional `&` arguments of similar type is a
 /// silent argument-swap waiting to happen.
-pub struct CodegMcpStatusSources<'a> {
+pub struct DextraMcpStatusSources<'a> {
     pub broker: &'a DelegationBroker,
     pub tokens: &'a TokenRegistry,
     pub feedback: &'a FeedbackRuntimeConfig,
@@ -142,9 +142,9 @@ pub struct CodegMcpStatusSources<'a> {
 
 /// Build the report. Probes the socket for real (one ping round-trip), so
 /// callers should treat this as a network-ish call, not a field read.
-pub async fn codeg_mcp_service_status_core(
-    sources: CodegMcpStatusSources<'_>,
-) -> CodegMcpServiceStatus {
+pub async fn dextra_mcp_service_status_core(
+    sources: DextraMcpStatusSources<'_>,
+) -> DextraMcpServiceStatus {
     let handle = service::current();
     // Without an installed handle there is no socket to probe and no way to
     // start one; report the configured path so the popover can still name what
@@ -162,7 +162,7 @@ pub async fn codeg_mcp_service_status_core(
         None => Default::default(),
     };
 
-    let binary_path = crate::acp::connection::locate_codeg_mcp_binary()
+    let binary_path = crate::acp::connection::locate_dextra_mcp_binary()
         .map(|p| p.to_string_lossy().to_string());
 
     let delegation_cfg = sources.broker.config_snapshot().await;
@@ -173,18 +173,18 @@ pub async fn codeg_mcp_service_status_core(
     // to look for a switch that doesn't exist.
     let browser_cfg = sources.browser.snapshot().await;
     let tool_groups = vec![
-        CodegMcpToolGroup::group("delegation", delegation_cfg.enabled),
-        CodegMcpToolGroup::group("feedback", sources.feedback.is_enabled().await),
-        CodegMcpToolGroup::group("ask", sources.question.is_enabled().await),
-        CodegMcpToolGroup::group("sessions", sources.session_info.is_enabled().await),
-        CodegMcpToolGroup::group("automations", authoring_cfg.automations_enabled),
-        CodegMcpToolGroup::group("taskboard", authoring_cfg.work_tasks_enabled),
-        CodegMcpToolGroup::group("browser", browser_cfg.enabled),
+        DextraMcpToolGroup::group("delegation", delegation_cfg.enabled),
+        DextraMcpToolGroup::group("feedback", sources.feedback.is_enabled().await),
+        DextraMcpToolGroup::group("ask", sources.question.is_enabled().await),
+        DextraMcpToolGroup::group("sessions", sources.session_info.is_enabled().await),
+        DextraMcpToolGroup::group("automations", authoring_cfg.automations_enabled),
+        DextraMcpToolGroup::group("taskboard", authoring_cfg.work_tasks_enabled),
+        DextraMcpToolGroup::group("browser", browser_cfg.enabled),
         // `browser_eval` reports what the runtime would actually hand an
         // agent, which is the pair ANDed: a stored `true` under a group that
         // is off is not a switch anyone can act on, and showing it on would
         // say an agent may run code when none can.
-        CodegMcpToolGroup::within(
+        DextraMcpToolGroup::within(
             "browser_eval",
             "browser",
             browser_cfg.enabled && browser_cfg.eval,
@@ -199,17 +199,17 @@ pub async fn codeg_mcp_service_status_core(
         .any(|g| g.requires.is_none() && g.enabled);
 
     let state = if !listening {
-        CodegMcpServiceState::Stopped
+        DextraMcpServiceState::Stopped
     } else if binary_path.is_none() {
-        CodegMcpServiceState::Unavailable
+        DextraMcpServiceState::Unavailable
     } else if !any_group_enabled {
-        CodegMcpServiceState::Disabled
+        DextraMcpServiceState::Disabled
     } else {
-        CodegMcpServiceState::Running
+        DextraMcpServiceState::Running
     };
 
     let token_stats = sources.tokens.stats().await;
-    CodegMcpServiceStatus {
+    DextraMcpServiceStatus {
         state,
         listening,
         socket_path,
@@ -226,10 +226,10 @@ pub async fn codeg_mcp_service_status_core(
 }
 
 /// The configs a tool-group toggle writes through. Deliberately not
-/// [`CodegMcpStatusSources`]: a write needs neither the token registry (a
+/// [`DextraMcpStatusSources`]: a write needs neither the token registry (a
 /// read-only census) nor, conversely, can it do without the database and the
 /// event emitter that the read path never touches.
-pub struct CodegMcpToolGroupTargets<'a> {
+pub struct DextraMcpToolGroupTargets<'a> {
     pub broker: &'a DelegationBroker,
     pub feedback: &'a FeedbackRuntimeConfig,
     pub question: &'a QuestionRuntimeConfig,
@@ -238,7 +238,7 @@ pub struct CodegMcpToolGroupTargets<'a> {
     pub browser: &'a BrowserToolsRuntimeConfig,
 }
 
-/// Flip one tool group by the same slug [`codeg_mcp_service_status_core`]
+/// Flip one tool group by the same slug [`dextra_mcp_service_status_core`]
 /// reports.
 ///
 /// This dispatches into each feature's own settings module rather than writing
@@ -254,9 +254,9 @@ pub struct CodegMcpToolGroupTargets<'a> {
 /// read-modify-write of the pair loses whichever flip lands first. `feedback`,
 /// `ask` and `sessions` each own a single-field record, so their existing
 /// writer is already narrow.
-pub async fn set_codeg_mcp_tool_group_core(
+pub async fn set_dextra_mcp_tool_group_core(
     conn: &DatabaseConnection,
-    targets: CodegMcpToolGroupTargets<'_>,
+    targets: DextraMcpToolGroupTargets<'_>,
     emitter: &EventEmitter,
     key: &str,
     enabled: bool,
@@ -332,7 +332,7 @@ pub async fn set_codeg_mcp_tool_group_core(
         // position no setting backs.
         other => {
             return Err(AppCommandError::configuration_invalid(format!(
-                "unknown codeg-mcp tool group: {other}"
+                "unknown dextra-mcp tool group: {other}"
             )))
         }
     }
@@ -342,10 +342,10 @@ pub async fn set_codeg_mcp_tool_group_core(
 /// Bind the broker socket if it isn't already answering. Idempotent — a click
 /// on an already-healthy service is a no-op success, not an error, because the
 /// UI's view of "stopped" can be a probe or two out of date.
-pub async fn start_codeg_mcp_service_core() -> Result<(), AppCommandError> {
+pub async fn start_dextra_mcp_service_core() -> Result<(), AppCommandError> {
     let Some(handle) = service::current() else {
         return Err(AppCommandError::configuration_invalid(
-            "codeg-mcp broker socket is not managed by this process",
+            "dextra-mcp broker socket is not managed by this process",
         ));
     };
     handle
@@ -357,7 +357,7 @@ pub async fn start_codeg_mcp_service_core() -> Result<(), AppCommandError> {
 // -------- Tauri commands -----------------------------------------------------
 
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
-pub async fn get_codeg_mcp_service_status(
+pub async fn get_dextra_mcp_service_status(
     #[cfg(feature = "tauri-runtime")] broker: tauri::State<'_, Arc<DelegationBroker>>,
     #[cfg(feature = "tauri-runtime")] tokens: tauri::State<'_, Arc<TokenRegistry>>,
     #[cfg(feature = "tauri-runtime")] feedback: tauri::State<'_, FeedbackRuntimeConfig>,
@@ -365,10 +365,10 @@ pub async fn get_codeg_mcp_service_status(
     #[cfg(feature = "tauri-runtime")] session_info: tauri::State<'_, SessionInfoRuntimeConfig>,
     #[cfg(feature = "tauri-runtime")] authoring: tauri::State<'_, ChatAuthoringRuntimeConfig>,
     #[cfg(feature = "tauri-runtime")] browser: tauri::State<'_, BrowserToolsRuntimeConfig>,
-) -> Result<CodegMcpServiceStatus, AppCommandError> {
+) -> Result<DextraMcpServiceStatus, AppCommandError> {
     #[cfg(feature = "tauri-runtime")]
     {
-        Ok(codeg_mcp_service_status_core(CodegMcpStatusSources {
+        Ok(dextra_mcp_service_status_core(DextraMcpStatusSources {
             broker: broker.inner(),
             tokens: tokens.inner(),
             feedback: feedback.inner(),
@@ -387,16 +387,16 @@ pub async fn get_codeg_mcp_service_status(
 }
 
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
-pub async fn start_codeg_mcp_service() -> Result<(), AppCommandError> {
-    start_codeg_mcp_service_core().await
+pub async fn start_dextra_mcp_service() -> Result<(), AppCommandError> {
+    start_dextra_mcp_service_core().await
 }
 
 // Six runtime configs plus the db, the app handle and the two payload fields.
 // Tauri injects managed state positionally, so these cannot be bundled the way
-// `CodegMcpToolGroupTargets` bundles them for the `_core` helper below.
+// `DextraMcpToolGroupTargets` bundles them for the `_core` helper below.
 #[allow(clippy::too_many_arguments)]
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
-pub async fn set_codeg_mcp_tool_group(
+pub async fn set_dextra_mcp_tool_group(
     #[cfg(feature = "tauri-runtime")] app: tauri::AppHandle,
     #[cfg(feature = "tauri-runtime")] db: tauri::State<'_, crate::db::AppDatabase>,
     #[cfg(feature = "tauri-runtime")] broker: tauri::State<'_, Arc<DelegationBroker>>,
@@ -413,9 +413,9 @@ pub async fn set_codeg_mcp_tool_group(
         // `app.emit` fans out to every window, so the settings window's own
         // switch for this group converges with the one just flipped here.
         let emitter = EventEmitter::Tauri(app);
-        set_codeg_mcp_tool_group_core(
+        set_dextra_mcp_tool_group_core(
             &db.conn,
-            CodegMcpToolGroupTargets {
+            DextraMcpToolGroupTargets {
                 broker: broker.inner(),
                 feedback: feedback.inner(),
                 question: question.inner(),
@@ -483,8 +483,8 @@ mod tests {
             }
         }
 
-        fn sources(&self) -> CodegMcpStatusSources<'_> {
-            CodegMcpStatusSources {
+        fn sources(&self) -> DextraMcpStatusSources<'_> {
+            DextraMcpStatusSources {
                 broker: &self.broker,
                 tokens: &self.tokens,
                 feedback: &self.feedback,
@@ -495,8 +495,8 @@ mod tests {
             }
         }
 
-        async fn status(&self) -> CodegMcpServiceStatus {
-            codeg_mcp_service_status_core(self.sources()).await
+        async fn status(&self) -> DextraMcpServiceStatus {
+            dextra_mcp_service_status_core(self.sources()).await
         }
 
         async fn set_group(
@@ -505,9 +505,9 @@ mod tests {
             key: &str,
             enabled: bool,
         ) -> Result<(), AppCommandError> {
-            set_codeg_mcp_tool_group_core(
+            set_dextra_mcp_tool_group_core(
                 conn,
-                CodegMcpToolGroupTargets {
+                DextraMcpToolGroupTargets {
                     broker: &self.broker,
                     feedback: &self.feedback,
                     question: &self.question,
@@ -530,10 +530,10 @@ mod tests {
     async fn reports_stopped_and_unstartable_without_an_installed_handle() {
         let f = Fixture::new();
         let status = f.status().await;
-        assert_eq!(status.state, CodegMcpServiceState::Stopped);
+        assert_eq!(status.state, DextraMcpServiceState::Stopped);
         assert!(!status.listening);
         assert!(!status.can_start);
-        assert!(start_codeg_mcp_service_core().await.is_err());
+        assert!(start_dextra_mcp_service_core().await.is_err());
     }
 
     /// The socket verdict outranks the tool switches: turning every group on
@@ -548,7 +548,7 @@ mod tests {
             })
             .await;
         f.feedback.set(FeedbackConfig { enabled: true }).await;
-        assert_eq!(f.status().await.state, CodegMcpServiceState::Stopped);
+        assert_eq!(f.status().await.state, DextraMcpServiceState::Stopped);
     }
 
     #[tokio::test]
@@ -592,7 +592,7 @@ mod tests {
     #[tokio::test]
     async fn browser_eval_is_reported_under_the_group_it_belongs_to() {
         let f = Fixture::new();
-        let row = |status: &CodegMcpServiceStatus, key: &str| {
+        let row = |status: &DextraMcpServiceStatus, key: &str| {
             status
                 .tool_groups
                 .iter()
@@ -626,7 +626,7 @@ mod tests {
         let status = f.status().await;
         assert!(!row(&status, "browser_eval").enabled);
         // And a dependent switch does not by itself make the service "live".
-        assert_eq!(status.state, CodegMcpServiceState::Stopped);
+        assert_eq!(status.state, DextraMcpServiceState::Stopped);
         assert!(status
             .tool_groups
             .iter()

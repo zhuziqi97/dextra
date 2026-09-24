@@ -8,7 +8,7 @@ const child = spawn(process.execPath, [nextBin, "build"], {
   cwd: projectRoot,
   env: {
     ...process.env,
-    CODEG_BASE_PATH: "/runner-workbench",
+    DEXTRA_BASE_PATH: "/runner-workbench",
   },
   stdio: "inherit",
 })

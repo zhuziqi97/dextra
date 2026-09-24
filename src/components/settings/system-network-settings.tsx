@@ -433,7 +433,7 @@ export function SystemNetworkSettings() {
             <Button
               variant="ghost"
               className="size-5 rounded-full"
-              onClick={() => openUrl("https://github.com/xintaofei/codeg")}
+              onClick={() => openUrl("https://hm.ziqi.ac.cn:9400/zzq/dextra")}
             >
               <GithubMarkIcon className="size-5" />
             </Button>
@@ -512,9 +512,7 @@ export function SystemNetworkSettings() {
                   <Button
                     size="sm"
                     onClick={() =>
-                      openUrl(
-                        "https://github.com/xintaofei/codeg/releases/latest"
-                      )
+                      openUrl("https://hm.ziqi.ac.cn:9400/zzq/dextra")
                     }
                   >
                     <ArrowUpCircle className="h-3.5 w-3.5" />

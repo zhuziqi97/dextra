@@ -1,7 +1,7 @@
 //! 更新清单获取与版本比较。
 //!
 //! P0-C 阶段尚未建立 Dextra 自有发布源，因此桌面端和服务器端统一指向
-//! `.invalid` 保留域名并明确失败，避免误用 Codeg 上游更新包。
+//! `.invalid` 保留域名并明确失败，避免误用 Dextra 上游更新包。
 
 use std::sync::LazyLock;
 use std::time::Duration;
@@ -23,7 +23,7 @@ static MANIFEST_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyLoc
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(8))
         .timeout(Duration::from_secs(15))
-        .user_agent(concat!("codeg/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("dextra/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| format!("failed to initialize update manifest client: {e}"))
 });
@@ -36,7 +36,7 @@ static DOWNLOAD_HTTP_CLIENT: LazyLock<Result<reqwest::Client, String>> = LazyLoc
     reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(8))
         .read_timeout(Duration::from_secs(120))
-        .user_agent(concat!("codeg/", env!("CARGO_PKG_VERSION")))
+        .user_agent(concat!("dextra/", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| format!("failed to initialize update download client: {e}"))
 });
@@ -142,7 +142,7 @@ mod tests {
         assert!(UPDATE_MANIFEST_URL.contains(".invalid/"));
         assert!(RELEASE_DOWNLOAD_BASE.contains(".invalid/"));
         assert_eq!(desktop_endpoint, UPDATE_MANIFEST_URL);
-        assert!(!UPDATE_MANIFEST_URL.contains("github.com/xintaofei/codeg"));
-        assert!(!RELEASE_DOWNLOAD_BASE.contains("github.com/xintaofei/codeg"));
+        assert!(!UPDATE_MANIFEST_URL.contains("github.com/xintaofei/dextra"));
+        assert!(!RELEASE_DOWNLOAD_BASE.contains("github.com/xintaofei/dextra"));
     }
 }

@@ -1,5 +1,5 @@
 use ts_rs::TS;
-use codeg_lib::cerebro::configuration::*;
+use dextra_lib::cerebro::configuration::*;
 
 fn main() -> Result<(), ts_rs::ExportError> {
     // 从生产 DTO 派生前端类型，不在测试中维护字段镜像。

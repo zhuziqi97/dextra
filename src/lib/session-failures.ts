@@ -54,7 +54,7 @@ import type {
  * in the AIR extension reserves a prefix. Re-check it if a third agent is ever
  * advertised `session.notices`.
  */
-export const NOTICE_RECORD_ID_PREFIX = "codeg-notice:"
+export const NOTICE_RECORD_ID_PREFIX = "dextra-notice:"
 
 /**
  * Project a notice onto this table's contract, or `null` when it does not

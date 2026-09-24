@@ -18,10 +18,10 @@
 use std::sync::Arc;
 
 use axum_test::TestServer;
-use codeg_lib::app_state::AppState;
-use codeg_lib::db::test_helpers::fresh_in_memory_db;
-use codeg_lib::web::router::build_router;
-use codeg_lib::web::shutdown::ShutdownSignal;
+use dextra_lib::app_state::AppState;
+use dextra_lib::db::test_helpers::fresh_in_memory_db;
+use dextra_lib::web::router::build_router;
+use dextra_lib::web::shutdown::ShutdownSignal;
 use serde_json::{json, Value};
 
 const TEST_TOKEN: &str = "integration-test-token";
@@ -128,7 +128,7 @@ async fn open_folder_then_list_open_folders_shows_it() {
     let open_resp = server
         .post("/api/open_folder")
         .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
-        .json(&json!({"path": "/tmp/codeg-test-folder"}))
+        .json(&json!({"path": "/tmp/dextra-test-folder"}))
         .await;
     assert_eq!(
         open_resp.status_code(),
@@ -276,9 +276,9 @@ async fn json_api_is_gzip_compressed_when_client_accepts() {
     // row and parses the *real* home directory instead, so it answers `[]`
     // — 2 bytes, under the threshold — on a clean CI runner while returning
     // a fat body on a developer machine.
-    codeg_lib::db::service::folder_service::add_folder(
+    dextra_lib::db::service::folder_service::add_folder(
         &state.db.conn,
-        "/tmp/codeg-compression-test-folder-with-a-reasonably-long-path",
+        "/tmp/dextra-compression-test-folder-with-a-reasonably-long-path",
     )
     .await
     .expect("seed folder");
@@ -360,17 +360,17 @@ async fn static_js_is_compressed_but_binary_download_is_not() {
 #[tokio::test]
 async fn get_folder_conversation_accepts_turn_window_params() {
     let (server, state, _data, _static) = build_test_server_with_state().await;
-    let folder_id = codeg_lib::db::service::folder_service::add_folder(
+    let folder_id = dextra_lib::db::service::folder_service::add_folder(
         &state.db.conn,
-        "/tmp/codeg-window-param-test",
+        "/tmp/dextra-window-param-test",
     )
     .await
     .expect("seed folder")
     .id;
-    let conv_id = codeg_lib::commands::conversations::create_conversation_core(
+    let conv_id = dextra_lib::commands::conversations::create_conversation_core(
         &state.db.conn,
         folder_id,
-        codeg_lib::models::AgentType::ClaudeCode,
+        dextra_lib::models::AgentType::ClaudeCode,
         None,
     )
     .await
@@ -427,7 +427,7 @@ async fn get_folder_conversation_accepts_turn_window_params() {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// codeg-mcp service status
+// dextra-mcp service status
 // ────────────────────────────────────────────────────────────────────────────
 
 /// The status endpoint has to answer even in a runtime that never bound a
@@ -435,43 +435,46 @@ async fn get_folder_conversation_accepts_turn_window_params() {
 /// exists to show, so a 500 here would blind exactly the situation it reports.
 /// `AppState::new_for_test` installs no service handle, which is that runtime.
 #[tokio::test]
-async fn codeg_mcp_service_status_reports_a_socketless_runtime_as_stopped() {
+async fn dextra_mcp_service_status_reports_a_socketless_runtime_as_stopped() {
     let (server, _data, _static) = build_test_server().await;
-    let resp = server
-        .post("/api/get_codeg_mcp_service_status")
-        .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
-        .json(&json!({}))
-        .await;
-    assert_eq!(resp.status_code(), 200);
-    let body = resp.json::<Value>();
-    assert_eq!(body["state"], "stopped");
-    assert_eq!(body["listening"], false);
-    // No handle ⇒ nothing this process can start; the UI hides its button on
-    // this flag rather than offering one that can only fail.
-    assert_eq!(body["can_start"], false);
-    // The switches ride along regardless of socket health, so the popover can
-    // explain a healthy-but-toolless service without a second round trip.
-    let groups = body["tool_groups"].as_array().expect("tool_groups array");
-    let keys: Vec<&str> = groups.iter().filter_map(|g| g["key"].as_str()).collect();
-    assert!(keys.contains(&"delegation"), "got {keys:?}");
-    assert!(keys.contains(&"feedback"), "got {keys:?}");
+    for route in [
+        "/api/get_codeg_mcp_service_status",
+        "/api/get_dextra_mcp_service_status",
+    ] {
+        let resp = server
+            .post(route)
+            .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
+            .json(&json!({}))
+            .await;
+        assert_eq!(resp.status_code(), 200, "{route}");
+        let body = resp.json::<Value>();
+        assert_eq!(body["state"], "stopped");
+        assert_eq!(body["listening"], false);
+        assert_eq!(body["can_start"], false);
+        let groups = body["tool_groups"].as_array().expect("tool_groups array");
+        let keys: Vec<&str> = groups.iter().filter_map(|g| g["key"].as_str()).collect();
+        assert!(keys.contains(&"delegation"), "got {keys:?}");
+        assert!(keys.contains(&"feedback"), "got {keys:?}");
+    }
 }
 
 /// Starting without a handle must fail loudly rather than report success the
 /// UI would then paint as a running service.
 #[tokio::test]
-async fn starting_codeg_mcp_service_without_a_handle_is_rejected() {
+async fn starting_dextra_mcp_service_without_a_handle_is_rejected() {
     let (server, _data, _static) = build_test_server().await;
-    let resp = server
-        .post("/api/start_codeg_mcp_service")
-        .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
-        .json(&json!({}))
-        .await;
-    assert_eq!(resp.status_code(), 422);
+    for route in ["/api/start_codeg_mcp_service", "/api/start_dextra_mcp_service"] {
+        let resp = server
+            .post(route)
+            .add_header("authorization", format!("Bearer {TEST_TOKEN}"))
+            .json(&json!({}))
+            .await;
+        assert_eq!(resp.status_code(), 422, "{route}");
+    }
 }
 
 #[tokio::test]
-async fn codeg_mcp_service_status_requires_a_token() {
+async fn dextra_mcp_service_status_requires_a_token() {
     let (server, _data, _static) = build_test_server().await;
     let resp = server
         .post("/api/get_codeg_mcp_service_status")
