@@ -28,7 +28,11 @@ vi.mock("@/lib/transport", () => ({
   notifyRemoteDesktopUnauthorized: mocks.notifyRemoteDesktopUnauthorized,
 }))
 
-import { openCommitWindow, openSettingsWindow } from "@/lib/api"
+import {
+  openCommitWindow,
+  openProjectBootWindow,
+  openSettingsWindow,
+} from "@/lib/api"
 
 /** Stand-in for the reserved WindowProxy: only `location.href` and `close`. */
 function fakePopup(initialHref = "about:blank") {
@@ -50,6 +54,7 @@ function deferred<T>() {
 
 describe("web-mode app popup windows", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/")
     mocks.call.mockReset()
     mocks.shellCall.mockReset()
     mocks.isDesktop.mockReset()
@@ -78,6 +83,24 @@ describe("web-mode app popup windows", () => {
 
     expect(popup.location.href).toBe("/commit?folder=7")
     expect(popup.close).not.toHaveBeenCalled()
+  })
+
+  it("keeps the client-web mount for settings and project boot popups", async () => {
+    window.history.replaceState({}, "", "/client-web/session-123/workspace")
+    const popup = fakePopup()
+    const open = vi.spyOn(window, "open").mockReturnValue(popup as never)
+    mocks.call.mockResolvedValue({ path: "/settings/appearance" })
+
+    await openSettingsWindow("appearance")
+    expect(popup.location.href).toBe(
+      "/client-web/session-123/settings/appearance"
+    )
+
+    await openProjectBootWindow()
+    expect(open).toHaveBeenLastCalledWith(
+      "/client-web/session-123/project-boot",
+      "project-boot"
+    )
   })
 
   it("rejects without calling the backend when the popup is blocked", async () => {

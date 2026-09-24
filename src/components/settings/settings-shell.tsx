@@ -171,8 +171,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
       if (typeof window === "undefined") return
 
       const target = normalizePath(href)
-      const current = normalizePath(window.location.pathname)
-      if (current === target) {
+      if (normalizedPathname === target) {
         setNavOpen(false)
         return
       }
@@ -192,7 +191,7 @@ export function SettingsShell({ children }: SettingsShellProps) {
       router.push(fullTarget)
       setNavOpen(false)
     },
-    [router, setNavOpen]
+    [router, normalizedPathname]
   )
 
   const filteredNavItems = SETTINGS_NAV_ITEMS.filter(

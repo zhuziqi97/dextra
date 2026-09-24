@@ -11,6 +11,7 @@ import {
 import { getCodegToken } from "./transport/web-auth"
 import { notifyWebUnauthorized } from "./transport/web-connection-store"
 import { getCurrentEffectiveAppLocale } from "./i18n"
+import { webPath } from "./web-mount"
 import {
   DEFAULT_FORGE_COMMENT_PAGE_SIZE,
   DEFAULT_FORGE_FILES_PAGE_SIZE,
@@ -2475,7 +2476,7 @@ async function openAppWindow(
   reserveAppWindow(name)
   try {
     const { path } = await resolvePath()
-    win.location.href = path
+    win.location.href = webPath(path)
   } catch (error) {
     // Tear the placeholder down only once nothing else is waiting on this name
     // AND nobody has navigated it meanwhile: a concurrent request for the same
@@ -2922,7 +2923,7 @@ export async function openProjectBootWindow(source?: string): Promise<void> {
     })
   }
   if (typeof window !== "undefined") {
-    window.open("/project-boot", "project-boot")
+    window.open(webPath("/project-boot"), "project-boot")
   }
 }
 
