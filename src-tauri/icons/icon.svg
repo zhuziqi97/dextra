@@ -1,14 +1,5 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="dGrad" x1="245" y1="180" x2="830" y2="832" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#A5DFF7"/>
-      <stop offset="0.55" stop-color="#7CCBF1"/>
-      <stop offset="1" stop-color="#5AB7E8"/>
-    </linearGradient>
-    <linearGradient id="codeGrad" x1="390" y1="420" x2="640" y2="595" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#69C4EE"/>
-      <stop offset="1" stop-color="#45A9DF"/>
-    </linearGradient>
     <filter id="cardShadow" x="20" y="22" width="984" height="984" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
       <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#B8CBD8" flood-opacity="0.22"/>
     </filter>
@@ -43,10 +34,10 @@
            H364
            V325
            Z"
-        fill="url(#dGrad)"/>
+        fill="#3D82F7"/>
 
   <!-- Enlarged, heavier code mark, shifted slightly right -->
-  <g stroke="url(#codeGrad)" stroke-width="46" stroke-linecap="round" stroke-linejoin="round">
+  <g stroke="#3D82F7" stroke-width="46" stroke-linecap="round" stroke-linejoin="round">
     <path d="M480 431L409 506L480 581"/>
     <path d="M548 431L619 506L548 581"/>
   </g>
