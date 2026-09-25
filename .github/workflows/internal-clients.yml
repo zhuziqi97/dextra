@@ -1,0 +1,211 @@
+name: Internal Dextra clients
+
+on:
+  push:
+    branches:
+      - codex/runner-execution-platform
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: internal-clients-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HUSKY: "0"
+  RUST_BACKTRACE: short
+  CARGO_BUILD_JOBS: "2"
+  CARGO_INCREMENTAL: "0"
+  DEXTRA_SKIP_SIDECAR: "1"
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux x64
+            runner: ubuntu-22.04
+            platform: linux-x64
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,rpm,appimage
+            arch: x86-64
+          - name: Linux arm64
+            runner: ubuntu-22.04-arm
+            platform: linux-arm64
+            target: aarch64-unknown-linux-gnu
+            bundles: deb,rpm
+            arch: ARM aarch64
+          - name: macOS x64
+            runner: macos-15-intel
+            platform: macos-x64
+            target: x86_64-apple-darwin
+            bundles: dmg
+            arch: x86_64
+          - name: macOS arm64
+            runner: macos-15
+            platform: macos-arm64
+            target: aarch64-apple-darwin
+            bundles: dmg
+            arch: arm64
+          - name: Windows x64
+            runner: windows-2022
+            platform: windows-x64
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+          shared-key: internal-${{ matrix.target }}
+
+      - name: Install Linux build and inspection tools
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf rpm cpio
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check product identity and retained phone protocol
+        if: matrix.platform == 'linux-x64'
+        run: pnpm check:branding
+
+      - name: Build both Dextra companion binaries
+        shell: bash
+        env:
+          DEXTRA_SKIP_SIDECAR: "0"
+        run: pnpm tauri:prepare-sidecars --target ${{ matrix.target }}
+
+      - name: Build unsigned desktop package
+        shell: bash
+        run: >-
+          pnpm tauri build
+          --target ${{ matrix.target }}
+          --bundles ${{ matrix.bundles }}
+          --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - name: Inspect Linux packages
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundle="src-tauri/target/${{ matrix.target }}/release/bundle"
+          deb=$(find "$bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)
+          rpm=$(find "$bundle/rpm" -maxdepth 1 -name '*.rpm' -print -quit)
+          test -n "$deb" && test -n "$rpm"
+          check_bin_dir() {
+            local root="$1"
+            for name in dextra dextra-mcp dextra-cerebro-mcp-bridge; do
+              test -x "$root/usr/bin/$name"
+              file "$root/usr/bin/$name" | grep -F '${{ matrix.arch }}'
+            done
+            test -f "$root/usr/lib/Dextra/web/index.html"
+            test -n "$(find "$root/usr/share" -name 'Dextra.desktop' -print -quit)"
+            test -n "$(find "$root/usr/share" -iname '*dextra*.png' -print -quit)"
+            for executable in "$root"/usr/bin/*; do
+              case "$(basename "$executable")" in
+                dextra|dextra-server|dextra-mcp|dextra-cerebro-mcp-bridge|xdg-open|xdg-mime) ;;
+                *) echo "Unexpected client executable: $executable" >&2; exit 1 ;;
+              esac
+            done
+          }
+          mkdir -p "$RUNNER_TEMP/dextra-deb" "$RUNNER_TEMP/dextra-rpm"
+          dpkg-deb -x "$deb" "$RUNNER_TEMP/dextra-deb"
+          check_bin_dir "$RUNNER_TEMP/dextra-deb"
+          (cd "$RUNNER_TEMP/dextra-rpm" && rpm2cpio "$GITHUB_WORKSPACE/$rpm" | cpio -idm --quiet)
+          check_bin_dir "$RUNNER_TEMP/dextra-rpm"
+          if [ '${{ matrix.platform }}' = linux-x64 ]; then
+            appimage=$(find "$bundle/appimage" -maxdepth 1 -name '*.AppImage' -print -quit)
+            test -n "$appimage"
+            (cd "$RUNNER_TEMP" && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
+            check_bin_dir "$RUNNER_TEMP/squashfs-root"
+          fi
+
+      - name: Inspect macOS DMG
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg=$(find "src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -name '*.dmg' -print -quit)
+          test -n "$dmg"
+          hdiutil verify "$dmg"
+          mkdir -p "$RUNNER_TEMP/dextra-dmg"
+          hdiutil attach "$dmg" -readonly -nobrowse -mountpoint "$RUNNER_TEMP/dextra-dmg"
+          trap 'hdiutil detach "$RUNNER_TEMP/dextra-dmg"' EXIT
+          app=$(find "$RUNNER_TEMP/dextra-dmg" -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")" = app.dextra
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = 0.32.2
+          for name in dextra dextra-mcp dextra-cerebro-mcp-bridge; do
+            test -x "$app/Contents/MacOS/$name"
+            file "$app/Contents/MacOS/$name" | grep -F '${{ matrix.arch }}'
+          done
+          test -f "$app/Contents/Resources/icon.icns"
+          test -f "$app/Contents/Resources/web/index.html"
+          for executable in "$app"/Contents/MacOS/*; do
+            case "$(basename "$executable")" in
+              dextra|dextra-server|dextra-mcp|dextra-cerebro-mcp-bridge) ;;
+              *) echo "Unexpected client executable: $executable" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Inspect Windows NSIS installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bundle = "src-tauri/target/${{ matrix.target }}/release/bundle/nsis"
+          $installer = Get-ChildItem $bundle -Filter '*.exe' | Select-Object -First 1
+          if (-not $installer) { throw 'NSIS installer missing' }
+          $extract = Join-Path $env:RUNNER_TEMP 'dextra-nsis'
+          & 7z x $installer.FullName "-o$extract" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot extract NSIS installer' }
+          foreach ($name in @('dextra.exe', 'dextra-mcp.exe', 'dextra-cerebro-mcp-bridge.exe')) {
+            $path = Join-Path $extract $name
+            if (-not (Test-Path $path)) { throw "Missing $name" }
+            $bytes = [System.IO.File]::ReadAllBytes($path)
+            $offset = [BitConverter]::ToInt32($bytes, 0x3c)
+            $machine = [BitConverter]::ToUInt16($bytes, $offset + 4)
+            if ($machine -ne 0x8664) { throw "$name is not PE x64" }
+          }
+          if (-not (Test-Path (Join-Path $extract 'web/_next'))) { throw 'Web resources missing' }
+          $allowed = @('dextra.exe', 'dextra-server.exe', 'dextra-mcp.exe', 'dextra-cerebro-mcp-bridge.exe', 'uninstall.exe')
+          foreach ($exe in Get-ChildItem $extract -Filter '*.exe') {
+            if ($allowed -notcontains $exe.Name) { throw "Unexpected client executable: $($exe.Name)" }
+          }
+
+      - name: Collect versioned build artifact
+        run: node scripts/collect-internal-packages.mjs ${{ matrix.platform }} ${{ matrix.target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dextra-${{ matrix.platform }}-${{ github.sha }}
+          path: dist/internal/${{ matrix.platform }}/
+          if-no-files-found: error
+          retention-days: 30
