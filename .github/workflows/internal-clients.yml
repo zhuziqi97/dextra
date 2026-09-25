@@ -115,7 +115,7 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          set -euo pipefail
+          set -euxo pipefail
           bundle="src-tauri/target/${{ matrix.target }}/release/bundle"
           deb=$(find "$bundle/deb" -maxdepth 1 -name '*.deb' -print -quit)
           rpm=$(find "$bundle/rpm" -maxdepth 1 -name '*.rpm' -print -quit)
@@ -148,6 +148,17 @@ jobs:
             check_bin_dir "$RUNNER_TEMP/squashfs-root"
           fi
 
+      - name: Retain failed Linux packages for diagnosis
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dextra-diagnostic-${{ matrix.platform }}-${{ github.sha }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/rpm/*.rpm
+          if-no-files-found: ignore
+          retention-days: 2
+
       - name: Inspect macOS DMG
         if: runner.os == 'macOS'
         shell: bash
@@ -161,8 +172,9 @@ jobs:
           trap 'hdiutil detach "$RUNNER_TEMP/dextra-dmg"' EXIT
           app=$(find "$RUNNER_TEMP/dextra-dmg" -maxdepth 1 -name '*.app' -print -quit)
           test -n "$app"
+          version=$(node -p "require('./package.json').version")
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Contents/Info.plist")" = app.dextra
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = 0.32.2
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$app/Contents/Info.plist")" = "$version"
           for name in dextra dextra-mcp dextra-cerebro-mcp-bridge; do
             test -x "$app/Contents/MacOS/$name"
             file "$app/Contents/MacOS/$name" | grep -F '${{ matrix.arch }}'
