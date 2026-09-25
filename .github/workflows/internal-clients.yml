@@ -88,7 +88,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            patchelf rpm cpio
+            patchelf rpm libarchive-tools
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -139,7 +139,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/dextra-deb" "$RUNNER_TEMP/dextra-rpm"
           dpkg-deb -x "$deb" "$RUNNER_TEMP/dextra-deb"
           check_bin_dir "$RUNNER_TEMP/dextra-deb"
-          (cd "$RUNNER_TEMP/dextra-rpm" && rpm2cpio "$GITHUB_WORKSPACE/$rpm" | cpio -idm --quiet)
+          bsdtar -xf "$GITHUB_WORKSPACE/$rpm" -C "$RUNNER_TEMP/dextra-rpm"
           check_bin_dir "$RUNNER_TEMP/dextra-rpm"
           if [ '${{ matrix.platform }}' = linux-x64 ]; then
             appimage=$(find "$bundle/appimage" -maxdepth 1 -name '*.AppImage' -print -quit)

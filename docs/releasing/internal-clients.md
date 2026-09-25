@@ -8,6 +8,10 @@ Actions artifacts only. It does not create a GitHub Release, publish a Docker
 image, build standalone server artifacts, or require Apple Developer ID or
 Tauri updater signing secrets.
 
+The GitHub repository is public, so its Actions logs and downloadable build
+artifacts are visible to people with repository read access. Internal use here
+describes the intended installation audience, not artifact confidentiality.
+
 The artifact matrix is Linux x64 `.deb`, `.rpm`, `.AppImage`; Linux arm64 `.deb`,
 `.rpm`; macOS x64 and arm64 `.dmg`; and Windows x64 NSIS `.exe`. Each artifact
 contains its package files and `build-info.json`, which records the exact source
@@ -23,7 +27,7 @@ acceptance separately for each platform.
 
 ## Download and install on macOS
 
-Download the macOS artifact from the private repository's Actions run and
+Download the macOS artifact from the repository's Actions run and
 unpack it. Open the `.dmg`, copy `Dextra.app` to Applications, and launch the
 copied app. These internal packages have no Developer ID signature or Apple
 notarization. A local ad-hoc code signature, when present, is not an Apple
@@ -36,7 +40,9 @@ Mac](https://support.apple.com/en-au/102445). Do this only for the package whose
 source commit and workflow run were approved internally; do not disable
 Gatekeeper for the whole machine.
 
-After installation, open Dextra, pair it from Convene's **My Clients** page,
-select a local directory, and verify its execution binding and MCP authorization
-separately. Test a native conversation through the desktop window and Convene's
-proxied workspace before marking that particular package as accepted.
+When accepting a package on a macOS machine, open Dextra, pair it from Convene's
+**My Clients** page, select a local directory, and verify its execution binding
+and MCP authorization separately. Test a native conversation through the desktop
+window and Convene's proxied workspace before marking that particular package
+as runtime accepted. D10 checks the macOS packages and their contents only;
+their runtime acceptance remains the D7 result for the earlier version.
