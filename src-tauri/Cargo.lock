@@ -1622,7 +1622,7 @@ dependencies = [
 
 [[package]]
 name = "dextra"
-version = "0.32.1"
+version = "0.32.2"
 dependencies = [
  "aes-gcm",
  "agent-client-protocol",
