@@ -6,10 +6,9 @@ apps and every well-behaved third-party app measure exactly that ratio, so an
 icon drawn edge-to-edge renders about 1.24x wider than its Dock neighbours
 (issue #610).
 
-`icon.svg` is deliberately full-bleed — that is the right shape for the web
-favicon, the Windows .ico and the Linux PNGs, which all want to fill their
-canvas — so the inset is applied here, for macOS only. Re-run after editing
-icon.svg:
+`icon.svg` keeps the rounded tile and its transparent outer canvas for the web,
+Windows, and Linux. The macOS `.icns` scales that tile to Apple's Dock grid.
+Re-run after editing icon.svg:
 
     python3 src-tauri/icons/macos-icon.gen.py
 
@@ -41,10 +40,10 @@ from pathlib import Path
 # Apple's macOS app-icon grid: an 824x824 body centred in a 1024x1024 canvas.
 CANVAS = 1024
 BODY = 824
-# The Dextra optical-v6 artwork already has a transparent margin: its centre
-# row and column cover about 915.1 of the 1024 source pixels. Scale that visible
-# body to Apple's 824px grid, rather than scaling the whole SVG viewport.
-SOURCE_BODY_RATIO = 915.1 / 1024
+# The rounded tile in dextra_logo_1to1_rounded.svg is 1066px across a 1254px
+# source canvas. Its shadow extends a little farther, but the opaque tile is
+# what determines the icon's apparent size in the Dock.
+SOURCE_BODY_RATIO = 1066 / 1254
 
 ICONS_DIR = Path(__file__).resolve().parent
 REPO_ROOT = ICONS_DIR.parents[1]

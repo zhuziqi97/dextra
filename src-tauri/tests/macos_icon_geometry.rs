@@ -8,10 +8,10 @@
 //! than its neighbours — visibly "a size bigger" (issue #610).
 //!
 //! The inset lives only in the `.icns`. `icon.svg`, the Windows `.ico` and the
-//! Linux PNGs stay full-bleed on purpose: those platforms want the canvas
-//! filled, and the PNGs are what `default_window_icon()` hands the Windows and
-//! Linux tray (`commands/windows.rs`). So this test deliberately checks one
-//! file and not the rest.
+//! Linux PNGs retain the source artwork's rounded tile and transparent corners;
+//! the PNGs are what `default_window_icon()` hands the Windows and Linux tray
+//! (`commands/windows.rs`). So this test deliberately checks one file and not
+//! the rest.
 //!
 //! Why a test and not a comment: `pnpm tauri icon` regenerates the `.icns`
 //! full-bleed, and it gets run for unrelated reasons — `1d3dd0dc` rewrote all 17
@@ -25,18 +25,18 @@
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
-/// Apple's grid: 824 of 1024. Measured across 113 installed apps, every slot at
-/// 32px and above sits in 0.802..=0.807, so the window is tight enough to catch
-/// a full-bleed regression (1.000) and loose enough to absorb the rounding that
-/// small slots pick up when 0.8046875 lands on whole pixels.
+/// Apple's grid: the opaque tile is 824 of 1024. The supplied artwork also has
+/// a faint shadow, so alpha coverage is a little wider than the opaque tile.
+/// This window still catches a full-bleed regression while allowing resampling
+/// of the shadow at smaller sizes.
 const MIN_RATIO: f64 = 0.79;
 const MAX_RATIO: f64 = 0.82;
 
-/// The 1024 master is the slot the Dock actually scales from, so it is pinned to
-/// the exact grid rather than the tolerance band. 2px covers antialiasing on the
-/// squircle's flat edge, nothing more.
+/// The 1024 master is the slot the Dock actually scales from. Its 824px opaque
+/// tile plus the faint shadow covers about 829px across the centre. The opaque
+/// edges below still enforce the 100px safe-area inset.
 const MASTER_CANVAS: u32 = 1024;
-const MASTER_BODY: f64 = 824.0;
+const MASTER_BODY: f64 = 829.0;
 const MASTER_INSET: u32 = 100;
 const MASTER_SLACK: f64 = 2.0;
 

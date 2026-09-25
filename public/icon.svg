@@ -1,44 +1,45 @@
-<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg width="1254" height="1254" viewBox="0 0 1254 1254"
+     fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <filter id="cardShadow" x="20" y="22" width="984" height="984" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="12" stdDeviation="18" flood-color="#B8CBD8" flood-opacity="0.22"/>
+    <linearGradient id="brandBlue"
+        x1="235" y1="185" x2="1060" y2="1025"
+        gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#7CD3FD"/>
+      <stop offset="24%"  stop-color="#51BCFD"/>
+      <stop offset="50%"  stop-color="#2CA4FD"/>
+      <stop offset="76%"  stop-color="#2098FD"/>
+      <stop offset="100%" stop-color="#097DFE"/>
+    </linearGradient>
+
+    <filter id="tileShadow" x="30" y="28" width="1194" height="1200"
+            filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="13" stdDeviation="24"
+                    flood-color="#9DC7E4" flood-opacity="0.30"/>
+    </filter>
+
+    <filter id="logoShadow" x="195" y="155" width="920" height="930"
+            filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="4" stdDeviation="5"
+                    flood-color="#63AFE3" flood-opacity="0.08"/>
     </filter>
   </defs>
 
-  <g filter="url(#cardShadow)">
-    <rect x="56" y="56" width="912" height="912" rx="176" fill="#FFFFFF"/>
+  <!-- Keep the supplied rounded tile; leave the canvas outside it transparent. -->
+  <g filter="url(#tileShadow)">
+    <rect x="96" y="92" width="1066" height="1066" rx="202" fill="#FFFFFF"/>
   </g>
 
-  <!--
-    Optically corrected D:
-      left stem    122 px
-      top stroke   145 px
-      bottom       145 px
-      right bowl  ~144 px
-  -->
-  <path fill-rule="evenodd" clip-rule="evenodd"
-        d="M287 180
-           C262 180 242 200 242 225
-           V787
-           C242 812 262 832 287 832
-           H508
-           C702 832 828 700 828 503
-           C828 304 702 180 508 180
-           H287
-           Z
+  <g filter="url(#logoShadow)">
+    <!-- Main D: traced from the reference; only the top-left corner is made slightly rounder -->
+    <path d="M 905 273 L 880 254 L 850 235 L 827 223 L 799 211 L 772 202 L 745 195 L 719 191 L 718 190 L 712 190 L 711 189 L 703 189 L 693 187 L 679 187 L 678 186 L 376 186 C 292 186 225 254 225 337 L 225 959 L 230 977 L 235 987 L 241 996 L 253 1008 L 260 1013 L 272 1019 L 281 1022 L 294 1023 L 295 1024 L 367 1022 L 368 1021 L 378 1020 L 388 1016 L 400 1005 L 459 929 L 555 809 L 555 808 L 459 808 L 453 803 L 451 441 L 455 425 L 464 409 L 475 397 L 490 387 L 500 383 L 516 380 L 634 380 L 635 381 L 645 381 L 666 385 L 692 394 L 713 405 L 730 417 L 756 442 L 767 456 L 780 477 L 794 509 L 802 539 L 804 558 L 805 559 L 805 567 L 806 568 L 806 609 L 805 610 L 804 628 L 824 628 L 825 627 L 842 627 L 843 628 L 851 628 L 852 627 L 867 627 L 868 628 L 875 628 L 876 627 L 969 627 L 970 628 L 979 628 L 980 627 L 1058 627 L 1059 628 L 1058 577 L 1057 576 L 1057 566 L 1056 565 L 1056 558 L 1055 557 L 1052 532 L 1039 478 L 1031 454 L 1020 427 L 997 382 L 974 347 L 942 308 Z"
+          fill="url(#brandBlue)"
+          fill-rule="evenodd"
+          clip-rule="evenodd"/>
 
-           M364 325
-           H488
-           C606 325 684 389 684 506
-           C684 623 606 687 488 687
-           H364
-           V325
-           Z"
-        fill="#3D82F7"/>
-
-  <!-- Enlarged, heavier code mark, shifted slightly right -->
-  <g stroke="#3D82F7" stroke-width="46" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M480 431L409 506L480 581"/>
-    <path d="M548 431L619 506L548 581"/>
+    <!-- Terminal block and its >_ negative-space glyphs: traced directly from the reference -->
+    <path d="M 1059 651 L 751 652 L 750 653 L 727 653 L 715 656 L 707 660 L 695 671 L 580 813 L 427 1007 L 422 1012 L 417 1020 L 922 1020 L 1044 897 L 1053 887 L 1056 881 L 1059 869 Z M 793 906 L 795 901 L 801 894 L 810 890 L 940 890 L 949 895 L 953 900 L 956 907 L 956 915 L 954 921 L 951 925 L 945 930 L 940 932 L 809 932 L 801 928 L 796 923 L 793 916 Z M 712 739 L 721 742 L 727 747 L 798 819 L 802 827 L 803 835 L 802 836 L 802 841 L 799 847 L 719 927 L 708 932 L 697 932 L 690 929 L 682 921 L 679 914 L 680 901 L 684 894 L 744 834 L 695 785 L 688 777 L 685 771 L 684 762 L 686 754 L 689 749 L 694 744 L 701 740 Z"
+          fill="url(#brandBlue)"
+          fill-rule="evenodd"
+          clip-rule="evenodd"/>
   </g>
 </svg>
