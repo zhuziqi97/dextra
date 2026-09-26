@@ -15,15 +15,13 @@ import { fileURLToPath } from "node:url"
 const root = fileURLToPath(new URL("..", import.meta.url))
 const [platform, target] = process.argv.slice(2)
 const formats = {
-  "linux-x64": ["deb", "rpm", "appimage"],
-  "linux-arm64": ["deb", "rpm"],
-  "macos-x64": ["dmg"],
+  "linux-x64": ["deb", "appimage"],
+  "linux-arm64": ["deb"],
   "macos-arm64": ["dmg"],
   "windows-x64": ["nsis"],
 }
 const extensions = {
   deb: ".deb",
-  rpm: ".rpm",
   appimage: ".AppImage",
   dmg: ".dmg",
   nsis: ".exe",
@@ -61,15 +59,7 @@ const packages = formats[platform].map((format) => {
       name.includes(`_${version}_`) &&
       name.endsWith(extensions[format])
   )
-  // RPM uses Dextra-<version>-<release>, unlike every other Tauri package.
-  const matches =
-    format === "rpm"
-      ? readdirSync(dir).filter(
-          (name) =>
-            name.startsWith(`Dextra-${version}-`) &&
-            name.endsWith(extensions[format])
-        )
-      : names
+  const matches = names
   if (matches.length !== 1) {
     throw new Error(
       `${format}: expected one Dextra ${version} package, got ${matches}`
