@@ -10,10 +10,10 @@ use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_tungstenite::tungstenite::Message;
 
+use super::control_writer::Outbound;
 use super::identity;
 use super::protocol::{runner_heartbeat, runner_hello, runner_targets_report};
 use super::runtime::CerebroRuntime;
-use super::web_flow::Outbound;
 
 const RUNNER_WEBSOCKET_PATH: &str = "api/v1/execution-runners/ws";
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
@@ -63,6 +63,18 @@ fn websocket_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
     let base_path = url.path().trim_end_matches('/');
     url.set_path(&format!("{base_path}/{RUNNER_WEBSOCKET_PATH}"));
     url.set_fragment(None);
+    Ok(url)
+}
+
+pub(super) fn data_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
+    let mut url = websocket_endpoint(base_url)?;
+    let path = url
+        .path()
+        .strip_suffix("/ws")
+        .ok_or("Runner endpoint invalid")?
+        .to_owned()
+        + "/data";
+    url.set_path(&path);
     Ok(url)
 }
 
@@ -132,6 +144,9 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
     let access = identity::refresh_access_token()
         .await
         .map_err(|error| error.to_string())?;
+    let data_access = std::sync::Arc::new(Mutex::new(super::web_relay::DataAccess::new(
+        access.clone(),
+    )));
     let endpoint = websocket_endpoint(&access.cerebro_base_url)?;
     let (stream, _) = tokio_tungstenite::connect_async(endpoint.as_str())
         .await
@@ -162,6 +177,10 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
     if hello_ack.get("TYPE").and_then(Value::as_str) != Some("HELLO_ACK") {
         return Err("Cerebro did not acknowledge Runner HELLO".to_string());
     }
+    let connection_id = hello_ack["PAYLOAD"]["CONNECTION_ID"]
+        .as_str()
+        .ok_or("HELLO_ACK 缺少连接身份")?
+        .to_owned();
     tracing::info!(
         "[cerebro] Runner {} connected to {}",
         access.runner_id,
@@ -214,7 +233,7 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                     .map_err(|error| format!("Runner WebSocket receive failed: {error}"))?;
                 let value = parse_server_message(message)?;
                 let message_type = value.get("TYPE").and_then(Value::as_str);
-                if runtime.web.handle(value.clone(), remote_outbound.clone()).await {
+                if runtime.web.handle(&value, &access.cerebro_base_url, &connection_id, data_access.clone()).await? {
                     continue;
                 } else if message_type == Some("CONFIGURATION_CHANGED") {
                     validate_server_message(&value, &access.runner_id)?;
@@ -284,6 +303,16 @@ mod tests {
         assert_eq!(
             url.as_str(),
             "ws://cerebro.internal:9999/nested/api/v1/execution-runners/ws?tenant=dev"
+        );
+    }
+
+    #[test]
+    fn data_url_uses_same_deployment_prefix_as_control() {
+        assert_eq!(
+            data_endpoint("https://cerebro.internal/nested/?tenant=dev#ignored")
+                .unwrap()
+                .as_str(),
+            "wss://cerebro.internal/nested/api/v1/execution-runners/data?tenant=dev"
         );
     }
 
