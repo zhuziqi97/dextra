@@ -1,8 +1,8 @@
 //! Dextra 主动维护的 Cerebro Runner 生产 WebSocket。
 
-use std::sync::LazyLock;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::LazyLock;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
@@ -11,8 +11,9 @@ use tokio::sync::{mpsc, oneshot, Mutex};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::identity;
-use super::runtime::CerebroRuntime;
 use super::protocol::{runner_heartbeat, runner_hello, runner_targets_report};
+use super::runtime::CerebroRuntime;
+use super::web_flow::Outbound;
 
 const RUNNER_WEBSOCKET_PATH: &str = "api/v1/execution-runners/ws";
 const RECONNECT_DELAY: Duration = Duration::from_secs(3);
@@ -23,21 +24,31 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 static SUPERVISOR_STARTED: AtomicBool = AtomicBool::new(false);
 
 type ReportWaiter = oneshot::Sender<()>;
-static REPORT_REQUESTS: LazyLock<(mpsc::Sender<ReportWaiter>, Mutex<mpsc::Receiver<ReportWaiter>>)> = LazyLock::new(|| {
+static REPORT_REQUESTS: LazyLock<(
+    mpsc::Sender<ReportWaiter>,
+    Mutex<mpsc::Receiver<ReportWaiter>>,
+)> = LazyLock::new(|| {
     let (sender, receiver) = mpsc::channel(16);
     (sender, Mutex::new(receiver))
 });
 
 /// 新目录配置等待本次目录上报确认，不依赖周期上报或固定延时。
 pub async fn synchronize_targets() -> Result<(), String> {
-    if !SUPERVISOR_STARTED.load(Ordering::Acquire) { return Ok(()); }
+    if !SUPERVISOR_STARTED.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let (sender, receiver) = oneshot::channel();
     tokio::time::timeout(HANDSHAKE_TIMEOUT, async {
-        REPORT_REQUESTS.0.send(sender).await.map_err(|_| "客户端连接已关闭".to_string())?;
+        REPORT_REQUESTS
+            .0
+            .send(sender)
+            .await
+            .map_err(|_| "客户端连接已关闭".to_string())?;
         receiver.await.map_err(|_| "客户端连接已断开".to_string())
-    }).await.map_err(|_| "服务端尚未确认目录，请恢复连接后重试".to_string())?
+    })
+    .await
+    .map_err(|_| "服务端尚未确认目录，请恢复连接后重试".to_string())?
 }
-
 
 fn websocket_endpoint(base_url: &str) -> Result<reqwest::Url, String> {
     let mut url = reqwest::Url::parse(base_url)
@@ -87,7 +98,10 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
         return Ok(());
     }
     let message_type = value.get("TYPE").and_then(Value::as_str);
-    if !matches!(message_type, Some("HELLO_ACK" | "HEARTBEAT_ACK" | "CONFIGURATION_CHANGED" | "TARGETS_REPORT_ACK")) {
+    if !matches!(
+        message_type,
+        Some("HELLO_ACK" | "HEARTBEAT_ACK" | "CONFIGURATION_CHANGED" | "TARGETS_REPORT_ACK")
+    ) {
         return Err("Cerebro returned an unsupported Runner message".to_string());
     }
     if value.get("PROTOCOL_VERSION").and_then(Value::as_u64) != Some(1) {
@@ -156,7 +170,16 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
 
     send_target_report(&runtime.state.db.conn, &mut sink, &access.runner_id).await?;
 
-    let (remote_outbound, mut remote_source) = mpsc::channel::<Value>(128);
+    let (remote_outbound, writer) = Outbound::new();
+    let mut writer_task = tokio::spawn(writer.run(sink));
+    // Dropping this guard also aborts the writer when the connection future is cancelled.
+    struct WriterGuard(tokio::task::AbortHandle);
+    impl Drop for WriterGuard {
+        fn drop(&mut self) {
+            self.0.abort();
+        }
+    }
+    let _writer_guard = WriterGuard(writer_task.abort_handle());
 
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat.tick().await;
@@ -173,16 +196,17 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                 let report_id = report.message_id.clone();
                 report_waiters.retain(|_, pending| !pending.is_closed());
                 report_waiters.insert(report_id, waiter);
-                send_json(&mut sink, &report).await?;
+                remote_outbound.send(serde_json::to_value(report).map_err(|e| e.to_string())?).await?;
             }
             _ = identity::wait_for_runner_identity_change() => {
                 return Ok(());
             }
             _ = heartbeat.tick() => {
-                send_json(&mut sink, &runner_heartbeat(&access.runner_id)).await?;
+                remote_outbound.send(serde_json::to_value(runner_heartbeat(&access.runner_id)).map_err(|e| e.to_string())?).await?;
             }
             _ = target_report.tick() => {
-                send_target_report(&runtime.state.db.conn, &mut sink, &access.runner_id).await?;
+                let targets = super::project_folder_targets(&runtime.state.db.conn, &access.runner_id).await.map_err(|e| e.to_string())?;
+                remote_outbound.send(serde_json::to_value(runner_targets_report(&access.runner_id, targets)).map_err(|e| e.to_string())?).await?;
             }
             incoming = source.next() => {
                 let message = incoming
@@ -212,8 +236,8 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                     validate_server_message(&value, &access.runner_id)?;
                 }
             }
-            Some(outgoing) = remote_source.recv() => {
-                send_json(&mut sink, &outgoing).await?;
+            result = &mut writer_task => {
+                return result.map_err(|e| e.to_string())?;
             }
         }
     }
@@ -273,5 +297,4 @@ mod tests {
         validate_server_message(&ack, "runner-1").unwrap();
         assert!(validate_server_message(&ack, "runner-2").is_err());
     }
-
 }

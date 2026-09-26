@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - codex/runner-execution-platform
+      - codex/dextra-stream-flow-control
   workflow_dispatch:
 
 permissions:

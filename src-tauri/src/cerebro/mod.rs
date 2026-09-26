@@ -11,6 +11,7 @@ pub mod mcp_bridge;
 pub mod runtime;
 pub mod protocol;
 pub mod web_relay;
+pub mod web_flow;
 pub mod target_projection;
 
 pub use connection::run_runner_connection_supervisor;
