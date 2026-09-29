@@ -140,7 +140,11 @@ fn parse_server_message(message: Message) -> Result<Value, String> {
     }
 }
 
-fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<(), String> {
+fn validate_server_message(
+    value: &Value,
+    expected_runner_id: &str,
+    expected_connection_id: Option<&str>,
+) -> Result<(), String> {
     if value.is_null() {
         return Ok(());
     }
@@ -150,6 +154,15 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
         Some("HELLO_ACK" | "HELLO_REJECT" | "HEARTBEAT_ACK" | "CONFIGURATION_CHANGED" | "TARGETS_REPORT_ACK" | "OPEN_DATA_CHANNEL" | "CANCEL_DATA_CHANNEL")
     ) {
         return Err("Cerebro returned an unsupported Runner message".to_string());
+    }
+    if matches!(message_type, Some("OPEN_DATA_CHANNEL" | "CANCEL_DATA_CHANNEL")) {
+        if expected_connection_id.is_none()
+            || value.get("CONNECTION_ID").and_then(Value::as_str) != expected_connection_id
+            || value.get("REQUEST_ID").and_then(Value::as_str).filter(|id| !id.is_empty()).is_none()
+        {
+            return Err("Cerebro returned a data channel for another connection".to_string());
+        }
+        return Ok(());
     }
     if value.get("PROTOCOL_VERSION").and_then(Value::as_u64) != Some(1) {
         return Err("Cerebro returned an unsupported Runner protocol version".to_string());
@@ -212,7 +225,7 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
         .ok_or_else(|| "Cerebro closed before acknowledging Runner HELLO".to_string())?
         .map_err(|error| format!("Failed to receive Runner HELLO response: {error}"))?;
     let hello_ack = parse_server_message(hello_ack)?;
-    validate_server_message(&hello_ack, &access.runner_id)?;
+    validate_server_message(&hello_ack, &access.runner_id, None)?;
     if hello_ack["TYPE"] == "HELLO_REJECT" {
         let payload = &hello_ack["PAYLOAD"];
         if payload["CODE"] == "PROTOCOL_INCOMPATIBLE" {
@@ -375,7 +388,7 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                     .ok_or_else(|| "Cerebro closed the Runner connection".to_string())?
                     .map_err(|error| format!("Runner WebSocket receive failed: {error}"))?;
                 let value = parse_server_message(message)?;
-                validate_server_message(&value, &access.runner_id)?;
+                validate_server_message(&value, &access.runner_id, Some(&connection_id))?;
                 let message_type = value.get("TYPE").and_then(Value::as_str);
                 if runtime.web.handle(&value, &access.cerebro_base_url, &connection_id, data_access.clone()).await? {
                     continue;
@@ -505,15 +518,18 @@ mod tests {
             "TYPE": "HELLO_ACK",
             "RUNNER_ID": "runner-1",
         });
-        validate_server_message(&ack, "runner-1").unwrap();
-        assert!(validate_server_message(&ack, "runner-2").is_err());
+        validate_server_message(&ack, "runner-1", None).unwrap();
+        assert!(validate_server_message(&ack, "runner-2", None).is_err());
         let open = json!({
-            "PROTOCOL_VERSION": 1, "TYPE": "OPEN_DATA_CHANNEL",
-            "RUNNER_ID": "runner-1", "CONNECTION_ID": "connection-1",
+            "TYPE": "OPEN_DATA_CHANNEL", "CONNECTION_ID": "connection-1",
             "REQUEST_ID": "request-1",
         });
-        validate_server_message(&open, "runner-1").unwrap();
-        assert!(validate_server_message(&open, "runner-2").is_err());
+        validate_server_message(&open, "runner-1", Some("connection-1")).unwrap();
+        assert!(validate_server_message(&open, "runner-1", Some("connection-2")).is_err());
+        assert!(validate_server_message(&open, "runner-1", None).is_err());
+        let mut missing_request = open.clone();
+        missing_request.as_object_mut().unwrap().remove("REQUEST_ID");
+        assert!(validate_server_message(&missing_request, "runner-1", Some("connection-1")).is_err());
     }
 
     #[test]
