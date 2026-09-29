@@ -682,6 +682,20 @@ describe("getAgentChecks adapter ordering", () => {
 })
 
 describe("buildVersionCheck", () => {
+  it("explains which Codex upgrade unlocks Sol and Luna without adding models to the menu", () => {
+    const check = buildVersionCheck(
+      makeAgent({
+        agent_type: "codex",
+        distribution_type: "npx",
+        registry_version: "1.13.1",
+        installed_version: "1.11.0",
+      })
+    )
+    expect(check?.status).toBe("warn")
+    expect(check?.message).toContain("Codex CLI 0.156.1")
+    expect(check?.fixes.some((fix) => fix.kind === "upgrade_npx")).toBe(true)
+  })
+
   // A manually written definition has no registry behind it — its stored
   // version is user-typed — so the check must show the local side alone and
   // never manufacture an "upgrade available" against that noise.

@@ -1,10 +1,7 @@
 use std::ffi::{OsStr, OsString};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
-
-#[cfg(windows)]
-use std::path::Path;
 
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -23,6 +20,9 @@ pub fn configure_std_command(command: &mut Command) -> &mut Command {
         command.creation_flags(CREATE_NO_WINDOW);
     }
     set_utf8_env(command);
+    let program = command.get_program().to_os_string();
+    let current_dir = command.get_current_dir().map(Path::to_path_buf);
+    configure_appimage_library_path(command, &program, current_dir.as_deref());
     command
 }
 
@@ -43,8 +43,89 @@ pub fn configure_tokio_command(
         command.creation_flags(CREATE_NO_WINDOW);
     }
     set_utf8_env(command);
+    configure_appimage_library_path_for_tokio_command(command);
     command
 }
+
+pub fn configure_appimage_library_path_for_tokio_command(command: &mut tokio::process::Command) {
+    let program = command.as_std().get_program().to_os_string();
+    let current_dir = command.as_std().get_current_dir().map(Path::to_path_buf);
+    configure_appimage_library_path(command, &program, current_dir.as_deref());
+}
+
+/// AppImage's library directories are needed by bundled binaries, but make
+/// host Node/npm load the AppImage's older libssl instead of the host's.
+#[cfg(target_os = "linux")]
+fn external_appimage_library_path(
+    program: &OsStr,
+    current_dir: Option<&Path>,
+    appdir: &Path,
+    library_path: &OsStr,
+) -> Option<OsString> {
+    let executable = if Path::new(program).components().count() == 1 {
+        which::which(program).ok()?
+    } else {
+        let path = PathBuf::from(program);
+        if path.is_absolute() {
+            path
+        } else {
+            current_dir.unwrap_or_else(|| Path::new(".")).join(path)
+        }
+    };
+    let executable = executable.canonicalize().ok()?;
+    let appdir = appdir.canonicalize().ok()?;
+    if executable.starts_with(&appdir) {
+        return None;
+    }
+
+    let retained: Vec<PathBuf> = std::env::split_paths(library_path)
+        .filter(|path| {
+            !path.starts_with(&appdir)
+                && !path
+                    .canonicalize()
+                    .is_ok_and(|resolved| resolved.starts_with(&appdir))
+        })
+        .collect();
+    std::env::join_paths(retained).ok()
+}
+
+#[cfg(target_os = "linux")]
+fn configure_appimage_library_path<C: SetEnv>(
+    command: &mut C,
+    program: &OsStr,
+    current_dir: Option<&Path>,
+) {
+    let (Some(appdir), Some(library_path)) = (
+        std::env::var_os("APPDIR"),
+        std::env::var_os("LD_LIBRARY_PATH"),
+    ) else {
+        return;
+    };
+    if std::env::var_os("APPIMAGE").is_none() {
+        return;
+    }
+    apply_appimage_library_path(command, program, current_dir, Path::new(&appdir), &library_path);
+}
+
+#[cfg(target_os = "linux")]
+fn apply_appimage_library_path<C: SetEnv>(
+    command: &mut C,
+    program: &OsStr,
+    current_dir: Option<&Path>,
+    appdir: &Path,
+    library_path: &OsStr,
+) {
+    if let Some(retained) = external_appimage_library_path(program, current_dir, appdir, library_path) {
+        if retained.is_empty() {
+            command.env_remove("LD_LIBRARY_PATH");
+        } else {
+            command.env_os("LD_LIBRARY_PATH", retained);
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn configure_appimage_library_path<C: SetEnv>(_: &mut C, _: &OsStr, _: Option<&Path>) {}
 
 /// Force child processes to emit English, UTF-8 output.
 ///
@@ -65,17 +146,31 @@ fn set_utf8_env<C: SetEnv>(command: &mut C) {
 /// Abstraction over the `.env()` method shared by std and tokio Command types.
 trait SetEnv {
     fn env(&mut self, key: &str, val: &str) -> &mut Self;
+    fn env_os(&mut self, key: &str, val: OsString) -> &mut Self;
+    fn env_remove(&mut self, key: &str) -> &mut Self;
 }
 
 impl SetEnv for Command {
     fn env(&mut self, key: &str, val: &str) -> &mut Self {
         Command::env(self, key, val)
     }
+    fn env_os(&mut self, key: &str, val: OsString) -> &mut Self {
+        Command::env(self, key, val)
+    }
+    fn env_remove(&mut self, key: &str) -> &mut Self {
+        Command::env_remove(self, key)
+    }
 }
 
 impl SetEnv for tokio::process::Command {
     fn env(&mut self, key: &str, val: &str) -> &mut Self {
         tokio::process::Command::env(self, key, val)
+    }
+    fn env_os(&mut self, key: &str, val: OsString) -> &mut Self {
+        tokio::process::Command::env(self, key, val)
+    }
+    fn env_remove(&mut self, key: &str) -> &mut Self {
+        tokio::process::Command::env_remove(self, key)
     }
 }
 
@@ -657,6 +752,73 @@ mod tests {
     use std::io::Cursor;
     use std::time::Duration;
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn appimage_library_path_is_removed_only_for_host_programs() {
+        use std::ffi::OsStr;
+
+        let temp = tempfile::tempdir().unwrap();
+        let appdir = temp.path().join("AppDir");
+        let bundled = appdir.join("usr/bin/dextra-mcp");
+        let host = temp.path().join("host/node");
+        std::fs::create_dir_all(bundled.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(host.parent().unwrap()).unwrap();
+        std::fs::write(&bundled, "").unwrap();
+        std::fs::write(&host, "").unwrap();
+
+        let original = std::env::join_paths([
+            appdir.join("usr/lib"),
+            temp.path().join("user/lib"),
+            appdir.join("usr/lib64"),
+        ])
+        .unwrap();
+        assert_eq!(
+            super::external_appimage_library_path(host.as_os_str(), None, &appdir, &original),
+            Some(temp.path().join("user/lib").into_os_string())
+        );
+        assert_eq!(
+            super::external_appimage_library_path(bundled.as_os_str(), None, &appdir, &original),
+            None
+        );
+        assert_eq!(
+            super::external_appimage_library_path(
+                OsStr::new("./node"),
+                host.parent(),
+                &appdir,
+                &original,
+            ),
+            Some(temp.path().join("user/lib").into_os_string())
+        );
+        let only_bundled = std::env::join_paths([appdir.join("usr/lib")]).unwrap();
+        assert_eq!(
+            super::external_appimage_library_path(host.as_os_str(), None, &appdir, &only_bundled),
+            Some(OsStr::new("").to_os_string())
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn host_commands_and_their_children_receive_clean_library_path() {
+        let temp = tempfile::tempdir().unwrap();
+        let appdir = temp.path().join("AppDir");
+        std::fs::create_dir_all(appdir.join("usr/lib")).unwrap();
+        let user_dir = temp.path().join("user/lib");
+        let original = std::env::join_paths([appdir.join("usr/lib"), user_dir.clone()]).unwrap();
+        let script = "sh -c 'printf %s \"$LD_LIBRARY_PATH\"'";
+
+        let mut std = super::std_command("/bin/sh");
+        super::apply_appimage_library_path(&mut std, "/bin/sh".as_ref(), None, &appdir, &original);
+        let output = std.arg("-c").arg(script).output().unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, user_dir.as_os_str().as_encoded_bytes());
+
+        let mut tokio = super::tokio_command("/bin/sh");
+        super::apply_appimage_library_path(&mut tokio, "/bin/sh".as_ref(), None, &appdir, &original);
+        let output = tokio.arg("-c").arg(script).output().await.unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, user_dir.as_os_str().as_encoded_bytes());
+    }
+
     #[tokio::test]
     async fn collect_lines_lossy_preserves_lines_around_invalid_utf8() {
         // A non-UTF-8 segment (0xFF 0xFE — invalid start bytes, like GBK output
@@ -664,8 +826,7 @@ mod tests {
         // `next_line()` loop would abort here and drop "third"; this must not.
         let data = b"first\n\xff\xfe garbage\nthird\n".to_vec();
         let mut seen: Vec<String> = Vec::new();
-        let collected =
-            collect_lines_lossy(Cursor::new(data), |l| seen.push(l.to_string())).await;
+        let collected = collect_lines_lossy(Cursor::new(data), |l| seen.push(l.to_string())).await;
 
         assert_eq!(seen.len(), 3, "all three lines emitted: {seen:?}");
         assert_eq!(seen[0], "first");
@@ -685,8 +846,7 @@ mod tests {
         // newline is still emitted (then EOF stops the loop).
         let data = b"a\r\nb\r\nno-newline".to_vec();
         let mut seen: Vec<String> = Vec::new();
-        let collected =
-            collect_lines_lossy(Cursor::new(data), |l| seen.push(l.to_string())).await;
+        let collected = collect_lines_lossy(Cursor::new(data), |l| seen.push(l.to_string())).await;
 
         assert_eq!(seen, vec!["a", "b", "no-newline"]);
         assert_eq!(collected, "a\nb\nno-newline");
@@ -696,8 +856,7 @@ mod tests {
     async fn collect_lines_lossy_empty_input_yields_nothing() {
         let mut seen: Vec<String> = Vec::new();
         let collected =
-            collect_lines_lossy(Cursor::new(Vec::<u8>::new()), |l| seen.push(l.to_string()))
-                .await;
+            collect_lines_lossy(Cursor::new(Vec::<u8>::new()), |l| seen.push(l.to_string())).await;
 
         assert!(seen.is_empty());
         assert!(collected.is_empty());

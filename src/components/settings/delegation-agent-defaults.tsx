@@ -80,6 +80,12 @@ interface CachedSnapshot {
 }
 const SNAPSHOT_TTL_MS = 30_000
 const snapshotCache = new Map<AgentType, CachedSnapshot>()
+let cacheGeneration = 0
+
+export function clearDelegationAgentOptions(): void {
+  cacheGeneration += 1
+  snapshotCache.clear()
+}
 
 function readCache(agent: AgentType): AgentOptionsSnapshot | null {
   const entry = snapshotCache.get(agent)
@@ -143,13 +149,14 @@ export function DelegationAgentDefaultsPanel({
       }
     }
     const reqId = ++reqIdRef.current
+    const generation = cacheGeneration
     setLoading(true)
     setError(null)
     setLoaded(null)
     try {
       const fresh = await describeAgentOptions(agent)
       if (reqIdRef.current !== reqId) return
-      writeCache(agent, fresh)
+      if (generation === cacheGeneration) writeCache(agent, fresh)
       setLoaded({ agent, snapshot: fresh })
     } catch (err: unknown) {
       if (reqIdRef.current !== reqId) return

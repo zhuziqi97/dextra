@@ -649,33 +649,6 @@ pub(crate) async fn verify_agent_installed(agent_type: AgentType) -> Result<(), 
     }
 }
 
-/// Detect the actual installed version of an npm global package by running
-/// `npm list -g <package_name> --json` and parsing the JSON output.
-///
-/// Checks both the system global prefix and the user-local prefix
-/// (`~/.dextra/npm-global/`) so packages installed via the EACCES fallback are
-/// found as well.
-///
-/// `pub(crate)` so env diagnostics can report the installed version it sees
-/// (which covers both prefixes, unlike the connect-gate `resolve_npx_command`).
-pub(crate) async fn detect_npm_global_version(package_name: &str) -> Option<String> {
-    let npm_path = which::which("npm").ok()?;
-
-    // Try the default global prefix first.
-    if let Some(v) = npm_list_version(&npm_path, package_name, None).await {
-        return Some(v);
-    }
-
-    // Fallback: check the user-local prefix.
-    if let Some(prefix) = crate::process::user_npm_prefix() {
-        if prefix.exists() {
-            return npm_list_version(&npm_path, package_name, Some(&prefix)).await;
-        }
-    }
-
-    None
-}
-
 /// Run `npm list -g <package_name> --json [--prefix=<p>]` and extract the
 /// installed version string.
 async fn npm_list_version(
@@ -712,17 +685,7 @@ async fn detect_local_version(agent_type: AgentType) -> Option<String> {
     match meta.distribution {
         registry::AgentDistribution::Npx { cmd, package, .. } => {
             let resolved = resolve_npx_command(cmd).await?;
-            // Try `npm list -g <package_name> --json` to get the real installed version.
-            let pkg_name = package_name_from_spec(package);
-            let mut version = detect_npm_global_version(&pkg_name).await;
-            // Same system-install probe the status/list paths run (covers
-            // installs npm can't see: bun/pnpm globals, brew, …), so this
-            // detection agrees with them (a disagreement here clears/flips
-            // the persisted version back and forth).
-            if version.is_none() {
-                version = system_probed_version(agent_type, &resolved, Some(package)).await;
-            }
-            version
+            system_probed_version(agent_type, &resolved, Some(package)).await
         }
         registry::AgentDistribution::Binary { cmd, dir_entry, .. } => {
             let cached = binary_cache::detect_installed_version(agent_type, cmd)
@@ -1049,15 +1012,17 @@ async fn collect_agent_diag(
             } else {
                 None
             };
-            // `npm list` can hang on a stalled global prefix; bound it (the child
-            // is killed on drop via `npm_list_version`'s `kill_on_drop`).
-            diag.detected_version = tokio::time::timeout(
-                DIAG_PROBE_TIMEOUT,
-                detect_npm_global_version(&package_name_from_spec(package)),
-            )
-            .await
-            .ok()
-            .flatten();
+            diag.detected_version = if let Some(path) = diag.launchable.as_ref() {
+                tokio::time::timeout(
+                    DIAG_PROBE_TIMEOUT,
+                    system_probed_version(agent_type, Path::new(path), Some(package)),
+                )
+                .await
+                .ok()
+                .flatten()
+            } else {
+                None
+            };
 
             // Adapter agents only: locate the vendor CLI the user installed
             // themselves. Unlike preflight (path-only, runs on every Settings
@@ -1983,9 +1948,8 @@ struct ProbeCacheKey {
     bin: PathBuf,
     /// The declared `version_probe` in force when the entry was written.
     probe: Option<String>,
-    /// The npm package the npm-list step consults. Part of the key even when
-    /// a probe is declared — a failing probe falls back to the package
-    /// conventions, so the package still shapes the result.
+    /// Keep probes for independently configured agents separate when they
+    /// share a launcher path.
     package: Option<String>,
 }
 
@@ -2003,6 +1967,12 @@ fn probe_cache_key(
 
 static SYSTEM_PROBE_CACHE: std::sync::Mutex<Option<HashMap<ProbeCacheKey, ProbeCacheEntry>>> =
     std::sync::Mutex::new(None);
+
+fn clear_system_probe_cache() {
+    if let Ok(mut cache) = SYSTEM_PROBE_CACHE.lock() {
+        *cache = None;
+    }
+}
 
 /// First version-looking token in probe output: starts with a digit (a leading
 /// `v` is tolerated and stripped), is dotted, and is drawn from the semver /
@@ -2076,11 +2046,8 @@ pub(crate) async fn system_probed_version(
     system_probed_version_with(declared_probe, resolved_bin, npm_package).await
 }
 
-/// Probe order: the declared `version_probe` command wins when it yields a
-/// version; then `npm list -g` for npx packages (exact installed version,
-/// both prefixes); then the near-universal `<cmd> --version` convention. A
-/// declared probe that fails (unknown flag, unparsable banner) falls through
-/// to the conventions rather than reading as "not installed".
+/// Probe the executable launch will actually use. npm's global prefix may
+/// contain a different copy from the one selected by PATH.
 async fn system_probed_version_with(
     declared_probe: Option<&str>,
     resolved_bin: &std::path::Path,
@@ -2106,11 +2073,6 @@ async fn system_probed_version_with(
             if let Some(path) = resolve_npx_command(program).await {
                 version = probe_cli_version_token(&path, &args).await;
             }
-        }
-    }
-    if version.is_none() {
-        if let Some(package) = npm_package {
-            version = detect_npm_global_version(&package_name_from_spec(package)).await;
         }
     }
     if version.is_none() {
@@ -2340,7 +2302,7 @@ async fn install_npm_global_package_streaming(
     package: &str,
     task_id: &str,
     emitter: &EventEmitter,
-) -> Result<(), AcpError> {
+) -> Result<Option<PathBuf>, AcpError> {
     install_npm_global_package_streaming_inner(package, task_id, emitter)
         .await
         .map_err(annotate_npm_proxy_url_failure)
@@ -2350,7 +2312,7 @@ async fn install_npm_global_package_streaming_inner(
     package: &str,
     task_id: &str,
     emitter: &EventEmitter,
-) -> Result<(), AcpError> {
+) -> Result<Option<PathBuf>, AcpError> {
     let registry_arg = format!("--registry={NPM_OFFICIAL_REGISTRY}");
     let run_scripts = npm_package_requires_scripts(package);
 
@@ -2380,7 +2342,8 @@ async fn install_npm_global_package_streaming_inner(
                 "Permission denied, retrying with user prefix...",
             );
             return install_npm_to_user_prefix_streaming(package, &registry_arg, task_id, emitter)
-                .await;
+                .await
+                .map(Some);
         }
 
         // EEXIST: file conflict — retry with --force to overwrite
@@ -2419,7 +2382,8 @@ async fn install_npm_global_package_streaming_inner(
                         task_id,
                         emitter,
                     )
-                    .await;
+                    .await
+                    .map(Some);
                 }
                 let err = retry_stderr.trim().to_string();
                 let msg = if err.is_empty() {
@@ -2429,7 +2393,7 @@ async fn install_npm_global_package_streaming_inner(
                 };
                 return Err(AcpError::protocol(msg));
             }
-            return Ok(());
+            return Ok(None);
         }
 
         let err = stderr.trim().to_string();
@@ -2441,7 +2405,7 @@ async fn install_npm_global_package_streaming_inner(
         return Err(AcpError::protocol(msg));
     }
 
-    Ok(())
+    Ok(None)
 }
 
 /// Fallback: install an npm package into a user-local prefix (`~/.dextra/npm-global/`)
@@ -2451,7 +2415,7 @@ async fn install_npm_to_user_prefix_streaming(
     registry_arg: &str,
     task_id: &str,
     emitter: &EventEmitter,
-) -> Result<(), AcpError> {
+) -> Result<PathBuf, AcpError> {
     let prefix = crate::process::user_npm_prefix().ok_or_else(|| {
         AcpError::protocol(
             "npm install -g failed with EACCES and could not determine home directory for fallback"
@@ -2550,7 +2514,7 @@ async fn install_npm_to_user_prefix_streaming(
     // Make sure the user prefix bin dir is in PATH for subsequent `which` lookups.
     crate::process::ensure_user_npm_prefix_in_path();
 
-    Ok(())
+    Ok(prefix)
 }
 
 async fn uninstall_npm_global_package(package: &str) -> Result<(), AcpError> {
@@ -6893,7 +6857,7 @@ pub(crate) fn acp_validate_pi_command_core(command: String) -> PiCommandValidati
 /// and never blocks indefinitely (`Command::output` waits for the short-lived
 /// `--version` child to exit on its own).
 fn probe_pi_version(resolved: &Path) -> Option<String> {
-    let output = std::process::Command::new(resolved)
+    let output = crate::process::std_command(resolved)
         .arg("--version")
         .output()
         .ok()?;
@@ -11030,19 +10994,11 @@ pub(crate) async fn acp_get_agent_status_core(
     let (available, installed_version) = match &meta.distribution {
         registry::AgentDistribution::Npx { cmd, package, .. } => {
             let resolved = resolve_npx_command(cmd).await;
-            let mut version = resolved
-                .as_ref()
-                .and_then(|_| setting.as_ref().and_then(|m| m.installed_version.clone()));
-            // An agent the user installed themselves (npm -g, bun, brew, …)
-            // resolves but has no managed install record — probe the system
-            // install so it reads as installed rather than demanding a
-            // second, managed copy. Launch already prefers the PATH
-            // resolution, so this only makes the UI agree with what runs.
-            if version.is_none() {
-                if let Some(bin) = &resolved {
-                    version = system_probed_version(agent_type, bin, Some(package)).await;
-                }
-            }
+            let version = if let Some(bin) = &resolved {
+                system_probed_version(agent_type, bin, Some(package)).await
+            } else {
+                None
+            };
             (true, version)
         }
         registry::AgentDistribution::Binary {
@@ -11132,16 +11088,11 @@ pub(crate) async fn acp_list_agents_core(db: &AppDatabase) -> Result<Vec<AcpAgen
                 // global prefix at most once, then reuses the result across
                 // all NPX agents in the loop.
                 let resolved = npx_resolver.resolve_for_list(cmd).await;
-                let mut version = resolved
-                    .as_ref()
-                    .and_then(|_| setting.and_then(|m| m.installed_version.clone()));
-                // Mirror the status path: an agent's own system install
-                // counts as installed (per-agent cached probe).
-                if version.is_none() {
-                    if let Some(bin) = &resolved {
-                        version = system_probed_version(agent_type, bin, Some(package)).await;
-                    }
-                }
+                let version = if let Some(bin) = &resolved {
+                    system_probed_version(agent_type, bin, Some(package)).await
+                } else {
+                    None
+                };
                 (true, "npx", version)
             }
             registry::AgentDistribution::Binary {
@@ -12642,17 +12593,11 @@ pub(crate) async fn acp_detect_agent_local_version_core(
         return Ok(Some(version));
     }
 
-    // Binary agents detect their version purely from the on-disk cache, so a
-    // `None` here means the binary is genuinely absent (cleared cache, or a
-    // failed custom/upgrade install). Return `None` authoritatively rather than
-    // falling back to the DB, which would resurrect a removed version as a
-    // phantom that can no longer be launched. The returned value does NOT depend
-    // on the mirror write below, so a swallowed write cannot reintroduce the
-    // phantom. (NPX detection runs `npm list`, which can fail transiently, so
-    // for npx we keep the DB value as a best-effort fallback.)
+    // If the selected executable disappeared or no longer reports a version,
+    // the stored version must not masquerade as an installed adapter.
     if matches!(
         registry::get_agent_meta(agent_type).distribution,
-        registry::AgentDistribution::Binary { .. }
+        registry::AgentDistribution::Binary { .. } | registry::AgentDistribution::Npx { .. }
     ) {
         let _ = agent_setting_service::set_installed_version(conn, agent_type, None).await;
         // Mirror the heal in the clearing direction: a binary that vanished from
@@ -12679,7 +12624,7 @@ pub async fn acp_detect_agent_local_version(
 
 pub(crate) async fn acp_prepare_npx_agent_core(
     agent_type: AgentType,
-    registry_version: Option<String>,
+    _registry_version: Option<String>,
     version_override: Option<String>,
     clean_first: bool,
     task_id: String,
@@ -12688,8 +12633,13 @@ pub(crate) async fn acp_prepare_npx_agent_core(
 ) -> Result<String, AcpError> {
     emit_agent_install_event(emitter, &task_id, AgentInstallEventKind::Started, "");
 
+    // Codex's npm installation is user-owned and may coexist with another
+    // PATH copy. Do not preemptively uninstall an external installation.
+    let clean_first = clean_first && agent_type != AgentType::Codex;
+
     let meta = registry::get_agent_meta(agent_type);
-    let result = match meta.distribution {
+    let result = async {
+        match meta.distribution {
         registry::AgentDistribution::Npx { package, cmd, .. } => {
             let default = agent_setting_service::AgentDefaultInput {
                 agent_type,
@@ -12704,7 +12654,6 @@ pub(crate) async fn acp_prepare_npx_agent_core(
                 .await
                 .ok()
                 .flatten();
-            let existing = setting.as_ref().and_then(|m| m.installed_version.clone());
             // The latest-channel opt-in reads the same merged env layers the
             // launch and the settings page resolve, so the control can never
             // show one channel while the install applies another.
@@ -12750,14 +12699,14 @@ pub(crate) async fn acp_prepare_npx_agent_core(
                 AgentInstallEventKind::Log,
                 format!("Installing {} ({first_spec})", meta.name),
             );
-            let install_spec = match install_npm_global_package_streaming(
+            let (install_spec, installed_prefix) = match install_npm_global_package_streaming(
                 &first_spec,
                 &task_id,
                 emitter,
             )
             .await
             {
-                Ok(()) => first_spec,
+                Ok(prefix) => (first_spec, prefix),
                 Err(err) => {
                     // FAIL SAFE TO THE PIN. A latest-channel install can die on
                     // things the pin does not (npm unreachable, a mirror not yet
@@ -12794,10 +12743,10 @@ pub(crate) async fn acp_prepare_npx_agent_core(
                         AgentInstallEventKind::Log,
                         format!("Installing {} ({pinned_spec})", meta.name),
                     );
-                    install_npm_global_package_streaming(&pinned_spec, &task_id, emitter)
+                    let prefix = install_npm_global_package_streaming(&pinned_spec, &task_id, emitter)
                         .await
                         .map_err(|e| annotate_npm_bootstrap_failure(&pinned_spec, e))?;
-                    pinned_spec
+                    (pinned_spec, prefix)
                 }
             };
 
@@ -12840,20 +12789,44 @@ pub(crate) async fn acp_prepare_npx_agent_core(
                 AgentInstallEventKind::Log,
                 "Detecting installed version...",
             );
-            let resolved = detect_local_version(agent_type)
+            clear_system_probe_cache();
+            let active_path = resolve_npx_command(cmd).await.ok_or_else(|| {
+                AcpError::protocol(format!(
+                    "npm installed {install_spec}, but `{cmd}` cannot be resolved for launch"
+                ))
+            })?;
+            let resolved = system_probed_version(agent_type, &active_path, Some(package))
                 .await
-                .or_else(|| version_from_package_spec(&install_spec))
-                .or_else(|| {
-                    registry_version
-                        .as_deref()
-                        .and_then(normalize_version_candidate)
-                })
-                .or(existing)
                 .ok_or_else(|| {
-                    AcpError::protocol(
-                        "npm global install succeeded but failed to determine local version",
-                    )
+                    AcpError::protocol(format!(
+                        "npm installed {install_spec}, but the launch command {} did not report a version",
+                        active_path.display()
+                    ))
                 })?;
+            let expected = if let Some(version) = version_from_package_spec(&install_spec) {
+                version
+            } else {
+                let npm = which::which("npm")
+                    .map_err(|e| AcpError::protocol(format!("npm disappeared after install: {e}")))?;
+                npm_list_version(
+                    &npm,
+                    &package_name_from_spec(&install_spec),
+                    installed_prefix.as_deref(),
+                )
+                .await
+                .ok_or_else(|| AcpError::protocol(format!("npm installed {install_spec}, but its installed version could not be read")))?
+            };
+            if resolved != expected {
+                return Err(AcpError::protocol(format!(
+                    "npm installed {install_spec}, but PATH launches {} (version {resolved}, expected {expected}). Upgrade or reorder that external installation manually.",
+                    active_path.display()
+                )));
+            }
+
+            if agent_type == AgentType::Codex {
+                crate::acp::codex_catalog_source::clear_cache();
+                let _ = crate::acp::codex_catalog_source::runtime_catalog(true).await;
+            }
 
             agent_setting_service::set_installed_version(
                 &db.conn,
@@ -12901,7 +12874,8 @@ pub(crate) async fn acp_prepare_npx_agent_core(
             emit_acp_agents_updated(emitter, "uvx_prepared", Some(agent_type));
             Ok(resolved)
         }
-    };
+        }
+    }.await;
 
     match &result {
         Ok(version) => {
@@ -12918,7 +12892,7 @@ pub(crate) async fn acp_prepare_npx_agent_core(
             // a version that no longer exists on disk. Resync the DB to the
             // actual filesystem state so the UI doesn't mislead the user into
             // thinking they can connect.
-            if clean_first {
+            if matches!(meta.distribution, registry::AgentDistribution::Npx { .. }) {
                 let detected = detect_local_version(agent_type).await;
                 if let Err(sync_err) =
                     agent_setting_service::set_installed_version(&db.conn, agent_type, detected)
@@ -13053,7 +13027,9 @@ pub(crate) async fn acp_install_pi_binary_core(
     emit_agent_install_event(emitter, &task_id, AgentInstallEventKind::Started, "");
 
     let result =
-        install_npm_global_package_streaming(PI_CODING_AGENT_PACKAGE, &task_id, emitter).await;
+        install_npm_global_package_streaming(PI_CODING_AGENT_PACKAGE, &task_id, emitter)
+            .await
+            .map(|_| ());
 
     match &result {
         Ok(()) => emit_agent_install_event(
@@ -13757,6 +13733,21 @@ mod tests {
         let version =
             system_probed_version(AgentType::Custom("probe-e2e-test"), &bin, None).await;
         assert_eq!(version.as_deref(), Some("1.2.3"));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn npx_version_probe_reports_the_selected_binary_not_another_npm_prefix() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let selected = fake_version_script(dir.path(), "codex-acp", "codex-acp 1.11.0");
+        let version = system_probed_version_with(
+            None,
+            &selected,
+            Some("@agentclientprotocol/codex-acp@1.13.1"),
+        )
+        .await;
+        assert_eq!(version.as_deref(), Some("1.11.0"));
+        assert_ne!(version, version_from_package_spec("@agentclientprotocol/codex-acp@1.13.1"));
     }
 
     #[cfg(unix)]

@@ -1508,6 +1508,8 @@
       "clickInstall": "{versionText}. انقر تثبيت في الجهة اليمنى.",
       "localUnrecognized": "{versionText}. الإصدار المحلي غير قابل للمقارنة؛ جرّب الترقية للكتابة فوق التثبيت.",
       "upgradeAvailable": "{versionText}. تتوفر ترقية.",
+      "codexUpgradeHint": "يتطلب GPT-6 Sol/Luna إصدار Codex ACP {version} ‏(Codex CLI 0.156.1). أعد اتصال الجلسات الحالية بعد الترقية.",
+      "codexReconnectHint": "أعد اتصال جلسات Codex الحالية لاستخدام الإصدار الجديد.",
       "remoteUnavailable": "{versionText}. الإصدار البعيد غير متاح حاليًا.",
       "latest": "{versionText}. أنت على أحدث إصدار.",
       "latestChannel": "{versionText}. قناة الأحدث مفعّلة؛ الترقية تثبّت أحدث إصدار."

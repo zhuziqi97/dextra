@@ -84,17 +84,57 @@ fn codex_acp_dir(prefix: &Path) -> PathBuf {
     base.join("@agentclientprotocol").join("codex-acp")
 }
 
+/// Resolve the package behind the same executable selected for a new ACP
+/// connection. npm can have several global prefixes; probing a different one
+/// would display models the running adapter cannot offer.
+async fn active_codex_acp_dir() -> Option<PathBuf> {
+    let command = crate::commands::acp::resolve_npx_command("codex-acp").await?;
+    package_dir_for_command(&command)
+}
+
+fn package_dir_for_command(command: &Path) -> Option<PathBuf> {
+    let target = command.canonicalize().ok()?;
+    target.ancestors().find_map(|dir| {
+        let manifest = std::fs::read_to_string(dir.join("package.json")).ok()?;
+        let json: Value = serde_json::from_str(&manifest).ok()?;
+        (json.get("name")?.as_str()? == "@agentclientprotocol/codex-acp").then(|| dir.to_path_buf())
+    })
+}
+
 /// Candidate codex-acp package dirs: the global npm prefix and dextra's user
 /// prefix (`~/.dextra/npm-global`, used when a global install hit EACCES).
 async fn codex_acp_dirs() -> Vec<PathBuf> {
+    if let Some(active) = active_codex_acp_dir().await {
+        return vec![active];
+    }
+    // Windows npm launchers are .cmd files rather than symlinks into the
+    // package. Their package directory cannot be found by canonicalizing the
+    // launcher, so retain the prefix lookup on that platform.
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+    let Some(selected) = crate::commands::acp::resolve_npx_command("codex-acp").await else {
+        return Vec::new();
+    };
+    let Some(selected) = selected.canonicalize().ok() else {
+        return Vec::new();
+    };
     let mut dirs = Vec::new();
     if let Some(prefix) = crate::commands::acp::cached_npm_global_prefix().await {
-        dirs.push(codex_acp_dir(&prefix));
+        if prefix.join("codex-acp.cmd").canonicalize().ok().as_ref() == Some(&selected) {
+            dirs.push(codex_acp_dir(&prefix));
+        }
     }
     if let Some(prefix) = crate::process::user_npm_prefix() {
-        dirs.push(codex_acp_dir(&prefix));
+        if prefix.join("codex-acp.cmd").canonicalize().ok().as_ref() == Some(&selected) {
+            dirs.push(codex_acp_dir(&prefix));
+        }
     }
     dirs
+}
+
+pub fn clear_cache() {
+    let _ = std::fs::remove_file(cache_path());
 }
 
 /// Resolve the nested `@openai/codex/bin/codex.js` from a codex-acp package dir
@@ -194,5 +234,28 @@ mod tests {
         // Whatever the cache state, the fallback guarantees a non-empty catalog
         // (the compiled-in snapshot), so callers never get an empty list.
         assert!(!cached_or_bundled_snapshot().is_empty());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn package_catalog_follows_the_selected_acp_symlink() {
+        use std::os::unix::fs::symlink;
+
+        let temp = tempfile::tempdir().unwrap();
+        let old = temp.path().join("old/@agentclientprotocol/codex-acp");
+        let selected = temp.path().join("selected/@agentclientprotocol/codex-acp");
+        for package in [&old, &selected] {
+            std::fs::create_dir_all(package.join("dist")).unwrap();
+            std::fs::write(
+                package.join("package.json"),
+                r#"{"name":"@agentclientprotocol/codex-acp"}"#,
+            )
+            .unwrap();
+            std::fs::write(package.join("dist/index.js"), "").unwrap();
+        }
+        let bin = temp.path().join("bin/codex-acp");
+        std::fs::create_dir_all(bin.parent().unwrap()).unwrap();
+        symlink(selected.join("dist/index.js"), &bin).unwrap();
+        assert_eq!(package_dir_for_command(&bin), Some(selected));
     }
 }

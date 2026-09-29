@@ -1508,6 +1508,8 @@
       "clickInstall": "{versionText}. Rechts auf Installieren klicken.",
       "localUnrecognized": "{versionText}. Lokale Version ist nicht vergleichbar; zum Überschreiben bitte Upgrade versuchen.",
       "upgradeAvailable": "{versionText}. Upgrade verfügbar.",
+      "codexUpgradeHint": "GPT-6 Sol/Luna benötigen Codex ACP {version} (Codex CLI 0.156.1). Verbinden Sie bestehende Sitzungen nach dem Upgrade erneut.",
+      "codexReconnectHint": "Verbinden Sie bestehende Codex-Sitzungen erneut, um die neue Version zu verwenden.",
       "remoteUnavailable": "{versionText}. Remote-Version ist derzeit nicht verfügbar.",
       "latest": "{versionText}. Bereits aktuell.",
       "latestChannel": "{versionText}. Neueste-Kanal ist aktiv; Aktualisieren installiert die neueste Version."

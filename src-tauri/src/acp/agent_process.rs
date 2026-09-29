@@ -411,6 +411,7 @@ impl AcpAgent {
                         cmd.current_dir(dir);
                     }
                 }
+                crate::process::configure_appimage_library_path_for_tokio_command(&mut cmd);
                 #[cfg(windows)]
                 {
                     cmd.creation_flags(CREATE_NO_WINDOW);

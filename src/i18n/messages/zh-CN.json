@@ -1508,6 +1508,8 @@
       "clickInstall": "{versionText}。请点击右侧安装。",
       "localUnrecognized": "{versionText}。本地版本无法识别，可尝试升级覆盖安装。",
       "upgradeAvailable": "{versionText}。发现可升级版本。",
+      "codexUpgradeHint": "GPT-6 Sol/Luna 需要 Codex ACP {version}（Codex CLI 0.156.1）。升级后请重新连接已有会话。",
+      "codexReconnectHint": "请重新连接已有 Codex 会话以使用新版本。",
       "remoteUnavailable": "{versionText}。远程版本暂不可用。",
       "latest": "{versionText}。已是最新版本。",
       "latestChannel": "{versionText}。已启用最新版通道；升级会安装最新版本。"

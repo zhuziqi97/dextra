@@ -46,6 +46,8 @@ import {
 } from "@/lib/custom-agents"
 import { AgentIcon } from "@/components/agent-icon"
 import { AddCustomAgentDialog } from "@/components/settings/add-custom-agent-dialog"
+import { clearProbedAgentOptions } from "@/components/automations/use-agent-options"
+import { clearDelegationAgentOptions } from "@/components/settings/delegation-agent-defaults"
 import { SettingCard, SettingRow } from "@/components/shared/setting-card"
 import { CustomAgentMcpToggle } from "@/components/settings/custom-agent-mcp-toggle"
 import { CustomAgentSkillsToggle } from "@/components/settings/custom-agent-skills-toggle"
@@ -4127,15 +4129,22 @@ export function buildVersionCheck(
     hasComparableVersion(agent.installed_version) &&
     compareVersion(agent.installed_version, agent.registry_version) < 0
   ) {
+    const codexHint =
+      agent.agent_type === "codex"
+        ? ` ${acpText("version.codexUpgradeHint", "GPT-6 Sol/Luna require Codex ACP {version} (Codex CLI 0.156.1). Reconnect existing sessions after upgrading.", { version: remoteVersion })}`
+        : ""
     return {
       check_id: "version_status",
       label: acpText("version.statusLabel", "Version Status"),
       status: "warn",
-      message: acpText(
-        "version.upgradeAvailable",
-        "{versionText}. Upgrade available.",
-        { versionText }
-      ),
+      message:
+        acpText(
+          "version.upgradeAvailable",
+          "{versionText}. Upgrade available.",
+          {
+            versionText,
+          }
+        ) + codexHint,
       fixes: withCustomInstall([
         {
           label: acpText("actions.upgrade", "Upgrade"),
@@ -5051,9 +5060,11 @@ export function AcpAgentSettings() {
             ? "install_npx"
             : "upgrade_npx",
       }))
-      // A custom-version install forces a clean reinstall so the requested
-      // version replaces whatever is currently installed.
-      const cleanFirst = mode === "upgrade" || Boolean(versionOverride)
+      // Codex can be installed in several external npm prefixes. Its manual
+      // upgrade must not remove a different PATH-selected installation.
+      const cleanFirst =
+        agent.agent_type !== "codex" &&
+        (mode === "upgrade" || Boolean(versionOverride))
       const actionLabel = versionOverride
         ? t("actions.customInstall")
         : mode === "upgrade"
@@ -5091,6 +5102,8 @@ export function AcpAgentSettings() {
           )
         }
         const finalVersion = detectedVersion ?? installedVersion
+        clearProbedAgentOptions()
+        clearDelegationAgentOptions()
         toast.success(
           t("toasts.agentActionCompleted", {
             name: agent.name,
@@ -5098,7 +5111,7 @@ export function AcpAgentSettings() {
           }),
           {
             description: finalVersion
-              ? t("toasts.localVersion", { version: finalVersion })
+              ? `${t("toasts.localVersion", { version: finalVersion })}${agent.agent_type === "codex" ? ` ${t("version.codexReconnectHint")}` : ""}`
               : t("toasts.installCompletedVersionLater"),
           }
         )

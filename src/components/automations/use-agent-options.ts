@@ -22,6 +22,13 @@ interface CachedSnapshot {
 // collision-free composite key (and avoids a literal NUL separator).
 const snapshotCache = new Map<string, CachedSnapshot>()
 const inflight = new Map<string, Promise<AgentOptionsSnapshot>>()
+let cacheGeneration = 0
+
+export function clearProbedAgentOptions(): void {
+  cacheGeneration += 1
+  snapshotCache.clear()
+  inflight.clear()
+}
 
 function cacheKey(agent: AgentType, folderPath: string | null): string {
   return JSON.stringify([agent, folderPath ?? null])
@@ -48,14 +55,17 @@ function fetchOptions(
   const key = cacheKey(agent, folderPath)
   let promise = inflight.get(key)
   if (!promise) {
+    const generation = cacheGeneration
     promise = describeAgentOptions(agent, folderPath)
       .then((snapshot) => {
-        snapshotCache.set(key, { snapshot, ts: Date.now() })
-        inflight.delete(key)
+        if (generation === cacheGeneration) {
+          snapshotCache.set(key, { snapshot, ts: Date.now() })
+        }
+        if (inflight.get(key) === promise) inflight.delete(key)
         return snapshot
       })
       .catch((err) => {
-        inflight.delete(key)
+        if (inflight.get(key) === promise) inflight.delete(key)
         throw err
       })
     inflight.set(key, promise)
