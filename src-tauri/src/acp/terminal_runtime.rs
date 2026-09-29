@@ -561,6 +561,10 @@ impl TerminalRuntime {
             }
         }
 
+        // Resolve relative host programs against the terminal's actual cwd.
+        // Agent-supplied environment below remains authoritative.
+        crate::process::configure_appimage_library_path_for_tokio_command(command);
+
         // Apply the runtime's base env first (e.g. `GIT_CONFIG_*` for the
         // dextra credential helper), then layer the agent's request env on top
         // so agents can still override or scrub specific keys.

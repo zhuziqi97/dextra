@@ -388,6 +388,15 @@ impl AcpAgent {
                     command.args(&stdio.args);
                     command
                 };
+                if let Some(dir) = &self.current_dir {
+                    // The `pushd` detour already owns the cwd for this launch,
+                    // and handing the same UNC path to `CreateProcess` is the
+                    // very thing cmd.exe would refuse.
+                    if pushd_cwd.is_none() {
+                        cmd.current_dir(dir);
+                    }
+                }
+                crate::process::configure_appimage_library_path_for_tokio_command(&mut cmd);
                 for env_var in &stdio.env {
                     // dextra convention: an empty value means "ensure this var is
                     // ABSENT from the child" (strip an inherited value) rather
@@ -403,15 +412,6 @@ impl AcpAgent {
                         cmd.env(&env_var.name, &env_var.value);
                     }
                 }
-                if let Some(dir) = &self.current_dir {
-                    // The `pushd` detour already owns the cwd for this launch,
-                    // and handing the same UNC path to `CreateProcess` is the
-                    // very thing cmd.exe would refuse.
-                    if pushd_cwd.is_none() {
-                        cmd.current_dir(dir);
-                    }
-                }
-                crate::process::configure_appimage_library_path_for_tokio_command(&mut cmd);
                 #[cfg(windows)]
                 {
                     cmd.creation_flags(CREATE_NO_WINDOW);
