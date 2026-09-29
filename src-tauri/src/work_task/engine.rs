@@ -1258,7 +1258,7 @@ impl TaskEngine {
             )
             .await
         {
-            Ok(id) => id,
+            Ok((id, _)) => id,
             Err(e) if resumed => {
                 // Resume failed (e.g. the agent lost the session) → fall back
                 // to a fresh session in the same worktree, recorded on the
@@ -1286,6 +1286,7 @@ impl TaskEngine {
                         additional_mcp_servers,
                     )
                     .await
+                    .map(|(id, _)| id)
                     .map_err(|e| e.to_string())?
             }
             Err(e) => return Err(e.to_string()),

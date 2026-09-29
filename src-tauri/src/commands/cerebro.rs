@@ -9,6 +9,12 @@ pub async fn cerebro_get_auth_state() -> Result<CerebroAuthState, AppCommandErro
 }
 
 #[cfg_attr(feature = "tauri-runtime", tauri::command)]
+pub async fn cerebro_retry_connection() -> Result<CerebroAuthState, AppCommandError> {
+    cerebro::connection::retry();
+    cerebro::get_auth_state().await
+}
+
+#[cfg_attr(feature = "tauri-runtime", tauri::command)]
 pub async fn cerebro_start_pairing(
     cerebro_base_url: String,
 ) -> Result<CerebroPairingStart, AppCommandError> {

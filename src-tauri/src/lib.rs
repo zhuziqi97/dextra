@@ -1725,6 +1725,7 @@ mod tauri_app {
                 project_boot::install_hyperframes_skills,
                 project_boot::create_hyperframes_project,
                 cerebro_commands::cerebro_get_auth_state,
+                cerebro_commands::cerebro_retry_connection,
                 cerebro_commands::cerebro_resolve_target,
                 cerebro_commands::cerebro_query_folder_configuration,
                 cerebro_commands::cerebro_save_folder_configuration,

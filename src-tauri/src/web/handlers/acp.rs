@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use axum::{extract::Extension, Json};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::sync::{OnceLock, Weak};
+use tokio::sync::Mutex;
 
 use crate::acp::error::AcpError;
 use crate::acp::opencode_plugins::PluginCheckSummary;
@@ -87,7 +90,136 @@ pub async fn acp_connect(
         params.working_dir, params.session_id, params.preferred_mode_id,
         params.preferred_config_values.unwrap_or_default(),
         params.conversation_id,
-    ).await.map(Json)
+    ).await.map(|(id, _)| Json(id))
+}
+
+// A newly started Agent belongs to this request until its connection ID has
+// been delivered. A dropped HTTP future must not strand an unlinked process.
+struct UndeliveredConnection {
+    state: Arc<AppState>,
+    connection_id: Option<String>,
+}
+
+impl UndeliveredConnection {
+    async fn cleanup(&self) {
+        if let Some(id) = &self.connection_id {
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                self.state.connection_manager.disconnect(id),
+            ).await {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => tracing::warn!(connection_id = %id, "原生连接清理失败: {error}"),
+                Err(error) => tracing::warn!(connection_id = %id, "原生连接清理超时: {error}"),
+            }
+        }
+    }
+}
+
+impl Drop for UndeliveredConnection {
+    fn drop(&mut self) {
+        if let Some(id) = self.connection_id.take() {
+            let state = self.state.clone();
+            tokio::spawn(async move {
+                let _ = tokio::time::timeout(
+                    std::time::Duration::from_secs(10),
+                    state.connection_manager.disconnect(&id),
+                ).await;
+            });
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CerebroOpenConversationParams {
+    pub folder_id: i32,
+    pub conversation_id: Option<i32>,
+    pub agent_type: AgentType,
+    pub client_request_id: String,
+    pub preferred_mode_id: Option<String>,
+    #[serde(default)]
+    pub preferred_config_values: BTreeMap<String, String>,
+}
+
+#[derive(Serialize)]
+pub struct CerebroOpenedConversation {
+    pub conversation_id: i32,
+    pub connection_id: String,
+    pub agent_type: AgentType,
+    pub connection_created: bool,
+}
+
+pub async fn cerebro_open_conversation(
+    Extension(state): Extension<Arc<AppState>>,
+    Json(params): Json<CerebroOpenConversationParams>,
+) -> Result<Json<CerebroOpenedConversation>, AppCommandError> {
+    use crate::commands::conversations as conversations;
+    use crate::db::service::{conversation_service, folder_service};
+    static LOCKS: OnceLock<Mutex<HashMap<i32, Weak<Mutex<()>>>>> = OnceLock::new();
+    let folder = folder_service::get_folder_by_id(&state.db.conn, params.folder_id)
+        .await.map_err(AppCommandError::from)?
+        .ok_or_else(|| AppCommandError::not_found("Folder not found"))?;
+    if params.client_request_id.trim().is_empty() {
+        return Err(AppCommandError::invalid_input("clientRequestId is required"));
+    }
+    let conversation_id = match params.conversation_id {
+        Some(id) => id,
+        None => conversations::create_conversation_idempotent_core(
+            &state.db.conn, params.folder_id, params.agent_type, None,
+            params.client_request_id,
+        ).await?,
+    };
+    let summary = conversation_service::get_by_id(&state.db.conn, conversation_id)
+        .await.map_err(AppCommandError::from)?;
+    if summary.folder_id != params.folder_id || summary.agent_type != params.agent_type {
+        return Err(AppCommandError::invalid_input("Conversation folder or agent does not match"));
+    }
+    let lock = {
+        let mut locks = LOCKS.get_or_init(|| Mutex::new(HashMap::new())).lock().await;
+        locks.retain(|_, weak| weak.strong_count() > 0);
+        let value = locks.entry(conversation_id).or_default();
+        if let Some(lock) = value.upgrade() { lock } else {
+            let lock = Arc::new(Mutex::new(()));
+            *value = Arc::downgrade(&lock);
+            lock
+        }
+    };
+    let _guard = lock.lock().await;
+    if let Some(existing) = acp_commands::acp_find_connection_for_conversation_core(
+        &state.connection_manager, conversation_id, summary.external_id.as_deref(), params.agent_type,
+    ).await.map_err(|error| AppCommandError::task_execution_failed(error.to_string()))? {
+        state.connection_manager.link_existing_conversation(
+            &state.db.conn, &existing.connection_id, conversation_id, params.folder_id,
+        ).await.map_err(|error| AppCommandError::task_execution_failed(error.to_string()))?;
+        return Ok(Json(CerebroOpenedConversation {
+            conversation_id, connection_id: existing.connection_id,
+            agent_type: params.agent_type, connection_created: false,
+        }));
+    }
+    let (connection_id, connection_created) = acp_commands::acp_connect_core(
+        &state.db, &state.connection_manager, &state.data_dir,
+        state.emitter.clone(), "web".to_string(), params.agent_type,
+        Some(folder.path), summary.external_id,
+        params.preferred_mode_id, params.preferred_config_values,
+        Some(conversation_id),
+    ).await?;
+    let mut undelivered = UndeliveredConnection {
+        state: state.clone(),
+        connection_id: connection_created.then(|| connection_id.clone()),
+    };
+    let linked = state.connection_manager.link_existing_conversation(
+        &state.db.conn, &connection_id, conversation_id, params.folder_id,
+    ).await;
+    if let Err(error) = linked {
+        undelivered.cleanup().await;
+        undelivered.connection_id = None;
+        return Err(AppCommandError::task_execution_failed(error.to_string()));
+    }
+    undelivered.connection_id = None;
+    Ok(Json(CerebroOpenedConversation {
+        conversation_id, connection_id, agent_type: params.agent_type,
+        connection_created,
+    }))
 }
 
 #[derive(Deserialize)]

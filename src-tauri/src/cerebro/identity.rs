@@ -55,6 +55,7 @@ pub struct CerebroAuthState {
     pub cerebro_base_url: Option<String>,
     pub runner_id: Option<String>,
     pub pairing: Option<CerebroPairingStart>,
+    pub connection: super::connection::ConnectionStatus,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -320,7 +321,7 @@ async fn post_json<T: DeserializeOwned, B: Serialize + ?Sized>(
 ) -> Result<T, ClientError> {
     let mut request = client.post(url).json(&body);
     if let Some(token) = bearer_token {
-        request = request.bearer_auth(token);
+        request = request.bearer_auth(token).header("Dextra-Protocol", super::protocol::integration_protocol_header());
     }
     let response = request
         .send()
@@ -540,6 +541,7 @@ async fn auth_state_with(
             cerebro_base_url: Some(credential.cerebro_base_url),
             runner_id: Some(credential.runner_id),
             pairing: None,
+            connection: super::connection::status(),
         });
     }
     let mut slot = manager.pending.lock().await;
@@ -553,6 +555,7 @@ async fn auth_state_with(
             .map(|pending| pending.cerebro_base_url.clone()),
         runner_id: None,
         pairing: slot.as_ref().map(PendingPairing::public),
+        connection: super::connection::status(),
     })
 }
 
@@ -571,6 +574,7 @@ async fn cancel_pairing_with(
         cerebro_base_url: None,
         runner_id: None,
         pairing: None,
+        connection: super::connection::status(),
     })
 }
 
@@ -653,6 +657,7 @@ pub fn forget_runner_credential() -> Result<CerebroAuthState, AppCommandError> {
         cerebro_base_url: None,
         runner_id: None,
         pairing: None,
+        connection: super::connection::status(),
     })
 }
 

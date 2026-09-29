@@ -6586,6 +6586,12 @@
     "storageKeyring": "系统凭据库",
     "signedIn": "已登录",
     "loadingState": "正在读取登录状态",
+    "connectionCONNECTING": "连接中",
+    "connectionONLINE": "在线",
+    "connectionOFFLINE": "离线",
+    "protocolIncompatible": "协议不兼容",
+    "retryConnection": "重新连接",
+    "downloadClient": "下载新版客户端",
     "clientId": "客户端 ID"
   },
   "CerebroFolder": {

@@ -36,6 +36,7 @@ import {
   selectCerebroStorage,
   pollCerebroPairing,
   refreshCerebroAccessToken,
+  retryCerebroConnection,
   startCerebroPairing,
 } from "@/lib/api"
 import { extractAppCommandError, toErrorMessage } from "@/lib/app-error"
@@ -97,6 +98,14 @@ export function CerebroSettings() {
       active = false
     }
   }, [loadAuthState])
+
+  useEffect(() => {
+    if (!authState?.paired) return
+    const timer = setInterval(() => {
+      void loadAuthState()
+    }, 3000)
+    return () => clearInterval(timer)
+  }, [authState?.paired, loadAuthState])
 
   useEffect(() => {
     const pairing = authState?.pairing
@@ -190,6 +199,15 @@ export function CerebroSettings() {
       }
     } finally {
       setVerifying(false)
+    }
+  }
+
+  async function handleRetryConnection() {
+    setError(null)
+    try {
+      setAuthState(await retryCerebroConnection())
+    } catch (cause) {
+      setError(cerebroErrorMessage(cause))
     }
   }
 
@@ -289,7 +307,15 @@ export function CerebroSettings() {
               </SettingRow>
               <SettingRow
                 title={t("connection")}
-                description={verificationMessage ?? t("signedIn")}
+                description={
+                  authState.connection?.status === "INCOMPATIBLE"
+                    ? `${t("protocolIncompatible")}: Dextra ${authState.connection.clientProtocols.join("、")} / Convene ${authState.connection.serverProtocols.join("、")}${authState.connection.serverVersion ? ` (${authState.connection.serverVersion})` : ""}。${authState.connection.message ?? ""}`
+                    : (authState.connection?.message ??
+                      verificationMessage ??
+                      t(
+                        `connection${authState.connection?.status ?? "OFFLINE"}`
+                      ))
+                }
                 control={
                   <Button
                     type="button"
@@ -307,6 +333,38 @@ export function CerebroSettings() {
                   </Button>
                 }
               />
+              {authState.connection?.status === "INCOMPATIBLE" && (
+                <SettingRow
+                  title={t("protocolIncompatible")}
+                  control={
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleRetryConnection()}
+                      >
+                        {t("retryConnection")}
+                      </Button>
+                      {authState.connection.helpUrl &&
+                        authState.cerebroBaseUrl && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const url = new URL(authState.cerebroBaseUrl!)
+                              url.pathname = `${url.pathname.replace(/\/$/, "")}/${authState.connection!.helpUrl!.replace(/^\//, "")}`
+                              void openUrl(url.toString())
+                            }}
+                          >
+                            {t("downloadClient")}
+                          </Button>
+                        )}
+                    </div>
+                  }
+                />
+              )}
               <SettingRow
                 title={t("disconnectLocal")}
                 control={

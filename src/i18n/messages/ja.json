@@ -6586,6 +6586,12 @@
     "storageKeyring": "System credential store",
     "signedIn": "Signed in",
     "loadingState": "Loading sign-in status",
+    "connectionCONNECTING": "接続中",
+    "connectionONLINE": "オンライン",
+    "connectionOFFLINE": "オフライン",
+    "protocolIncompatible": "プロトコルが非互換",
+    "retryConnection": "再接続",
+    "downloadClient": "新しいクライアントをダウンロード",
     "clientId": "Client ID"
   },
   "CerebroFolder": {

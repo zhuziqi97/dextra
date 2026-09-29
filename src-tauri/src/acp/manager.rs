@@ -739,6 +739,7 @@ impl ConnectionManager {
             Vec::new(),
         )
         .await
+        .map(|(id, _)| id)
     }
 
     /// 启动 Agent，并仅为这条新连接追加本次 MCP server 集合。
@@ -754,7 +755,7 @@ impl ConnectionManager {
         preferred_mode_id: Option<String>,
         preferred_config_values: BTreeMap<String, String>,
         additional_mcp_servers: impl Into<AdditionalMcpServers>,
-    ) -> Result<String, AcpError> {
+    ) -> Result<(String, bool), AcpError> {
         // Held for the whole establishment. A restore writing back to the
         // agents' own directories takes the write side, so it can never see an
         // empty connection list and then have one appear underneath it. Not
@@ -806,7 +807,7 @@ impl ConnectionManager {
                 existing,
                 session_id.as_deref().unwrap_or("")
             );
-            return Ok(existing);
+            return Ok((existing, false));
         }
 
         let connection_id = uuid::Uuid::new_v4().to_string();
@@ -851,6 +852,26 @@ impl ConnectionManager {
             }
         };
 
+        // The connection is registered before the optional resume handshake.
+        // If the caller is cancelled during that wait, reclaim only this new
+        // connection instead of leaving an unowned Agent behind.
+        struct PendingSpawn {
+            manager: ConnectionManager,
+            id: Option<String>,
+        }
+        impl Drop for PendingSpawn {
+            fn drop(&mut self) {
+                if let Some(id) = self.id.take() {
+                    let manager = self.manager.clone_ref();
+                    tokio::spawn(async move { let _ = manager.disconnect(&id).await; });
+                }
+            }
+        }
+        let mut pending = PendingSpawn {
+            manager: self.clone_ref(),
+            id: Some(connection_id.clone()),
+        };
+
         // When dedup is active, hold the lock until the agent's
         // SessionStarted has applied (so external_id is populated for the
         // next waiter), aborted (connection died), or the timeout fires.
@@ -875,7 +896,9 @@ impl ConnectionManager {
 
         drop(dedup_lock);
 
-        Ok(connection_id)
+        pending.id = None;
+
+        Ok((connection_id, true))
     }
 
     /// Bump `last_activity_at` for a live connection so the idle sweep
@@ -3837,6 +3860,48 @@ impl ConnectionManager {
         None
     }
 
+    /// Associate an eagerly-created conversation before its first prompt.
+    /// The prompt lock is the existing owner of conversation linkage.
+    pub async fn link_existing_conversation(
+        &self,
+        db: &DatabaseConnection,
+        connection_id: &str,
+        conversation_id: i32,
+        folder_id: i32,
+    ) -> Result<(), AcpError> {
+        let lock = self.clone_prompt_lock(connection_id).await?;
+        let guard = lock.lock_owned().await;
+        let (state, emitter) = self.get_state_and_emitter(connection_id).await
+            .ok_or_else(|| AcpError::ConnectionNotFound(connection_id.into()))?;
+        let (linked, external_id, agent_type) = {
+            let current = state.read().await;
+            (current.conversation_id, current.external_id.clone(), current.agent_type)
+        };
+        if let Some(linked) = linked {
+            return if linked == conversation_id { Ok(()) } else {
+                Err(AcpError::protocol("connection already belongs to another conversation"))
+            };
+        }
+        let db = db.clone();
+        let task = tokio::spawn(async move {
+            let _guard = guard;
+            if let Some(external_id) = external_id {
+                let continues = crate::acp::continued_session_ids(agent_type, &external_id);
+                let preserved = conversation_service::bind_external_id(
+                    &db, conversation_id, &external_id, &continues,
+                ).await.map_err(|error| AcpError::protocol(error.to_string()))?;
+                crate::commands::conversations::emit_preserved_conversation(&emitter, &db, preserved).await;
+            }
+            emit_with_state(&state, &emitter, AcpEvent::ConversationLinked {
+                conversation_id, folder_id, parent_conversation_id: None,
+                parent_tool_use_id: None,
+            }).await;
+            crate::commands::conversations::emit_conversation_upsert(&emitter, &db, conversation_id).await;
+            Ok::<(), AcpError>(())
+        });
+        task.await.map_err(|error| AcpError::protocol(error.to_string()))?
+    }
+
     /// The in-flight user prompt for `conversation_id` and the instant its turn
     /// started, if a turn is currently running on its live connection. `Some`
     /// exactly between `UserMessage` and `TurnComplete` (see
@@ -6398,6 +6463,28 @@ mod tests {
         }
         let state = mgr.get_state("c1").await.expect("state should be found");
         assert_eq!(state.read().await.connection_id, "c1");
+    }
+
+    #[tokio::test]
+    async fn eager_conversation_link_is_discoverable_before_first_prompt() {
+        let db = crate::db::test_helpers::fresh_in_memory_db().await;
+        let folder_id = crate::db::test_helpers::seed_folder(&db, "/tmp/eager-link").await;
+        let row = conversation_service::create(
+            &db.conn, folder_id, AgentType::Codex, None, None,
+        ).await.unwrap();
+        let manager = ConnectionManager::new();
+        let mut commands = insert_live_connection(
+            &manager, "eager-connection", AgentType::Codex,
+            Some(PathBuf::from("/tmp/eager-link")),
+        ).await;
+        manager.link_existing_conversation(
+            &db.conn, "eager-connection", row.id, folder_id,
+        ).await.unwrap();
+        assert_eq!(manager.find_connection_by_conversation_id(row.id).await.as_deref(), Some("eager-connection"));
+        assert!(commands.try_recv().is_err(), "linking does not send a prompt");
+        manager.link_existing_conversation(
+            &db.conn, "eager-connection", row.id, folder_id,
+        ).await.unwrap();
     }
 
     #[tokio::test]

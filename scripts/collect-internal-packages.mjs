@@ -78,6 +78,7 @@ const metadata = {
   platform,
   target,
   source_commit: commit,
+  integration_protocols: [{ major: 5, max_minor: 0 }],
   github_run_id: process.env.GITHUB_RUN_ID || null,
   developer_id_signed: false,
   updater_artifacts: false,

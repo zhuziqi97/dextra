@@ -5,6 +5,12 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+pub const INTEGRATION_MAJOR: u64 = 5;
+pub const INTEGRATION_MINOR: u64 = 0;
+pub fn integration_protocol_header() -> String {
+    format!("{INTEGRATION_MAJOR}.{INTEGRATION_MINOR}")
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub struct Envelope {
@@ -32,7 +38,7 @@ pub fn runner_hello(runner_id: impl Into<String>, build_id: impl Into<String>) -
     envelope(
         runner_id,
         "HELLO",
-        json!({"RUNNER_BUILD_ID": build_id.into(), "DEXTRA_API_REVISION": 4, "DEXTRA_VERSION": concat!("v", env!("CARGO_PKG_VERSION"))}),
+        json!({"RUNNER_BUILD_ID": build_id.into(), "SUPPORTED_PROTOCOLS": [{"MAJOR": INTEGRATION_MAJOR, "MAX_MINOR": INTEGRATION_MINOR}], "DEXTRA_VERSION": concat!("v", env!("CARGO_PKG_VERSION"))}),
     )
 }
 

@@ -249,6 +249,10 @@ export async function getCerebroAuthState(): Promise<CerebroAuthState> {
   return getTransport().call("cerebro_get_auth_state")
 }
 
+export async function retryCerebroConnection(): Promise<CerebroAuthState> {
+  return getTransport().call("cerebro_retry_connection")
+}
+
 export async function startCerebroPairing(
   cerebroBaseUrl: string
 ): Promise<CerebroPairingStart> {

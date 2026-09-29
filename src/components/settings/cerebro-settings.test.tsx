@@ -10,6 +10,7 @@ vi.mock("@/lib/api", () => ({
   selectCerebroStorage: vi.fn(),
   pollCerebroPairing: vi.fn(),
   refreshCerebroAccessToken: vi.fn(),
+  retryCerebroConnection: vi.fn(),
   startCerebroPairing: vi.fn(),
 }))
 
@@ -25,6 +26,7 @@ import {
   selectCerebroStorage,
   pollCerebroPairing,
   refreshCerebroAccessToken,
+  retryCerebroConnection,
   startCerebroPairing,
 } from "@/lib/api"
 import { openUrl } from "@/lib/platform"
@@ -73,6 +75,51 @@ describe("CerebroSettings", () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it("shows protocol mismatch and lets a paired user retry", async () => {
+    vi.mocked(getCerebroAuthState).mockResolvedValue({
+      ...pairedState,
+      connection: {
+        status: "INCOMPATIBLE",
+        message: "Update Dextra",
+        serverVersion: "5.13.1",
+        clientProtocols: ["5.0"],
+        serverProtocols: ["6.0"],
+        helpUrl: "/help",
+      },
+    })
+    vi.mocked(retryCerebroConnection).mockResolvedValue({
+      ...pairedState,
+      connection: {
+        status: "CONNECTING",
+        message: null,
+        serverVersion: null,
+        clientProtocols: ["5.0"],
+        serverProtocols: [],
+        helpUrl: null,
+      },
+    })
+    renderSettings()
+    await act(async () => undefined)
+    expect(screen.getByText(/Update Dextra/)).toBeInTheDocument()
+    expect(screen.getByText(/Dextra 5.0 \/ Convene 6.0/)).toBeInTheDocument()
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: enMessages.CerebroSettings.downloadClient,
+      })
+    )
+    expect(openUrl).toHaveBeenCalledWith(
+      "http://cerebro.internal/nested/help?tenant=alpha"
+    )
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: enMessages.CerebroSettings.retryConnection,
+        })
+      )
+    })
+    expect(retryCerebroConnection).toHaveBeenCalledOnce()
   })
 
   it("waits for stored credentials and never offers a second login when paired", async () => {

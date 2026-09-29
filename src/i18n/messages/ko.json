@@ -6586,6 +6586,12 @@
     "storageKeyring": "System credential store",
     "signedIn": "Signed in",
     "loadingState": "Loading sign-in status",
+    "connectionCONNECTING": "연결 중",
+    "connectionONLINE": "온라인",
+    "connectionOFFLINE": "오프라인",
+    "protocolIncompatible": "프로토콜이 호환되지 않음",
+    "retryConnection": "다시 연결",
+    "downloadClient": "새 클라이언트 다운로드",
     "clientId": "Client ID"
   },
   "CerebroFolder": {

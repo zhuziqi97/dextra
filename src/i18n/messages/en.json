@@ -6586,6 +6586,12 @@
     "storageKeyring": "System credential store",
     "signedIn": "Signed in",
     "loadingState": "Loading sign-in status",
+    "connectionCONNECTING": "Connecting",
+    "connectionONLINE": "Online",
+    "connectionOFFLINE": "Offline",
+    "protocolIncompatible": "Protocol incompatible",
+    "retryConnection": "Reconnect",
+    "downloadClient": "Download updated client",
     "clientId": "Client ID"
   },
   "CerebroFolder": {

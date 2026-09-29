@@ -904,6 +904,7 @@ pub fn build_router(
             "/acp_get_session_snapshot_by_conversation",
             post(handlers::acp::acp_get_session_snapshot_by_conversation),
         )
+        .route("/cerebro_open_conversation", post(handlers::acp::cerebro_open_conversation))
         .route(
             "/acp_find_connection_for_conversation",
             post(handlers::acp::acp_find_connection_for_conversation),

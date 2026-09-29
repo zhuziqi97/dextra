@@ -2,12 +2,13 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, RwLock};
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot, Mutex, Notify};
+use serde::Serialize;
 use tokio_tungstenite::tungstenite::Message;
 
 use super::control_writer::Outbound;
@@ -22,6 +23,40 @@ const TARGET_REPORT_INTERVAL: Duration = Duration::from_secs(30);
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
 
 static SUPERVISOR_STARTED: AtomicBool = AtomicBool::new(false);
+static CONNECTION_STATUS: LazyLock<RwLock<ConnectionStatus>> = LazyLock::new(|| RwLock::new(ConnectionStatus::default()));
+static RETRY_CONNECTION: Notify = Notify::const_new();
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionStatus {
+    pub status: &'static str,
+    pub message: Option<String>,
+    pub server_version: Option<String>,
+    pub client_protocols: Vec<String>,
+    pub server_protocols: Vec<String>,
+    pub help_url: Option<String>,
+}
+
+impl Default for ConnectionStatus {
+    fn default() -> Self {
+        Self { status: "OFFLINE", message: None, server_version: None,
+            client_protocols: vec![super::protocol::integration_protocol_header()],
+            server_protocols: Vec::new(), help_url: None }
+    }
+}
+
+pub fn status() -> ConnectionStatus {
+    CONNECTION_STATUS.read().expect("connection status lock poisoned").clone()
+}
+
+fn set_status(value: ConnectionStatus) {
+    *CONNECTION_STATUS.write().expect("connection status lock poisoned") = value;
+}
+
+pub fn retry() {
+    set_status(ConnectionStatus { status: "OFFLINE", ..Default::default() });
+    RETRY_CONNECTION.notify_one();
+}
 
 type ReportWaiter = oneshot::Sender<()>;
 static REPORT_REQUESTS: LazyLock<(
@@ -112,7 +147,7 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
     let message_type = value.get("TYPE").and_then(Value::as_str);
     if !matches!(
         message_type,
-        Some("HELLO_ACK" | "HEARTBEAT_ACK" | "CONFIGURATION_CHANGED" | "TARGETS_REPORT_ACK")
+        Some("HELLO_ACK" | "HELLO_REJECT" | "HEARTBEAT_ACK" | "CONFIGURATION_CHANGED" | "TARGETS_REPORT_ACK" | "OPEN_DATA_CHANNEL" | "CANCEL_DATA_CHANNEL")
     ) {
         return Err("Cerebro returned an unsupported Runner message".to_string());
     }
@@ -125,7 +160,26 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
     Ok(())
 }
 
+fn validate_selected_protocol(payload: &Value) -> Result<(), String> {
+    if payload["HEARTBEAT_INTERVAL_SECONDS"].as_u64().filter(|value| *value > 0).is_none()
+        || payload["SERVER_VERSION"].as_str().filter(|value| !value.is_empty()).is_none() {
+        return Err("HELLO_ACK 缺少服务端版本或心跳间隔".into());
+    }
+    let selected = &payload["SELECTED_PROTOCOL"];
+    let major = selected["MAJOR"].as_u64().ok_or("Selected protocol missing major")?;
+    let minor = selected["MINOR"].as_u64().ok_or("Selected protocol missing minor")?;
+    let offered = major == super::protocol::INTEGRATION_MAJOR
+        && minor <= super::protocol::INTEGRATION_MINOR;
+    let supported = payload["SERVER_PROTOCOLS"].as_array()
+        .ok_or("Server protocol list missing")?
+        .iter().any(|entry| entry["MAJOR"].as_u64() == Some(major)
+            && entry["MAX_MINOR"].as_u64().is_some_and(|maximum| maximum >= minor));
+    if offered && supported { Ok(()) }
+    else { Err("Cerebro selected an unsupported Dextra protocol".into()) }
+}
+
 async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
+    set_status(ConnectionStatus { status: "CONNECTING", ..Default::default() });
     let access = identity::refresh_access_token()
         .await
         .map_err(|error| error.to_string())?;
@@ -159,6 +213,41 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
         .map_err(|error| format!("Failed to receive Runner HELLO response: {error}"))?;
     let hello_ack = parse_server_message(hello_ack)?;
     validate_server_message(&hello_ack, &access.runner_id)?;
+    if hello_ack["TYPE"] == "HELLO_REJECT" {
+        let payload = &hello_ack["PAYLOAD"];
+        if payload["CODE"] == "PROTOCOL_INCOMPATIBLE" {
+            let message = payload["ADVICE"].as_str().filter(|value| !value.is_empty())
+                .ok_or("HELLO_REJECT 缺少升级建议")?.to_owned();
+            let server_version = payload["SERVER_VERSION"].as_str().filter(|value| !value.is_empty())
+                .ok_or("HELLO_REJECT 缺少平台版本")?.to_owned();
+            let help_url = payload["HELP_URL"].as_str().filter(|value| !value.is_empty())
+                .ok_or("HELLO_REJECT 缺少帮助入口")?.to_owned();
+            let client_protocols = payload["CLIENT_PROTOCOLS"].as_array()
+                .ok_or("HELLO_REJECT 缺少客户端协议集合")?;
+            if client_protocols.is_empty() || client_protocols.iter().any(|version|
+                version["MAJOR"].as_u64().is_none() || version["MAX_MINOR"].as_u64().is_none()) {
+                return Err("HELLO_REJECT 客户端协议集合无效".into());
+            }
+            let versions = payload["SERVER_PROTOCOLS"].as_array()
+                .ok_or("HELLO_REJECT 缺少平台协议集合")?;
+            if versions.is_empty() { return Err("HELLO_REJECT 平台协议集合为空".into()); }
+            let server_protocols: Vec<String> = versions.iter()
+                .map(|version| {
+                    let major = version["MAJOR"].as_u64().ok_or("HELLO_REJECT 协议 major 无效")?;
+                    let minor = version["MAX_MINOR"].as_u64().ok_or("HELLO_REJECT 协议 minor 无效")?;
+                    Ok::<_, String>(format!("{major}.{minor}"))
+                }).collect::<Result<_, _>>()?;
+            set_status(ConnectionStatus {
+                status: "INCOMPATIBLE", message: Some(message.clone()),
+                server_version: Some(server_version),
+                client_protocols: vec![super::protocol::integration_protocol_header()],
+                server_protocols,
+                help_url: Some(help_url),
+            });
+            return Err(message);
+        }
+        return Err("Cerebro rejected the Runner HELLO".into());
+    }
     if hello_ack.get("TYPE").and_then(Value::as_str) != Some("HELLO_ACK") {
         return Err("Cerebro did not acknowledge Runner HELLO".to_string());
     }
@@ -166,6 +255,8 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
         .as_str()
         .ok_or("HELLO_ACK 缺少连接身份")?
         .to_owned();
+    validate_selected_protocol(&hello_ack["PAYLOAD"])?;
+    set_status(ConnectionStatus { status: "ONLINE", ..Default::default() });
     tracing::info!(
         "[cerebro] Runner {} connected to {}",
         access.runner_id,
@@ -284,17 +375,16 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                     .ok_or_else(|| "Cerebro closed the Runner connection".to_string())?
                     .map_err(|error| format!("Runner WebSocket receive failed: {error}"))?;
                 let value = parse_server_message(message)?;
+                validate_server_message(&value, &access.runner_id)?;
                 let message_type = value.get("TYPE").and_then(Value::as_str);
                 if runtime.web.handle(&value, &access.cerebro_base_url, &connection_id, data_access.clone()).await? {
                     continue;
                 } else if message_type == Some("CONFIGURATION_CHANGED") {
-                    validate_server_message(&value, &access.runner_id)?;
                     let configuration: super::configuration::ClientConfiguration = serde_json::from_value(value["PAYLOAD"]["CONFIGURATION"].clone()).map_err(|e| e.to_string())?;
                     if configuration.runner_id != access.runner_id { return Err("配置不属于当前客户端".into()); }
                     pending.lock().await.insert(configuration.target_id.clone(), configuration);
                     notice.notify_one();
                 } else if message_type == Some("TARGETS_REPORT_ACK") {
-                    validate_server_message(&value, &access.runner_id)?;
                     let configurations: Vec<super::configuration::ClientConfiguration> = serde_json::from_value(value["PAYLOAD"]["CONFIGURATIONS"].clone()).map_err(|error| error.to_string())?;
                     let report_id = value["PAYLOAD"]["REPORT_ID"].as_str().ok_or("目录确认缺少报告 ID")?;
                     if let Some((acknowledge, waiter)) = report_waiters.lock().await.remove(report_id) {
@@ -306,8 +396,6 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                         pending.lock().await.insert(configuration.target_id.clone(), configuration);
                     }
                     notice.notify_one();
-                } else {
-                    validate_server_message(&value, &access.runner_id)?;
                 }
             }
             result = &mut writer_task => {
@@ -348,10 +436,23 @@ async fn run_supervisor(runtime: CerebroRuntime) {
         let state = identity::get_auth_state().await;
         match state {
             Ok(state) if state.paired => {
-                if let Err(error) = connect_once(&runtime).await {
-                    tracing::warn!("[cerebro] Runner connection ended: {error}");
+                match connect_once(&runtime).await {
+                    Ok(()) => set_status(ConnectionStatus::default()),
+                    Err(error) => {
+                        tracing::warn!("[cerebro] Runner connection ended: {error}");
+                        if status().status != "INCOMPATIBLE" {
+                            set_status(ConnectionStatus { status: "OFFLINE", message: Some(error), ..Default::default() });
+                        }
+                    }
                 }
                 runtime.web.close_all().await;
+                if status().status == "INCOMPATIBLE" {
+                    tokio::select! {
+                        _ = RETRY_CONNECTION.notified() => {}
+                        _ = identity::wait_for_runner_identity_change() => { retry(); }
+                    }
+                    continue;
+                }
             }
             Ok(_) => {}
             Err(error) => {
@@ -406,5 +507,31 @@ mod tests {
         });
         validate_server_message(&ack, "runner-1").unwrap();
         assert!(validate_server_message(&ack, "runner-2").is_err());
+        let open = json!({
+            "PROTOCOL_VERSION": 1, "TYPE": "OPEN_DATA_CHANNEL",
+            "RUNNER_ID": "runner-1", "CONNECTION_ID": "connection-1",
+            "REQUEST_ID": "request-1",
+        });
+        validate_server_message(&open, "runner-1").unwrap();
+        assert!(validate_server_message(&open, "runner-2").is_err());
+    }
+
+    #[test]
+    fn selected_protocol_must_be_in_both_supported_sets() {
+        let valid = json!({"SELECTED_PROTOCOL": {"MAJOR": 5, "MINOR": 0},
+            "HEARTBEAT_INTERVAL_SECONDS": 15, "SERVER_VERSION": "5.13.1",
+            "SERVER_PROTOCOLS": [{"MAJOR": 5, "MAX_MINOR": 1}]});
+        assert!(validate_selected_protocol(&valid).is_ok());
+        let wrong_server = json!({"SELECTED_PROTOCOL": {"MAJOR": 5, "MINOR": 0},
+            "HEARTBEAT_INTERVAL_SECONDS": 15, "SERVER_VERSION": "5.13.1",
+            "SERVER_PROTOCOLS": [{"MAJOR": 6, "MAX_MINOR": 0}]});
+        assert!(validate_selected_protocol(&wrong_server).is_err());
+        let future_minor = json!({"SELECTED_PROTOCOL": {"MAJOR": 5, "MINOR": 1},
+            "HEARTBEAT_INTERVAL_SECONDS": 15, "SERVER_VERSION": "5.13.1",
+            "SERVER_PROTOCOLS": [{"MAJOR": 5, "MAX_MINOR": 1}]});
+        assert!(validate_selected_protocol(&future_minor).is_err());
+        let mut missing = valid;
+        missing.as_object_mut().unwrap().remove("SERVER_VERSION");
+        assert!(validate_selected_protocol(&missing).is_err());
     }
 }

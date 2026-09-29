@@ -10616,13 +10616,13 @@ pub async fn acp_connect_core(
     preferred_mode_id: Option<String>,
     preferred_config_values: BTreeMap<String, String>,
     conversation_id: Option<i32>,
-) -> Result<String, crate::app_error::AppCommandError> {
+) -> Result<(String, bool), crate::app_error::AppCommandError> {
     use crate::app_error::AppCommandError;
     let working_dir_path = working_dir.as_ref().map(PathBuf::from);
     if let Some(existing) = manager.find_connection_for_reuse(
         agent_type, working_dir_path.as_ref(), session_id.as_deref(),
     ).await {
-        return Ok(existing);
+        return Ok((existing, false));
     }
     let acp_error = |error: AcpError| {
         let mut result = AppCommandError::task_execution_failed(error.to_string());
@@ -10635,11 +10635,11 @@ pub async fn acp_connect_core(
     let additional = crate::cerebro::mcp::server_for_conversation(
         &db.conn, manager, working_dir.as_deref(), conversation_id,
     ).await?;
-    let connection_id = manager.spawn_agent_with_additional_mcp_servers(
+    let connection = manager.spawn_agent_with_additional_mcp_servers(
         agent_type, working_dir, session_id, runtime_env, owner_window,
         emitter, preferred_mode_id, preferred_config_values, additional,
     ).await.map_err(acp_error)?;
-    Ok(connection_id)
+    Ok(connection)
 }
 
 #[cfg(feature = "tauri-runtime")]
@@ -10670,7 +10670,7 @@ pub async fn acp_connect(
     let emitter = EventEmitter::Tauri(app_handle);
     acp_connect_core(&db, &manager, &app_data_dir, emitter, window.label().to_string(),
         agent_type, working_dir, session_id, preferred_mode_id,
-        preferred_config_values.unwrap_or_default(), conversation_id).await
+        preferred_config_values.unwrap_or_default(), conversation_id).await.map(|(id, _)| id)
 }
 
 #[cfg(feature = "tauri-runtime")]

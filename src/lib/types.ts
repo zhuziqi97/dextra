@@ -3777,6 +3777,14 @@ export interface CerebroAuthState {
   cerebroBaseUrl: string | null
   runnerId: string | null
   pairing: CerebroPairingStart | null
+  connection?: {
+    status: "CONNECTING" | "ONLINE" | "OFFLINE" | "INCOMPATIBLE"
+    message: string | null
+    serverVersion: string | null
+    clientProtocols: string[]
+    serverProtocols: string[]
+    helpUrl: string | null
+  }
 }
 
 export interface CerebroRunnerAccess {
