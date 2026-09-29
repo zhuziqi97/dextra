@@ -5072,36 +5072,70 @@ export function AcpAgentSettings() {
           : t("actions.install")
       const taskId = randomUUID()
       setStreamAgentType(agent.agent_type)
-      await installStream.start(taskId)
       try {
-        const installedVersion = await acpPrepareNpxAgent(
-          agent.agent_type,
-          agent.registry_version,
-          taskId,
-          cleanFirst,
-          versionOverride ?? null
-        )
-        setAgents((prev) =>
-          prev.map((item) =>
-            item.agent_type === agent.agent_type
-              ? { ...item, installed_version: installedVersion }
-              : item
+        await installStream.start(taskId)
+        let installedVersion: string | null = null
+        try {
+          installedVersion = await acpPrepareNpxAgent(
+            agent.agent_type,
+            agent.registry_version,
+            taskId,
+            cleanFirst,
+            versionOverride ?? null
           )
-        )
-        await runPreflight(agent.agent_type)
-        const detectedVersion = await acpDetectAgentLocalVersion(
-          agent.agent_type
-        )
-        if (detectedVersion && detectedVersion !== installedVersion) {
-          setAgents((prev) =>
-            prev.map((item) =>
-              item.agent_type === agent.agent_type
-                ? { ...item, installed_version: detectedVersion }
-                : item
+        } catch (error) {
+          // A proxied HTTP call can end while npm is still running. Only the
+          // install task's terminal event can say whether the install failed.
+          if (!installStream.wasStarted(taskId)) {
+            toast.info(t("toasts.installStatusUnknown"), {
+              description: toErrorMessage(error),
+            })
+            void refreshAgents().catch((refreshError) =>
+              console.error(
+                "[Settings] failed to refresh agents:",
+                refreshError
+              )
             )
+            return
+          }
+          const result = await installStream.waitForTerminal(taskId)
+          if (result.kind === "failed") throw new Error(result.payload)
+          if (result.kind === "unknown") {
+            toast.info(t("toasts.installStatusUnknown"))
+            void refreshAgents().catch((refreshError) =>
+              console.error(
+                "[Settings] failed to refresh agents:",
+                refreshError
+              )
+            )
+            return
+          }
+        }
+        let detectedVersion: string | null = null
+        try {
+          detectedVersion = await acpDetectAgentLocalVersion(agent.agent_type)
+        } catch (detectError) {
+          console.error(
+            "[Settings] failed to detect installed version:",
+            detectError
           )
         }
         const finalVersion = detectedVersion ?? installedVersion
+        if (!finalVersion) {
+          toast.info(t("toasts.installStatusUnknown"))
+          void refreshAgents().catch((refreshError) =>
+            console.error("[Settings] failed to refresh agents:", refreshError)
+          )
+          return
+        }
+        installStream.confirmSuccess(taskId)
+        setAgents((prev) =>
+          prev.map((item) =>
+            item.agent_type === agent.agent_type
+              ? { ...item, installed_version: finalVersion }
+              : item
+          )
+        )
         clearProbedAgentOptions()
         clearDelegationAgentOptions()
         toast.success(
@@ -5117,6 +5151,10 @@ export function AcpAgentSettings() {
         )
       } catch (err) {
         const message = toErrorMessage(err)
+        if (!installStream.wasStarted(taskId)) {
+          toast.info(t("toasts.installStatusUnknown"), { description: message })
+          return
+        }
         const hintKey = getInstallErrorHintKey(message)
         toast.error(
           t("toasts.agentActionFailed", {

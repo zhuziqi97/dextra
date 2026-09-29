@@ -1437,6 +1437,7 @@
       "agentActionFailed": "{name} {action} échoué",
       "localVersion": "Version locale : {version}",
       "installCompletedVersionLater": "Installation terminée, la version sera mise à jour à la prochaine vérification",
+      "installStatusUnknown": "Le résultat de l'installation reste incertain. Vérifiez à nouveau la version active plus tard.",
       "uninstallCompleted": "Désinstallation de {name} terminée",
       "uninstallFailed": "Échec de la désinstallation de {name}",
       "localVersionRemoved": "Version locale supprimée",

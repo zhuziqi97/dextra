@@ -1437,6 +1437,7 @@
       "agentActionFailed": "{name}{action}失敗",
       "localVersion": "本地版本：{version}",
       "installCompletedVersionLater": "安裝完成，版本將在下一次檢測時更新",
+      "installStatusUnknown": "安裝結果暫無法確認，請稍後重新檢測實際版本。",
       "uninstallCompleted": "{name}卸載完成",
       "uninstallFailed": "{name}卸載失敗",
       "localVersionRemoved": "本地版本已移除",
