@@ -127,6 +127,9 @@ export interface Transport {
    */
   onReconnect?(callback: () => void): UnsubscribeFn
 
+  /** Fired when an established event connection is lost. */
+  onDisconnect?(callback: () => void): UnsubscribeFn
+
   /**
    * Resolves when the server-side broadcaster receiver is currently
    * subscribed (i.e. the most recent WS connection has received its

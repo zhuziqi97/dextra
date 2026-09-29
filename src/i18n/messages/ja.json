@@ -1438,6 +1438,7 @@
       "localVersion": "ローカルバージョン: {version}",
       "installCompletedVersionLater": "インストールが完了しました。バージョンは次回チェック時に更新されます",
       "installStatusUnknown": "インストール結果をまだ確認できません。後で使用中のバージョンを再確認してください。",
+      "installConnectionInterrupted": "インストール結果を受け取る前にクライアントとの接続が切れました。再接続して使用中のバージョンを確認してください。",
       "uninstallCompleted": "{name} のアンインストールが完了しました",
       "uninstallFailed": "{name} のアンインストールに失敗しました",
       "localVersionRemoved": "ローカルバージョンを削除しました",

@@ -66,6 +66,12 @@ export function onTransportReconnect(
   return getTransport().onReconnect?.(callback) ?? null
 }
 
+export function onTransportDisconnect(
+  callback: () => void
+): UnsubscribeFn | null {
+  return getTransport().onDisconnect?.(callback) ?? null
+}
+
 /**
  * Per-connection Subscribe-with-Snapshot stream. Returns `null` only on
  * the desktop Tauri transport (which uses local IPC and is race-free, so

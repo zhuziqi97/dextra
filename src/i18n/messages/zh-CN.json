@@ -1438,6 +1438,7 @@
       "localVersion": "本地版本：{version}",
       "installCompletedVersionLater": "安装完成，版本将在下一次检测时更新",
       "installStatusUnknown": "安装结果暂无法确认，请稍后重新检测实际版本。",
+      "installConnectionInterrupted": "与客户端的连接中断，未收到安装结果。重新连接后请检查当前版本。",
       "uninstallCompleted": "{name}卸载完成",
       "uninstallFailed": "{name}卸载失败",
       "localVersionRemoved": "本地版本已移除",

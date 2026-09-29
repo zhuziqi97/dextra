@@ -5087,9 +5087,13 @@ export function AcpAgentSettings() {
           // A proxied HTTP call can end while npm is still running. Only the
           // install task's terminal event can say whether the install failed.
           if (!installStream.wasStarted(taskId)) {
-            toast.info(t("toasts.installStatusUnknown"), {
-              description: toErrorMessage(error),
-            })
+            if (installStream.wasDisconnected(taskId)) {
+              toast.info(t("toasts.installConnectionInterrupted"))
+            } else {
+              toast.info(t("toasts.installStatusUnknown"), {
+                description: toErrorMessage(error),
+              })
+            }
             void refreshAgents().catch((refreshError) =>
               console.error(
                 "[Settings] failed to refresh agents:",
@@ -5100,6 +5104,16 @@ export function AcpAgentSettings() {
           }
           const result = await installStream.waitForTerminal(taskId)
           if (result.kind === "failed") throw new Error(result.payload)
+          if (result.kind === "disconnected") {
+            toast.info(t("toasts.installConnectionInterrupted"))
+            void refreshAgents().catch((refreshError) =>
+              console.error(
+                "[Settings] failed to refresh agents:",
+                refreshError
+              )
+            )
+            return
+          }
           if (result.kind === "unknown") {
             toast.info(t("toasts.installStatusUnknown"))
             void refreshAgents().catch((refreshError) =>
@@ -5152,7 +5166,13 @@ export function AcpAgentSettings() {
       } catch (err) {
         const message = toErrorMessage(err)
         if (!installStream.wasStarted(taskId)) {
-          toast.info(t("toasts.installStatusUnknown"), { description: message })
+          if (installStream.wasDisconnected(taskId)) {
+            toast.info(t("toasts.installConnectionInterrupted"))
+          } else {
+            toast.info(t("toasts.installStatusUnknown"), {
+              description: message,
+            })
+          }
           return
         }
         const hintKey = getInstallErrorHintKey(message)

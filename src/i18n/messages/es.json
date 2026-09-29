@@ -1438,6 +1438,7 @@
       "localVersion": "Versión local: {version}",
       "installCompletedVersionLater": "Instalación completada, la versión se actualizará en la próxima comprobación",
       "installStatusUnknown": "El resultado de la instalación aún no está confirmado. Comprueba más tarde la versión activa.",
+      "installConnectionInterrupted": "Se interrumpió la conexión con el cliente antes de recibir el resultado de la instalación. Vuelve a conectarte y comprueba la versión activa.",
       "uninstallCompleted": "Desinstalación de {name} completada",
       "uninstallFailed": "Desinstalación de {name} fallida",
       "localVersionRemoved": "Versión local eliminada",

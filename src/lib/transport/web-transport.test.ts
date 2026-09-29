@@ -100,10 +100,13 @@ describe("WebTransport connection state machine", () => {
 
   it("treats a dropped socket as reconnecting — never logs out or wipes the token", () => {
     const { t, ws } = connectReady()
+    const onDisconnect = vi.fn()
+    t.onDisconnect(onDisconnect)
 
     ws.drop()
 
     expect(t.getConnectionSnapshot()).toBe("reconnecting")
+    expect(onDisconnect).toHaveBeenCalledTimes(1)
     // The token survives a transient drop (this is the whole point of the fix).
     expect(localStorage.getItem("dextra_token")).toBe("tok")
     // Probe is scheduled on backoff, not fired synchronously.

@@ -1438,6 +1438,7 @@
       "localVersion": "الإصدار المحلي: {version}",
       "installCompletedVersionLater": "اكتمل التثبيت، سيتم تحديث الإصدار عند الفحص التالي",
       "installStatusUnknown": "لم يتم تأكيد نتيجة التثبيت بعد. تحقق من الإصدار النشط لاحقًا.",
+      "installConnectionInterrupted": "انقطع الاتصال بالعميل قبل وصول نتيجة التثبيت. أعد الاتصال وتحقق من الإصدار الحالي.",
       "uninstallCompleted": "اكتملت إزالة تثبيت {name}",
       "uninstallFailed": "فشلت إزالة تثبيت {name}",
       "localVersionRemoved": "تمت إزالة الإصدار المحلي",

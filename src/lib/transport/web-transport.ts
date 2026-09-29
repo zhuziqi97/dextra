@@ -70,6 +70,7 @@ export class WebTransport implements Transport {
   // may have desynced during the disconnect window.
   private hasReadiedOnce = false
   private reconnectCallbacks = new Set<() => void>()
+  private disconnectCallbacks = new Set<() => void>()
   // Latched in `destroy()`. The async `onclose` fired by `ws.close()` inside
   // `destroy()`/`teardownWs()` would otherwise flip the state machine to
   // "reconnecting" and schedule a fresh backoff on a transport the caller
@@ -239,6 +240,11 @@ export class WebTransport implements Transport {
     return () => {
       this.reconnectCallbacks.delete(callback)
     }
+  }
+
+  onDisconnect(callback: () => void): UnsubscribeFn {
+    this.disconnectCallbacks.add(callback)
+    return () => this.disconnectCallbacks.delete(callback)
   }
 
   // ── Connection-health surface (consumed by the reconnect dialog) ─────────
@@ -448,6 +454,13 @@ export class WebTransport implements Transport {
       // health probe can do that (see probeHealth).
       if (this.destroyed) return
       this.setConnState("reconnecting")
+      for (const callback of this.disconnectCallbacks) {
+        try {
+          callback()
+        } catch (err) {
+          console.error("[WebTransport] disconnect callback threw:", err)
+        }
+      }
       this.scheduleReconnect()
     }
 
@@ -573,6 +586,7 @@ export class WebTransport implements Transport {
     this.teardownWs()
     this.handlers.clear()
     this.reconnectCallbacks.clear()
+    this.disconnectCallbacks.clear()
     this.wsReadyCallbacks.clear()
     this.connListeners.clear()
     this.eventStreamInstance?.destroy()

@@ -97,6 +97,7 @@ export class RemoteDesktopTransport implements Transport {
   /// Reconnect callbacks fire only on subsequent arrivals.
   private hasReadiedOnce = false
   private reconnectCallbacks = new Set<() => void>()
+  private disconnectCallbacks = new Set<() => void>()
   /// Listener handle for `remote-ws-event-{id}`. Null when not subscribed.
   private unlistenWsEvent: UnlistenFn | null = null
   /// Opaque ID generated at construction time, passed to `remote_ws_subscribe`
@@ -223,6 +224,11 @@ export class RemoteDesktopTransport implements Transport {
     return () => {
       this.reconnectCallbacks.delete(callback)
     }
+  }
+
+  onDisconnect(callback: () => void): UnsubscribeFn {
+    this.disconnectCallbacks.add(callback)
+    return () => this.disconnectCallbacks.delete(callback)
   }
 
   eventStream(): EventStream {
@@ -382,6 +388,16 @@ export class RemoteDesktopTransport implements Transport {
     }
     if (channel === WS_DISCONNECTED_CHANNEL) {
       this.wsOpen = false
+      for (const callback of this.disconnectCallbacks) {
+        try {
+          callback()
+        } catch (err) {
+          console.error(
+            "[RemoteDesktopTransport] disconnect callback threw:",
+            err
+          )
+        }
+      }
       // New subscribers (and any concurrent subscribe() calls in flight)
       // must wait for the next `__ready__` before resolving.
       this.resetReady()
@@ -426,6 +442,7 @@ export class RemoteDesktopTransport implements Transport {
     }
     this.handlers.clear()
     this.reconnectCallbacks.clear()
+    this.disconnectCallbacks.clear()
     this.wsReadyCallbacks.clear()
     this.eventStreamInstance?.destroy()
     this.eventStreamInstance = null

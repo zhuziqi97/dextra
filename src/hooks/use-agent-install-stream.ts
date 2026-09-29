@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react"
-import { onTransportReconnect, subscribe } from "@/lib/platform"
+import { onTransportDisconnect, subscribe } from "@/lib/platform"
 import type { AgentInstallEvent, AgentInstallEventKind } from "@/lib/types"
 
 const AGENT_INSTALL_EVENT = "app://agent-install"
@@ -9,16 +9,20 @@ export type AgentInstallStatus =
   | "running"
   | "success"
   | "failed"
+  | "disconnected"
   | "unknown"
 
 export type AgentInstallTerminal =
   | { kind: "completed"; payload: string }
   | { kind: "failed"; payload: string }
+  | { kind: "disconnected"; payload: "" }
   | { kind: "unknown"; payload: "" }
 
 interface PendingInstall {
   taskId: string
   started: boolean
+  disconnected: boolean
+  waitingForTerminal: boolean
   finished: Promise<AgentInstallTerminal>
   resolve: (result: AgentInstallTerminal) => void
   result: AgentInstallTerminal | null
@@ -37,7 +41,7 @@ export function useAgentInstallStream() {
     error: null,
   })
   const unsubRef = useRef<(() => void) | null>(null)
-  const reconnectUnsubRef = useRef<(() => void) | null>(null)
+  const disconnectUnsubRef = useRef<(() => void) | null>(null)
   const pendingRef = useRef<PendingInstall | null>(null)
 
   const settle = useCallback((result: AgentInstallTerminal) => {
@@ -47,8 +51,8 @@ export function useAgentInstallStream() {
     pending.resolve(result)
     unsubRef.current?.()
     unsubRef.current = null
-    reconnectUnsubRef.current?.()
-    reconnectUnsubRef.current = null
+    disconnectUnsubRef.current?.()
+    disconnectUnsubRef.current = null
   }, [])
 
   const start = useCallback(
@@ -61,6 +65,8 @@ export function useAgentInstallStream() {
       pendingRef.current = {
         taskId,
         started: false,
+        disconnected: false,
+        waitingForTerminal: false,
         finished,
         resolve,
         result: null,
@@ -116,11 +122,14 @@ export function useAgentInstallStream() {
         return
       }
       unsubRef.current = unsub
-      reconnectUnsubRef.current = onTransportReconnect(() => {
-        if (pendingRef.current?.taskId !== taskId || pendingRef.current.result)
-          return
-        setState((prev) => ({ ...prev, status: "unknown" }))
-        settle({ kind: "unknown", payload: "" })
+      disconnectUnsubRef.current = onTransportDisconnect(() => {
+        const pending = pendingRef.current
+        if (pending?.taskId !== taskId || pending.result) return
+        pending.disconnected = true
+        setState((prev) => ({ ...prev, status: "disconnected" }))
+        if (pending.waitingForTerminal) {
+          settle({ kind: "disconnected", payload: "" })
+        }
       })
     },
     [settle]
@@ -132,12 +141,30 @@ export function useAgentInstallStream() {
     []
   )
 
-  const waitForTerminal = useCallback((taskId: string) => {
-    const pending = pendingRef.current
-    return pending?.taskId === taskId
-      ? pending.finished
-      : Promise.resolve<AgentInstallTerminal>({ kind: "unknown", payload: "" })
-  }, [])
+  const wasDisconnected = useCallback(
+    (taskId: string) =>
+      pendingRef.current?.taskId === taskId && pendingRef.current.disconnected,
+    []
+  )
+
+  const waitForTerminal = useCallback(
+    (taskId: string) => {
+      const pending = pendingRef.current
+      if (pending?.taskId !== taskId) {
+        return Promise.resolve<AgentInstallTerminal>({
+          kind: "unknown",
+          payload: "",
+        })
+      }
+      pending.waitingForTerminal = true
+      if (pending.disconnected && !pending.result) {
+        setState((prev) => ({ ...prev, status: "disconnected" }))
+        settle({ kind: "disconnected", payload: "" })
+      }
+      return pending.finished
+    },
+    [settle]
+  )
 
   const confirmSuccess = useCallback(
     (taskId: string) => {
@@ -154,5 +181,13 @@ export function useAgentInstallStream() {
     setState({ status: "idle", logs: [], error: null })
   }, [settle])
 
-  return { ...state, start, reset, wasStarted, waitForTerminal, confirmSuccess }
+  return {
+    ...state,
+    start,
+    reset,
+    wasStarted,
+    wasDisconnected,
+    waitForTerminal,
+    confirmSuccess,
+  }
 }
