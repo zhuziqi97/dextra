@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{json, Value};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, oneshot, Mutex, Notify};
 use tokio_tungstenite::tungstenite::Message;
 
 use super::control_writer::Outbound;
@@ -125,21 +125,6 @@ fn validate_server_message(value: &Value, expected_runner_id: &str) -> Result<()
     Ok(())
 }
 
-async fn send_target_report<S>(
-    conn: &sea_orm::DatabaseConnection,
-    sink: &mut S,
-    runner_id: &str,
-) -> Result<(), String>
-where
-    S: futures_util::Sink<Message> + Unpin,
-    S::Error: std::fmt::Display,
-{
-    let targets = super::project_folder_targets(conn, runner_id)
-        .await
-        .map_err(|error| format!("Failed to project Dextra Folder Targets: {error}"))?;
-    send_json(sink, &runner_targets_report(runner_id, targets)).await
-}
-
 async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
     let access = identity::refresh_access_token()
         .await
@@ -187,8 +172,6 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
         access.cerebro_base_url
     );
 
-    send_target_report(&runtime.state.db.conn, &mut sink, &access.runner_id).await?;
-
     let (remote_outbound, writer) = Outbound::new();
     let mut writer_task = tokio::spawn(writer.run(sink));
     // Dropping this guard also aborts the writer when the connection future is cancelled.
@@ -200,22 +183,92 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
     }
     let _writer_guard = WriterGuard(writer_task.abort_handle());
 
+    // Folder projection may inspect many paths and Git repositories. Keep it
+    // outside the control receive loop, with exactly one worker per connection.
+    let (report_tx, mut report_rx) = mpsc::channel::<Option<ReportWaiter>>(16);
+    let report_waiters = std::sync::Arc::new(Mutex::new(HashMap::<
+        String,
+        (ReportWaiter, Option<ReportWaiter>),
+    >::new()));
+    let reports = report_waiters.clone();
+    let report_db = runtime.state.db.conn.clone();
+    let report_runner = access.runner_id.clone();
+    let report_outbound = remote_outbound.clone();
+    let mut report_task = tokio::spawn(async move {
+        while let Some(waiter) = report_rx.recv().await {
+            let targets = super::project_folder_targets(&report_db, &report_runner)
+                .await
+                .map_err(|error| error.to_string())?;
+            let report = runner_targets_report(&report_runner, targets);
+            if waiter.as_ref().is_some_and(ReportWaiter::is_closed) {
+                continue;
+            }
+            let (acknowledge, acknowledged) = oneshot::channel();
+            reports
+                .lock()
+                .await
+                .insert(report.message_id.clone(), (acknowledge, waiter));
+            report_outbound
+                .send(serde_json::to_value(report).map_err(|e| e.to_string())?)
+                .await?;
+            acknowledged
+                .await
+                .map_err(|_| "目录上报未获确认".to_string())?;
+        }
+        Ok::<(), String>(())
+    });
+    let _report_guard = WriterGuard(report_task.abort_handle());
+    let _ = report_tx.try_send(None);
+
+    // Latest configuration per folder wins; the worker owns SQLite writes and
+    // UI events, so neither a slow cache nor network refresh blocks heartbeat.
+    let pending = std::sync::Arc::new(Mutex::new(HashMap::<
+        String,
+        super::configuration::ClientConfiguration,
+    >::new()));
+    let notice = std::sync::Arc::new(Notify::new());
+    let config_db = runtime.state.db.conn.clone();
+    let config_emitter = runtime.state.emitter.clone();
+    let config_pending = pending.clone();
+    let config_notice = notice.clone();
+    let mut config_task = tokio::spawn(async move {
+        loop {
+            let wake = config_notice.notified();
+            tokio::pin!(wake);
+            wake.as_mut().enable();
+            let batch = std::mem::take(&mut *config_pending.lock().await);
+            if batch.is_empty() {
+                wake.await;
+                continue;
+            }
+            for (_, configuration) in batch {
+                if let Err(error) = super::configuration::cache(&config_db, &configuration).await {
+                    tracing::warn!("[cerebro] 刷新目录缓存失败: {error}");
+                }
+                crate::web::event_bridge::emit_event(
+                    &config_emitter,
+                    super::configuration::CONFIGURATION_EVENT,
+                    configuration,
+                );
+            }
+        }
+    });
+    let _config_guard = WriterGuard(config_task.abort_handle());
+
     let mut heartbeat = tokio::time::interval(HEARTBEAT_INTERVAL);
     heartbeat.tick().await;
     let mut target_report = tokio::time::interval(TARGET_REPORT_INTERVAL);
     target_report.tick().await;
     let mut report_requests = REPORT_REQUESTS.1.lock().await;
-    let mut report_waiters = HashMap::<String, ReportWaiter>::new();
-    loop {
-        tokio::select! {
-            Some(waiter) = report_requests.recv() => {
+    let mut writer_done = false;
+    let mut report_done = false;
+    let mut config_done = false;
+    let result = async {
+        loop {
+            tokio::select! {
+            Some(waiter) = report_requests.recv(), if report_tx.capacity() > 0 => {
                 if waiter.is_closed() { continue; }
-                let targets = super::project_folder_targets(&runtime.state.db.conn, &access.runner_id).await.map_err(|error| error.to_string())?;
-                let report = runner_targets_report(&access.runner_id, targets);
-                let report_id = report.message_id.clone();
-                report_waiters.retain(|_, pending| !pending.is_closed());
-                report_waiters.insert(report_id, waiter);
-                remote_outbound.send(serde_json::to_value(report).map_err(|e| e.to_string())?).await?;
+                report_tx.try_send(Some(waiter)).map_err(|_| "目录上报队列暂不可用".to_string())?;
             }
             _ = identity::wait_for_runner_identity_change() => {
                 return Ok(());
@@ -224,8 +277,7 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                 remote_outbound.send(serde_json::to_value(runner_heartbeat(&access.runner_id)).map_err(|e| e.to_string())?).await?;
             }
             _ = target_report.tick() => {
-                let targets = super::project_folder_targets(&runtime.state.db.conn, &access.runner_id).await.map_err(|e| e.to_string())?;
-                remote_outbound.send(serde_json::to_value(runner_targets_report(&access.runner_id, targets)).map_err(|e| e.to_string())?).await?;
+                let _ = report_tx.try_send(None);
             }
             incoming = source.next() => {
                 let message = incoming
@@ -237,29 +289,58 @@ async fn connect_once(runtime: &CerebroRuntime) -> Result<(), String> {
                     continue;
                 } else if message_type == Some("CONFIGURATION_CHANGED") {
                     validate_server_message(&value, &access.runner_id)?;
-                    let target_id = value["PAYLOAD"]["TARGET_ID"].as_str().ok_or("配置刷新缺少目录")?;
-                    super::configuration::refresh_and_emit(&runtime.state.db.conn, &runtime.state.emitter, target_id).await;
+                    let configuration: super::configuration::ClientConfiguration = serde_json::from_value(value["PAYLOAD"]["CONFIGURATION"].clone()).map_err(|e| e.to_string())?;
+                    if configuration.runner_id != access.runner_id { return Err("配置不属于当前客户端".into()); }
+                    pending.lock().await.insert(configuration.target_id.clone(), configuration);
+                    notice.notify_one();
                 } else if message_type == Some("TARGETS_REPORT_ACK") {
                     validate_server_message(&value, &access.runner_id)?;
                     let configurations: Vec<super::configuration::ClientConfiguration> = serde_json::from_value(value["PAYLOAD"]["CONFIGURATIONS"].clone()).map_err(|error| error.to_string())?;
-                    if let Some(report_id) = value["PAYLOAD"]["REPORT_ID"].as_str() {
-                        if let Some(waiter) = report_waiters.remove(report_id) { let _ = waiter.send(()); }
+                    let report_id = value["PAYLOAD"]["REPORT_ID"].as_str().ok_or("目录确认缺少报告 ID")?;
+                    if let Some((acknowledge, waiter)) = report_waiters.lock().await.remove(report_id) {
+                        let _ = acknowledge.send(());
+                        if let Some(waiter) = waiter { let _ = waiter.send(()); }
                     }
                     for configuration in configurations {
-                        if let Err(error) = super::configuration::cache(&runtime.state.db.conn, &configuration).await {
-                            tracing::warn!("[cerebro] 刷新目录缓存失败: {error}");
-                        }
-                        crate::web::event_bridge::emit_event(&runtime.state.emitter, super::configuration::CONFIGURATION_EVENT, configuration);
+                        if configuration.runner_id != access.runner_id { return Err("目录配置不属于当前客户端".into()); }
+                        pending.lock().await.insert(configuration.target_id.clone(), configuration);
                     }
+                    notice.notify_one();
                 } else {
                     validate_server_message(&value, &access.runner_id)?;
                 }
             }
             result = &mut writer_task => {
+                writer_done = true;
                 return result.map_err(|e| e.to_string())?;
             }
+            result = &mut report_task => {
+                report_done = true;
+                return result.map_err(|e| e.to_string())?;
+            }
+            result = &mut config_task => {
+                config_done = true;
+                return Err(match result {
+                    Ok(()) => "配置缓存任务已退出".to_string(),
+                    Err(error) => format!("配置缓存任务已退出: {error}"),
+                });
+            }
+            }
         }
+    }.await;
+    if !report_done {
+        report_task.abort();
+        let _ = report_task.await;
     }
+    if !config_done {
+        config_task.abort();
+        let _ = config_task.await;
+    }
+    if !writer_done {
+        writer_task.abort();
+        let _ = writer_task.await;
+    }
+    result
 }
 
 async fn run_supervisor(runtime: CerebroRuntime) {

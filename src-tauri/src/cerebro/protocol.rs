@@ -32,7 +32,7 @@ pub fn runner_hello(runner_id: impl Into<String>, build_id: impl Into<String>) -
     envelope(
         runner_id,
         "HELLO",
-        json!({"RUNNER_BUILD_ID": build_id.into(), "DEXTRA_API_REVISION": 3, "DEXTRA_VERSION": concat!("v", env!("CARGO_PKG_VERSION"))}),
+        json!({"RUNNER_BUILD_ID": build_id.into(), "DEXTRA_API_REVISION": 4, "DEXTRA_VERSION": concat!("v", env!("CARGO_PKG_VERSION"))}),
     )
 }
 

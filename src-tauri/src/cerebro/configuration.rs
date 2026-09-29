@@ -126,13 +126,6 @@ pub async fn credential_for_target(identity: &identity::RunnerIdentity, target_i
     identity.configuration_request("credential", &serde_json::json!({"target_id": target_id, "rotate": rotate})).await
 }
 
-pub async fn refresh_and_emit(conn: &DatabaseConnection, emitter: &EventEmitter, target_id: &str) {
-    match refresh(conn, target_id).await {
-        Ok(configuration) => emit_event(emitter, CONFIGURATION_EVENT, configuration),
-        Err(error) => tracing::warn!("[cerebro] 刷新目录配置失败: {error}"),
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, ts_rs::TS)]
 pub struct ProjectOption {
     pub id: String,
