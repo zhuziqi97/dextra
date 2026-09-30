@@ -1,19 +1,22 @@
 """Generate the monochrome macOS menu-bar icon from the Dextra app icon.
 
-Run after regenerating icon.png from icon.svg:
+Run after editing icon.svg:
 
     python3 src-tauri/icons/tray-icon-template.gen.py
 
-Requires Pillow.
+Requires Pillow and the project's Tauri CLI.
 
 AppKit uses only the PNG alpha channel for a template image. The white app
-card and its pale shadow must stay transparent in the menu bar, while the
-blue D and code mark form the tinted silhouette.
+card and its shadow must stay transparent in the menu bar, while the D and
+code mark form the tinted silhouette.
 """
 
 from pathlib import Path
+import subprocess
+import tempfile
+import xml.etree.ElementTree as ET
 
-from PIL import Image, ImageChops
+from PIL import Image
 
 
 ICON_DIR = Path(__file__).parent
@@ -22,17 +25,35 @@ GLYPH_SIZE = (38, 38)
 
 
 def main() -> None:
-    source = Image.open(ICON_DIR / "icon.png").convert("RGBA")
-    red, _, blue, source_alpha = source.split()
+    # Render only the vector mark, excluding the card and both shadows.
+    source = ET.parse(ICON_DIR / "icon.svg").getroot()
+    namespace = "{http://www.w3.org/2000/svg}"
+    mark = ET.Element("svg", {
+        "xmlns": "http://www.w3.org/2000/svg",
+        "viewBox": source.attrib["viewBox"],
+        "width": source.attrib["width"],
+        "height": source.attrib["height"],
+    })
+    for path in source.iter(f"{namespace}path"):
+        attrs = dict(path.attrib)
+        attrs["fill"] = "#000000"
+        ET.SubElement(mark, "path", attrs)
 
-    # The supplied icon's cyan/blue mark has substantially more blue than red.
-    # The white card and its gray-blue shadow do not cross this threshold.
-    blue_delta = ImageChops.subtract(blue, red)
-    mark_alpha = blue_delta.point(lambda value: min(255, max(0, (value - 40) * 7)))
-    mark_alpha = ImageChops.multiply(mark_alpha, source_alpha)
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_dir = Path(tmp)
+        svg_path = tmp_dir / "tray-mark.svg"
+        ET.ElementTree(mark).write(svg_path, encoding="unicode")
+        subprocess.run(
+            ["pnpm", "tauri", "icon", str(svg_path), "-o", str(tmp_dir), "--png", "512"],
+            cwd=ICON_DIR.resolve().parents[1],
+            check=True,
+            capture_output=True,
+        )
+        with Image.open(tmp_dir / "512x512.png") as rendered:
+            mark_alpha = rendered.convert("RGBA").getchannel("A")
     bounds = mark_alpha.getbbox()
     if bounds is None:
-        raise ValueError("Dextra mark is missing from icon.png")
+        raise ValueError("Dextra mark is missing from icon.svg")
 
     mark_alpha = mark_alpha.crop(bounds)
     mark_alpha.thumbnail(GLYPH_SIZE, Image.LANCZOS)
