@@ -51,6 +51,8 @@ mod m20260907_000001_canvas_node_path;
 mod m20260903_000001_cerebro_task_link;
 mod m20260907_000001_conversation_cerebro_selection;
 mod m20260908_000001_remove_conversation_module_selection;
+mod m20260929_000001_canvas_board;
+mod m20260930_000001_agent_setting_drop_adapter_channel;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -108,6 +110,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20260910_000001_clear_folder_configuration_cache::Migration),
             Box::new(m20260910_000002_refresh_execution_project_cache::Migration),
             Box::new(m20260910_000003_conversation_creation_request::Migration),
+            Box::new(m20260929_000001_canvas_board::Migration),
+            Box::new(m20260930_000001_agent_setting_drop_adapter_channel::Migration),
         ]
     }
 }
