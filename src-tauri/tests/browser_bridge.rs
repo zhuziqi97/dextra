@@ -300,7 +300,7 @@ async fn requests_need_this_listeners_cookie() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     let forbidden = response.text().await.unwrap();
-    assert!(forbidden.contains("Reopen the page from dextra"));
+    assert!(forbidden.contains("Reopen the page from Dextra"));
 
     // With the cookie the page comes through, without the anti-framing
     // header and with its own cookies; the request the upstream saw looked
