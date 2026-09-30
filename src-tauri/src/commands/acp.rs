@@ -15892,11 +15892,14 @@ base_url = \"https://example.test/v1\"
 
     #[test]
     fn pi_agent_dir_expands_tilde_override_like_the_pi_runtime() {
+        let home = tempfile::tempdir().unwrap();
         let mut env = BTreeMap::new();
+        // Other tests relocate the process home; this launch supplies its own.
+        env.insert(CHILD_HOME_KEY.to_string(), home.path().to_string_lossy().into_owned());
         env.insert("PI_CODING_AGENT_DIR".to_string(), "~/custom-pi".to_string());
         assert_eq!(
             pi_agent_dir_for_env(&env),
-            pi_child_home(&env).join("custom-pi")
+            home.path().join("custom-pi")
         );
         // pi's `normalizePath` takes the value verbatim: a padded value is a
         // different (here: relative) directory, not the trimmed one.

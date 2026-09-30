@@ -50,8 +50,12 @@ function withoutProtocolAndAttribution(value) {
   return rest
 }
 
-function hasLegacyBrand(value) {
-  return legacyBrand.test(withoutProtocolAndAttribution(value))
+function hasLegacyBrand(value, path) {
+  let rest = withoutProtocolAndAttribution(value)
+  // The upstream binary capture retains its original MCP server identity.
+  if (path === "src-tauri/tests/antigravity_trajectory.rs")
+    rest = rest.replaceAll('"codeg-mcp_delegate_to_agent"', "")
+  return legacyBrand.test(rest)
 }
 
 for (const path of activeFiles) {
@@ -84,7 +88,7 @@ for (const path of activeFiles) {
   const file = readFileSync(resolve(root, path))
   if (file.includes(0)) continue
   for (const [index, original] of file.toString().split(/\r?\n/).entries()) {
-    if (hasLegacyBrand(original)) {
+    if (hasLegacyBrand(original, path)) {
       failures.push(`${path}:${index + 1}: ${original.trim().slice(0, 160)}`)
     }
     if (/(?<!dextra-)cerebro-mcp-bridge/.test(original)) {
