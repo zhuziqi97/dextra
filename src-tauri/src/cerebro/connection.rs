@@ -182,7 +182,7 @@ fn validate_selected_protocol(payload: &Value) -> Result<(), String> {
     let major = selected["MAJOR"].as_u64().ok_or("Selected protocol missing major")?;
     let minor = selected["MINOR"].as_u64().ok_or("Selected protocol missing minor")?;
     let offered = major == super::protocol::INTEGRATION_MAJOR
-        && minor <= super::protocol::INTEGRATION_MINOR;
+        && minor == super::protocol::INTEGRATION_MINOR;
     let supported = payload["SERVER_PROTOCOLS"].as_array()
         .ok_or("Server protocol list missing")?
         .iter().any(|entry| entry["MAJOR"].as_u64() == Some(major)

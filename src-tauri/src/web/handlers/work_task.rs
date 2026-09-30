@@ -242,8 +242,7 @@ pub async fn work_task_create(
     Json(params): Json<CreateParams>,
 ) -> Result<Json<WorkTaskInfo>, AppCommandError> {
     let result = core::work_task_create_core(&state.emitter, &state.db, params.draft)
-        .await
-        .map_err(AppCommandError::from)?;
+        .await?;
     Ok(Json(result))
 }
 
@@ -258,8 +257,7 @@ pub async fn work_task_update(
         params.id,
         params.draft,
     )
-    .await
-    .map_err(AppCommandError::from)?;
+    .await?;
     Ok(Json(result))
 }
 
