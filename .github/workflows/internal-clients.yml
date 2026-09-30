@@ -98,7 +98,7 @@ jobs:
           DEXTRA_SKIP_SIDECAR: "0"
         run: pnpm tauri:prepare-sidecars --target ${{ matrix.target }}
 
-      - name: Build unsigned desktop package
+      - name: Build internal desktop package
         shell: bash
         run: >-
           pnpm tauri build
@@ -172,6 +172,12 @@ jobs:
           done
           test -f "$app/Contents/Resources/icon.icns"
           test -f "$app/Contents/Resources/web/index.html"
+          # Apple Silicon executables and the enclosing app must have valid
+          # signatures. Internal macOS builds use a local ad-hoc identity.
+          codesign --verify --deep --strict --verbose=2 "$app"
+          for executable in "$app"/Contents/MacOS/*; do
+            codesign --verify --strict --verbose=2 "$executable"
+          done
           for executable in "$app"/Contents/MacOS/*; do
             case "$(basename "$executable")" in
               dextra|dextra-server|dextra-mcp|dextra-cerebro-mcp-bridge) ;;

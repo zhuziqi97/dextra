@@ -1,6 +1,6 @@
 [package]
 name = "dextra"
-version = "0.32.4-dextra.2"
+version = "0.32.4-dextra.3"
 description = "Agent Code Generation App"
 authors = ["feitao"]
 edition = "2021"
