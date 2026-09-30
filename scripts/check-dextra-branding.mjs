@@ -27,6 +27,8 @@ const protocolNames = [
   "/set_codeg_mcp_tool_group",
   "exists_in_codeg",
   "linked_to_codeg",
+  // AIR records metadata emitted on the existing Codeg wire namespace.
+  'key.starts_with("codeg.")',
   "codeg.delegation",
   "codeg.codexScript",
   "codeg.codexSearchAction",

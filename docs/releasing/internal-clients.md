@@ -2,8 +2,9 @@
 
 Dextra is distributed internally as desktop clients. The
 `internal-clients.yml` workflow builds unsigned packages from the candidate
-branch `codex/runner-execution-platform`; after that branch is merged to `main`,
-the same workflow can be started with `workflow_dispatch`. It stores GitHub
+branches `codex/runner-execution-platform` and
+`codex/dextra-stream-flow-control`; the workflow can also be started on a
+selected branch with `workflow_dispatch`. It stores GitHub
 Actions artifacts only. It does not create a GitHub Release, publish a Docker
 image, build standalone server artifacts, or require Apple Developer ID or
 Tauri updater signing secrets.
@@ -12,8 +13,8 @@ The GitHub repository is public, so its Actions logs and downloadable build
 artifacts are visible to people with repository read access. Internal use here
 describes the intended installation audience, not artifact confidentiality.
 
-The artifact matrix is Linux x64 `.deb`, `.rpm`, `.AppImage`; Linux arm64 `.deb`,
-`.rpm`; macOS x64 and arm64 `.dmg`; and Windows x64 NSIS `.exe`. Each artifact
+The artifact matrix is Linux x64 `.deb` and `.AppImage`; Linux arm64 `.deb`;
+macOS arm64 `.dmg`; and Windows x64 NSIS `.exe`. Each artifact
 contains its package files and `build-info.json`, which records the exact source
 commit, version, target triple, workflow run ID, and package filenames. Use
 only packages from the same accepted source commit when assembling a Convene

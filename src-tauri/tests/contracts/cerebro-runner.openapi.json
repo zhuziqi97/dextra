@@ -3,7 +3,7 @@
   "info": {
     "description": "Collaborative Vibe MCP Platform API",
     "title": "convene",
-    "version": "5.11.2"
+    "version": "unversioned"
   },
   "paths": {
     "/api/v1/execution-runner-configurations/credential": {
@@ -347,6 +347,43 @@
         "tags": ["Dextra执行端"]
       }
     },
+    "/api/v1/execution-runners/delete": {
+      "post": {
+        "description": "断开并删除当前用户自己的 Dextra。",
+        "operationId": "delete_execution_runner_api_v1_execution_runners_delete_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/RunnerDeleteRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerDeleteResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [{ "HTTPBearer": [] }],
+        "summary": "Delete Execution Runner",
+        "tags": ["Dextra执行端"]
+      }
+    },
     "/api/v1/execution-runners/list": {
       "post": {
         "description": "只列出当前用户自己的 Dextra。",
@@ -381,43 +418,6 @@
         },
         "security": [{ "HTTPBearer": [] }],
         "summary": "List Execution Runners",
-        "tags": ["Dextra执行端"]
-      }
-    },
-    "/api/v1/execution-runners/revoke": {
-      "post": {
-        "description": "撤销当前用户自己的 Dextra。",
-        "operationId": "revoke_execution_runner_api_v1_execution_runners_revoke_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": { "$ref": "#/components/schemas/RunnerRevokeRequest" }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessResponse_RunnerResponse_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "security": [{ "HTTPBearer": [] }],
-        "summary": "Revoke Execution Runner",
         "tags": ["Dextra执行端"]
       }
     }
@@ -933,6 +933,29 @@
         "title": "ProjectResponse",
         "type": "object"
       },
+      "RunnerDeleteRequest": {
+        "additionalProperties": false,
+        "description": "删除当前 owner 的 Runner。",
+        "properties": {
+          "runner_id": {
+            "format": "uuid",
+            "title": "Runner Id",
+            "type": "string"
+          }
+        },
+        "required": ["runner_id"],
+        "title": "RunnerDeleteRequest",
+        "type": "object"
+      },
+      "RunnerDeleteResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "runner_id": { "title": "Runner Id", "type": "string" }
+        },
+        "required": ["runner_id"],
+        "title": "RunnerDeleteResponse",
+        "type": "object"
+      },
       "RunnerListRequest": {
         "additionalProperties": false,
         "description": "当前 owner 的 Runner 分页查询。",
@@ -952,10 +975,7 @@
           },
           "status": {
             "anyOf": [
-              {
-                "enum": ["REGISTERED", "OFFLINE", "ONLINE", "REVOKED"],
-                "type": "string"
-              },
+              { "enum": ["REGISTERED", "OFFLINE", "ONLINE"], "type": "string" },
               { "type": "null" }
             ],
             "title": "Status"
@@ -1056,14 +1076,14 @@
         "additionalProperties": false,
         "description": "不含凭据的 Runner 公开摘要。",
         "properties": {
-          "dextra_version": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Dextra Version"
-          },
           "created_at": { "title": "Created At", "type": "string" },
           "dextra_build": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
             "title": "Dextra Build"
+          },
+          "dextra_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Dextra Version"
           },
           "display_name": { "title": "Display Name", "type": "string" },
           "last_seen_at": {
@@ -1072,7 +1092,7 @@
           },
           "runner_id": { "title": "Runner Id", "type": "string" },
           "status": {
-            "enum": ["REGISTERED", "OFFLINE", "ONLINE", "REVOKED"],
+            "enum": ["REGISTERED", "OFFLINE", "ONLINE"],
             "title": "Status",
             "type": "string"
           }
@@ -1087,25 +1107,6 @@
           "created_at"
         ],
         "title": "RunnerResponse",
-        "type": "object"
-      },
-      "RunnerRevokeRequest": {
-        "additionalProperties": false,
-        "description": "撤销当前 owner 的 Runner。",
-        "properties": {
-          "client_request_id": {
-            "format": "uuid",
-            "title": "Client Request Id",
-            "type": "string"
-          },
-          "runner_id": {
-            "format": "uuid",
-            "title": "Runner Id",
-            "type": "string"
-          }
-        },
-        "required": ["client_request_id", "runner_id"],
-        "title": "RunnerRevokeRequest",
         "type": "object"
       },
       "RunnerTokenRefreshRequest": {
@@ -1171,6 +1172,16 @@
         "title": "SuccessResponse[ModuleOptionsResponse]",
         "type": "object"
       },
+      "SuccessResponse_RunnerDeleteResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": { "$ref": "#/components/schemas/RunnerDeleteResponse" },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[RunnerDeleteResponse]",
+        "type": "object"
+      },
       "SuccessResponse_RunnerPairingApproveResponse_": {
         "additionalProperties": false,
         "properties": {
@@ -1207,16 +1218,6 @@
         "title": "SuccessResponse[RunnerPairingExchangeResponse]",
         "type": "object"
       },
-      "SuccessResponse_RunnerResponse_": {
-        "additionalProperties": false,
-        "properties": {
-          "data": { "$ref": "#/components/schemas/RunnerResponse" },
-          "success": { "const": true, "title": "Success", "type": "boolean" }
-        },
-        "required": ["success", "data"],
-        "title": "SuccessResponse[RunnerResponse]",
-        "type": "object"
-      },
       "SuccessResponse_RunnerTokenResponse_": {
         "additionalProperties": false,
         "properties": {
@@ -1232,18 +1233,22 @@
         "description": "Token 已持久化的确定能力状态。",
         "properties": {
           "code_graph_enabled": {
-            "default": false,
-            "description": "是否暴露代码图谱资源与工具",
+            "description": "是否开放代码图谱资源与工具",
             "title": "Code Graph Enabled",
             "type": "boolean"
           },
           "forge_enabled": {
-            "default": false,
-            "description": "是否暴露代码仓库只读工具",
+            "description": "是否开放 Forge 代码仓库只读工具",
             "title": "Forge Enabled",
+            "type": "boolean"
+          },
+          "issue_enabled": {
+            "description": "是否开放本地 Issue 资源与工具",
+            "title": "Issue Enabled",
             "type": "boolean"
           }
         },
+        "required": ["code_graph_enabled", "forge_enabled", "issue_enabled"],
         "title": "TokenMCPCapabilitiesResponse",
         "type": "object"
       },
@@ -1363,7 +1368,11 @@
             "path": "string"
           },
           "grant_id": "00000000-0000-4000-8000-000000000000",
-          "mcp_capabilities": {},
+          "mcp_capabilities": {
+            "code_graph_enabled": false,
+            "forge_enabled": false,
+            "issue_enabled": false
+          },
           "mcp_enabled": false,
           "mcp_scope_details": [
             {
@@ -1387,7 +1396,11 @@
     "/api/v1/execution-runner-configurations/save": {
       "request": {
         "execution_module_id": "00000000-0000-4000-8000-000000000000",
-        "mcp_capabilities": {},
+        "mcp_capabilities": {
+          "code_graph_enabled": false,
+          "forge_enabled": false,
+          "issue_enabled": false
+        },
         "mcp_enabled": false,
         "mcp_scope_modules": [{ "module_id": "string", "permission": "READ" }],
         "target_id": "string"
@@ -1404,7 +1417,11 @@
             "path": "string"
           },
           "grant_id": "00000000-0000-4000-8000-000000000000",
-          "mcp_capabilities": {},
+          "mcp_capabilities": {
+            "code_graph_enabled": false,
+            "forge_enabled": false,
+            "issue_enabled": false
+          },
           "mcp_enabled": false,
           "mcp_scope_details": [
             {
@@ -1463,15 +1480,19 @@
         "success": true
       }
     },
+    "/api/v1/execution-runners/delete": {
+      "request": { "runner_id": "00000000-0000-4000-8000-000000000000" },
+      "response": { "data": { "runner_id": "string" }, "success": true }
+    },
     "/api/v1/execution-runners/list": {
       "request": {},
       "response": {
         "data": {
           "items": [
             {
-              "dextra_version": "string",
               "created_at": "string",
               "dextra_build": "string",
+              "dextra_version": "string",
               "display_name": "string",
               "last_seen_at": "string",
               "runner_id": "string",
@@ -1482,24 +1503,6 @@
           "page_size": 1,
           "total": 1,
           "total_pages": 1
-        },
-        "success": true
-      }
-    },
-    "/api/v1/execution-runners/revoke": {
-      "request": {
-        "client_request_id": "00000000-0000-4000-8000-000000000000",
-        "runner_id": "00000000-0000-4000-8000-000000000000"
-      },
-      "response": {
-        "data": {
-          "dextra_version": "string",
-          "created_at": "string",
-          "dextra_build": "string",
-          "display_name": "string",
-          "last_seen_at": "string",
-          "runner_id": "string",
-          "status": "REGISTERED"
         },
         "success": true
       }

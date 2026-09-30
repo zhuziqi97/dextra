@@ -1164,14 +1164,24 @@ fn is_codex_synthetic_other_choice(raw: &Value, id: &str, label: &str, value: &s
 /// marker means dextra keeps collapsing the companion into the card's built-in
 /// "Other" input no matter which adapter produced the form.
 ///
+/// claude-agent-acp 0.82.0 moved the marker to
+/// `_meta.jetbrains.air.customAnswer` (same value) and sends the old key to no
+/// client, so both spellings are read.
+///
 /// Like [`is_secret_property`], this reads the raw JSON: the typed schema
 /// property structs carry no `_meta`.
 fn is_custom_answer_property(raw: &Value, id: &str) -> bool {
-    raw.get("requestedSchema")
+    let Some(meta) = raw
+        .get("requestedSchema")
         .and_then(|s| s.get("properties"))
         .and_then(|p| p.get(id))
         .and_then(|prop| prop.get("_meta"))
-        .and_then(|m| m.get("_askUserQuestionCustomAnswer"))
+        .and_then(Value::as_object)
+    else {
+        return false;
+    };
+    meta.get("_askUserQuestionCustomAnswer")
+        .or_else(|| crate::acp::air_contract::air_meta_value(Some(meta), "customAnswer"))
         .and_then(|c| c.get("isCustomAnswer"))
         .and_then(Value::as_bool)
         .unwrap_or(false)
@@ -3118,7 +3128,7 @@ mod tests {
     }
 
     #[test]
-    fn is_dextra_ask_tool_name_accepts_every_host_spelling_of_dextras_own_tool() {
+    fn is_dextra_ask_tool_name_accepts_every_host_spelling_of_codegs_own_tool() {
         for spelling in [
             // claude-agent-acp: an MCP tool's permission card title IS the
             // raw tool name.
@@ -3137,7 +3147,7 @@ mod tests {
     }
 
     #[test]
-    fn is_dextra_ask_tool_name_rejects_tools_that_are_not_dextras_ask() {
+    fn is_dextra_ask_tool_name_rejects_tools_that_are_not_codegs_ask() {
         for other in [
             // A third-party MCP server's similarly named tool: approving it is
             // the user's decision, so the bare suffix must NOT be enough.
