@@ -3,7 +3,6 @@ import type { MCPCapabilities } from "./MCPCapabilities"
 import type { MCPScopeItem } from "./MCPScopeItem"
 
 export type ConfigurationInput = {
-  execution_module_id: string | null
   mcp_scope_modules: Array<MCPScopeItem>
   mcp_capabilities: MCPCapabilities
   mcp_enabled: boolean

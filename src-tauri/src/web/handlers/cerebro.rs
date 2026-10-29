@@ -59,12 +59,17 @@ pub struct StorageParams {
     pub mode: crate::cerebro::credential_storage::StorageMode,
 }
 
-pub async fn get_storage_settings() -> Result<Json<crate::cerebro::credential_storage::StorageSettings>, AppCommandError> {
+pub async fn get_storage_settings(
+) -> Result<Json<crate::cerebro::credential_storage::StorageSettings>, AppCommandError> {
     commands::cerebro_get_storage_settings().await.map(Json)
 }
 
-pub async fn select_storage(Json(params): Json<StorageParams>) -> Result<Json<crate::cerebro::credential_storage::StorageSettings>, AppCommandError> {
-    commands::cerebro_select_storage(params.mode).await.map(Json)
+pub async fn select_storage(
+    Json(params): Json<StorageParams>,
+) -> Result<Json<crate::cerebro::credential_storage::StorageSettings>, AppCommandError> {
+    commands::cerebro_select_storage(params.mode)
+        .await
+        .map(Json)
 }
 
 pub async fn import_credential() -> Result<Json<()>, AppCommandError> {
@@ -73,40 +78,108 @@ pub async fn import_credential() -> Result<Json<()>, AppCommandError> {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FolderConfigurationParams { pub folder_id: i32 }
+pub struct FolderConfigurationParams {
+    pub folder_id: i32,
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FolderConfigurationSaveParams { pub folder_id: i32, pub input: crate::cerebro::configuration::ConfigurationInput }
+pub struct FolderConfigurationSaveParams {
+    pub folder_id: i32,
+    pub input: crate::cerebro::configuration::ConfigurationInput,
+}
 
 #[derive(Deserialize)]
-pub struct ProjectsParams { pub page: u32, pub search: Option<String> }
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ModulesParams { pub project_id: String }
-
-pub async fn query_folder_configuration(axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>, Json(params): Json<FolderConfigurationParams>) -> Result<Json<crate::cerebro::configuration::FolderConfigurationState>, AppCommandError> {
-    commands::cerebro_query_folder_configuration_core(&state.db, params.folder_id).await.map(Json)
+pub struct ProjectsParams {
+    pub page: u32,
+    pub search: Option<String>,
 }
-
-pub async fn save_folder_configuration(axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>, Json(params): Json<FolderConfigurationSaveParams>) -> Result<Json<crate::cerebro::configuration::ClientConfiguration>, AppCommandError> {
-    commands::cerebro_save_folder_configuration_core(&state.db, &state.emitter, params.folder_id, params.input).await.map(Json)
-}
-
-pub async fn configuration_projects(Json(params): Json<ProjectsParams>) -> Result<Json<crate::cerebro::configuration::ProjectPage>, AppCommandError> {
-    commands::cerebro_configuration_projects(params.page, params.search).await.map(Json)
-}
-
-pub async fn configuration_modules(Json(params): Json<ModulesParams>) -> Result<Json<crate::cerebro::configuration::ModuleOptions>, AppCommandError> {
-    commands::cerebro_configuration_modules(params.project_id).await.map(Json)
-}
-
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct TargetParams { pub target_id: String }
+pub struct ModulesParams {
+    pub project_id: String,
+}
 
-pub async fn resolve_target(axum::extract::Extension(state): axum::extract::Extension<std::sync::Arc<crate::app_state::AppState>>, Json(params): Json<TargetParams>) -> Result<Json<i32>, AppCommandError> {
-    commands::cerebro_resolve_target_core(&state.db, params.target_id).await.map(Json)
+pub async fn query_folder_configuration(
+    axum::extract::Extension(state): axum::extract::Extension<
+        std::sync::Arc<crate::app_state::AppState>,
+    >,
+    Json(params): Json<FolderConfigurationParams>,
+) -> Result<Json<crate::cerebro::configuration::FolderConfigurationState>, AppCommandError> {
+    commands::cerebro_query_folder_configuration_core(&state.db, params.folder_id)
+        .await
+        .map(Json)
+}
+
+pub async fn save_folder_configuration(
+    axum::extract::Extension(state): axum::extract::Extension<
+        std::sync::Arc<crate::app_state::AppState>,
+    >,
+    Json(params): Json<FolderConfigurationSaveParams>,
+) -> Result<Json<crate::cerebro::configuration::ClientConfiguration>, AppCommandError> {
+    commands::cerebro_save_folder_configuration_core(
+        &state.db,
+        &state.emitter,
+        params.folder_id,
+        params.input,
+    )
+    .await
+    .map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FolderBindingParams {
+    pub folder_id: i32,
+    pub input: crate::cerebro::configuration::BindingInput,
+}
+
+pub async fn change_folder_binding(
+    axum::extract::Extension(state): axum::extract::Extension<
+        std::sync::Arc<crate::app_state::AppState>,
+    >,
+    Json(params): Json<FolderBindingParams>,
+) -> Result<Json<crate::cerebro::configuration::BindingOperation>, AppCommandError> {
+    commands::cerebro_change_folder_binding_core(
+        &state.db,
+        &state.emitter,
+        params.folder_id,
+        params.input,
+    )
+    .await
+    .map(Json)
+}
+
+pub async fn configuration_projects(
+    Json(params): Json<ProjectsParams>,
+) -> Result<Json<crate::cerebro::configuration::ProjectPage>, AppCommandError> {
+    commands::cerebro_configuration_projects(params.page, params.search)
+        .await
+        .map(Json)
+}
+
+pub async fn configuration_modules(
+    Json(params): Json<ModulesParams>,
+) -> Result<Json<crate::cerebro::configuration::ModuleOptions>, AppCommandError> {
+    commands::cerebro_configuration_modules(params.project_id)
+        .await
+        .map(Json)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TargetParams {
+    pub target_id: String,
+}
+
+pub async fn resolve_target(
+    axum::extract::Extension(state): axum::extract::Extension<
+        std::sync::Arc<crate::app_state::AppState>,
+    >,
+    Json(params): Json<TargetParams>,
+) -> Result<Json<i32>, AppCommandError> {
+    commands::cerebro_resolve_target_core(&state.db, params.target_id)
+        .await
+        .map(Json)
 }

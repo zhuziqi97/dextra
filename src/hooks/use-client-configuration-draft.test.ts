@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, expect, it, vi } from "vitest"
+import { clientProjectFixture } from "./client-project.test-fixture"
 import { useClientConfigurationDraft } from "./use-client-configuration-draft"
 const fixture = vi.hoisted(() => ({
   query: vi.fn(),
@@ -14,24 +15,7 @@ vi.mock("@/lib/transport", () => ({
     },
   }),
 }))
-const original = {
-  runner_id: "client",
-  target_id: "target",
-  execution_module_id: null,
-  mcp_enabled: false,
-  mcp_scope_modules: [],
-  mcp_capabilities: {
-    code_graph_enabled: false,
-    forge_enabled: false,
-    issue_enabled: false,
-  },
-  execution_project: null,
-  binding_id: null,
-  grant_id: null,
-  credential_expires_at: null,
-  mcp_scope_details: [],
-  module_labels: {},
-}
+const original = clientProjectFixture()
 beforeEach(() => {
   fixture.listener = undefined
   fixture.query.mockReset()
@@ -44,30 +28,36 @@ it("freezes the loaded baseline while edited and becomes clean again after a ful
   act(() => result.current.edit({ mcp_enabled: true }))
   expect(result.current.dirty).toBe(true)
   act(() =>
-    fixture.listener?.({ ...original, execution_module_id: "another-module" })
+    fixture.listener?.({
+      ...original,
+      mcp_capabilities: { ...original.mcp_capabilities, issue_enabled: true },
+    })
   )
-  expect(result.current.baseline?.execution_module_id).toBeNull()
-  expect(result.current.input.execution_module_id).toBeNull()
+  expect(result.current.baseline?.mcp_capabilities.issue_enabled).toBe(false)
+  expect(result.current.input.mcp_capabilities.issue_enabled).toBe(false)
   act(() => result.current.edit({ mcp_enabled: false }))
   expect(result.current.dirty).toBe(false)
   act(() =>
-    fixture.listener?.({ ...original, execution_module_id: "another-module" })
+    fixture.listener?.({
+      ...original,
+      mcp_capabilities: { ...original.mcp_capabilities, issue_enabled: true },
+    })
   )
-  expect(result.current.input.execution_module_id).toBe("another-module")
+  expect(result.current.input.mcp_capabilities.issue_enabled).toBe(true)
   expect(result.current.dirty).toBe(false)
 })
 
 it("keeps cached configuration on a failed read and discards back to the same baseline", async () => {
   fixture.query.mockResolvedValue({
-    configuration: { ...original, execution_module_id: "saved-module" },
+    configuration: { ...original, mcp_enabled: true },
     error: "Server unavailable",
   })
   const { result } = renderHook(() => useClientConfigurationDraft(1, true))
   await waitFor(() => expect(result.current.error).toBe("Server unavailable"))
-  act(() => result.current.edit({ execution_module_id: null }))
+  act(() => result.current.edit({ mcp_enabled: false }))
   expect(result.current.dirty).toBe(true)
   act(() => result.current.discard())
-  expect(result.current.input.execution_module_id).toBe("saved-module")
+  expect(result.current.input.mcp_enabled).toBe(true)
   expect(result.current.dirty).toBe(false)
 })
 
@@ -94,12 +84,12 @@ it("starts a fresh baseline when switching folders instead of carrying the old d
     loaded({
       configuration: {
         ...original,
-        target_id: "second",
-        execution_module_id: "module-b",
+        client_project_id: "second",
+        mcp_enabled: true,
       },
       error: null,
     })
   })
-  expect(result.current.input.execution_module_id).toBe("module-b")
+  expect(result.current.input.mcp_enabled).toBe(true)
   expect(result.current.dirty).toBe(false)
 })

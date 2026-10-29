@@ -6,9 +6,97 @@
     "version": "unversioned"
   },
   "paths": {
+    "/api/v1/execution-runner-configurations/activate": {
+      "post": {
+        "operationId": "runner_activate_api_v1_execution_runner_configurations_activate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ClientActivateRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ClientBindingOperationResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          }
+        },
+        "summary": "Runner Activate",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-configurations/bind": {
+      "post": {
+        "operationId": "runner_bind_api_v1_execution_runner_configurations_bind_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientConfigurationBindRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ClientBindingOperationResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          }
+        },
+        "summary": "Runner Bind",
+        "tags": ["Dextra执行端"]
+      }
+    },
     "/api/v1/execution-runner-configurations/credential": {
       "post": {
-        "description": "客户端自动使用、查看或重新生成当前目录凭证。",
+        "description": "客户端为本项目的实际执行位置自动取得内部 MCP 凭据。",
         "operationId": "runner_configuration_credential_api_v1_execution_runner_configurations_credential_post",
         "requestBody": {
           "content": {
@@ -31,16 +119,67 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "Runner Configuration Credential",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-configurations/deactivate": {
+      "post": {
+        "operationId": "runner_deactivate_api_v1_execution_runner_configurations_deactivate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ClientBindingRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ClientBindingOperationResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          }
+        },
+        "summary": "Runner Deactivate",
         "tags": ["Dextra执行端"]
       }
     },
@@ -69,13 +208,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "List Runner Configuration Modules",
@@ -105,13 +252,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "List Runner Configuration Projects",
@@ -143,13 +298,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "Query Runner Configuration",
@@ -181,16 +344,112 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "Save Runner Configuration",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-configurations/select-target": {
+      "post": {
+        "operationId": "runner_select_target_api_v1_execution_runner_configurations_select_target_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClientTargetSelectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ClientBindingOperationResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          }
+        },
+        "summary": "Runner Select Target",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runner-configurations/unbind": {
+      "post": {
+        "operationId": "runner_unbind_api_v1_execution_runner_configurations_unbind_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/ClientBindingRequest" }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_ClientBindingOperationResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          }
+        },
+        "summary": "Runner Unbind",
         "tags": ["Dextra执行端"]
       }
     },
@@ -219,13 +478,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "security": [{ "HTTPBearer": [] }],
@@ -258,13 +525,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "Create Runner Pairing",
@@ -296,13 +571,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "Exchange Runner Pairing",
@@ -334,13 +617,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "summary": "Refresh Runner Token",
@@ -370,17 +661,53 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "security": [{ "HTTPBearer": [] }],
         "summary": "Delete Execution Runner",
+        "tags": ["Dextra执行端"]
+      }
+    },
+    "/api/v1/execution-runners/disconnect": {
+      "post": {
+        "description": "设备用自身身份断开；复用 owner 删除 operation。",
+        "operationId": "disconnect_execution_runner_api_v1_execution_runners_disconnect_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponse_RunnerDeleteResponse_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          }
+        },
+        "summary": "Disconnect Execution Runner",
         "tags": ["Dextra执行端"]
       }
     },
@@ -407,13 +734,21 @@
             },
             "description": "Successful Response"
           },
-          "422": {
+          "400": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/HTTPValidationError" }
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
               }
             },
-            "description": "Validation Error"
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/ErrorResponse" }
+              }
+            },
+            "description": "统一错误 envelope（业务错误、校验失败与未预期失败）"
           }
         },
         "security": [{ "HTTPBearer": [] }],
@@ -424,10 +759,62 @@
   },
   "components": {
     "schemas": {
-      "ClientConfigurationQueryRequest": {
+      "BindingResponse": {
         "additionalProperties": false,
-        "description": "选择本人客户端中的目录。",
+        "description": "当前用户可见的 Binding 与 Target 摘要。",
         "properties": {
+          "binding_id": { "title": "Binding Id", "type": "string" },
+          "client_project_id": {
+            "title": "Client Project Id",
+            "type": "string"
+          },
+          "created_at": { "title": "Created At", "type": "string" },
+          "module_id": { "title": "Module Id", "type": "string" },
+          "revoked_at": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Revoked At"
+          },
+          "runner_id": { "title": "Runner Id", "type": "string" },
+          "status": {
+            "enum": ["ACTIVE", "DISABLED", "REVOKED"],
+            "title": "Status",
+            "type": "string"
+          },
+          "target": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TargetResponse" },
+              { "type": "null" }
+            ]
+          },
+          "target_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Target Id"
+          },
+          "updated_at": { "title": "Updated At", "type": "string" }
+        },
+        "required": [
+          "binding_id",
+          "module_id",
+          "runner_id",
+          "client_project_id",
+          "target_id",
+          "status",
+          "target",
+          "created_at",
+          "updated_at",
+          "revoked_at"
+        ],
+        "title": "BindingResponse",
+        "type": "object"
+      },
+      "ClientActivateRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
           "target_id": {
             "maxLength": 255,
             "minLength": 1,
@@ -435,44 +822,90 @@
             "type": "string"
           }
         },
-        "required": ["target_id"],
+        "required": ["binding_id", "target_id"],
+        "title": "ClientActivateRequest",
+        "type": "object"
+      },
+      "ClientBindingOperationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "configuration": {
+            "$ref": "#/components/schemas/ClientConfigurationResponse"
+          },
+          "module": {
+            "$ref": "#/components/schemas/ModuleClientConfigurationResponse"
+          }
+        },
+        "required": ["configuration", "module"],
+        "title": "ClientBindingOperationResponse",
+        "type": "object"
+      },
+      "ClientBindingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          }
+        },
+        "required": ["binding_id"],
+        "title": "ClientBindingRequest",
+        "type": "object"
+      },
+      "ClientConfigurationBindRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_project_id": {
+            "format": "uuid",
+            "title": "Client Project Id",
+            "type": "string"
+          },
+          "module_id": {
+            "format": "uuid",
+            "title": "Module Id",
+            "type": "string"
+          }
+        },
+        "required": ["client_project_id", "module_id"],
+        "title": "ClientConfigurationBindRequest",
+        "type": "object"
+      },
+      "ClientConfigurationQueryRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "client_project_id": {
+            "format": "uuid",
+            "title": "Client Project Id",
+            "type": "string"
+          }
+        },
+        "required": ["client_project_id"],
         "title": "ClientConfigurationQueryRequest",
         "type": "object"
       },
       "ClientConfigurationResponse": {
         "additionalProperties": false,
-        "description": "两端均展示服务端返回的实际配置。",
         "properties": {
-          "binding_id": {
-            "anyOf": [
-              { "format": "uuid", "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Binding Id"
+          "binding_module_details": {
+            "items": { "$ref": "#/components/schemas/ClientScopeModuleDetail" },
+            "title": "Binding Module Details",
+            "type": "array"
           },
-          "credential_expires_at": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Credential Expires At"
+          "bindings": {
+            "items": { "$ref": "#/components/schemas/BindingResponse" },
+            "title": "Bindings",
+            "type": "array"
           },
-          "execution_module_id": {
-            "anyOf": [
-              { "format": "uuid", "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Execution Module Id"
+          "client_project_id": {
+            "format": "uuid",
+            "title": "Client Project Id",
+            "type": "string"
           },
-          "execution_project": {
-            "anyOf": [
-              { "$ref": "#/components/schemas/ClientExecutionProject" },
-              { "type": "null" }
-            ]
-          },
-          "grant_id": {
-            "anyOf": [
-              { "format": "uuid", "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Grant Id"
+          "client_type": {
+            "enum": ["dextra", "orca"],
+            "title": "Client Type",
+            "type": "string"
           },
           "mcp_capabilities": {
             "$ref": "#/components/schemas/TokenMCPCapabilitiesResponse"
@@ -488,45 +921,43 @@
             "title": "Mcp Scope Modules",
             "type": "array"
           },
-          "module_labels": {
-            "additionalProperties": { "type": "string" },
-            "title": "Module Labels",
-            "type": "object"
-          },
+          "project": { "$ref": "#/components/schemas/ClientProjectResponse" },
           "runner_id": {
             "format": "uuid",
             "title": "Runner Id",
             "type": "string"
           },
-          "target_id": { "title": "Target Id", "type": "string" }
+          "runner_name": { "title": "Runner Name", "type": "string" },
+          "targets": {
+            "items": { "$ref": "#/components/schemas/TargetResponse" },
+            "title": "Targets",
+            "type": "array"
+          }
         },
         "required": [
           "runner_id",
-          "target_id",
-          "execution_module_id",
-          "execution_project",
-          "binding_id",
+          "runner_name",
+          "client_type",
+          "client_project_id",
+          "project",
+          "targets",
+          "bindings",
           "mcp_scope_modules",
           "mcp_capabilities",
           "mcp_enabled",
-          "module_labels",
           "mcp_scope_details",
-          "grant_id",
-          "credential_expires_at"
+          "binding_module_details"
         ],
         "title": "ClientConfigurationResponse",
         "type": "object"
       },
       "ClientConfigurationSaveRequest": {
         "additionalProperties": false,
-        "description": "保存整份配置，普通编辑采用后写入胜出。",
         "properties": {
-          "execution_module_id": {
-            "anyOf": [
-              { "format": "uuid", "type": "string" },
-              { "type": "null" }
-            ],
-            "title": "Execution Module Id"
+          "client_project_id": {
+            "format": "uuid",
+            "title": "Client Project Id",
+            "type": "string"
           },
           "mcp_capabilities": {
             "$ref": "#/components/schemas/TokenMCPCapabilitiesResponse"
@@ -537,17 +968,10 @@
             "maxItems": 100,
             "title": "Mcp Scope Modules",
             "type": "array"
-          },
-          "target_id": {
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Target Id",
-            "type": "string"
           }
         },
         "required": [
-          "target_id",
-          "execution_module_id",
+          "client_project_id",
           "mcp_scope_modules",
           "mcp_capabilities",
           "mcp_enabled"
@@ -557,9 +981,12 @@
       },
       "ClientCredentialRequest": {
         "additionalProperties": false,
-        "description": "显式查看或重新生成凭证。",
         "properties": {
-          "rotate": { "default": false, "title": "Rotate", "type": "boolean" },
+          "client_project_id": {
+            "format": "uuid",
+            "title": "Client Project Id",
+            "type": "string"
+          },
           "target_id": {
             "maxLength": 255,
             "minLength": 1,
@@ -567,13 +994,12 @@
             "type": "string"
           }
         },
-        "required": ["target_id"],
+        "required": ["client_project_id", "target_id"],
         "title": "ClientCredentialRequest",
         "type": "object"
       },
       "ClientCredentialResponse": {
         "additionalProperties": false,
-        "description": "当前短期 MCP 连接凭证。",
         "properties": {
           "access_token": { "title": "Access Token", "type": "string" },
           "expires_at": { "title": "Expires At", "type": "string" },
@@ -583,25 +1009,67 @@
         "title": "ClientCredentialResponse",
         "type": "object"
       },
-      "ClientExecutionProject": {
+      "ClientProjectResponse": {
         "additionalProperties": false,
-        "description": "执行模块所属项目的只读展示信息。",
         "properties": {
-          "display_name": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Display Name"
+          "availability": {
+            "enum": ["AVAILABLE", "UNAVAILABLE"],
+            "title": "Availability",
+            "type": "string"
           },
-          "id": { "title": "Id", "type": "string" },
-          "name": { "title": "Name", "type": "string" },
-          "path": { "title": "Path", "type": "string" }
+          "client_project_id": {
+            "format": "uuid",
+            "title": "Client Project Id",
+            "type": "string"
+          },
+          "display_name": { "title": "Display Name", "type": "string" },
+          "execution_host_id": {
+            "title": "Execution Host Id",
+            "type": "string"
+          },
+          "logical_project_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Logical Project Id"
+          },
+          "native_project_id": {
+            "title": "Native Project Id",
+            "type": "string"
+          },
+          "native_project_kind": {
+            "enum": ["orca_setup", "orca_folder", "dextra_folder"],
+            "title": "Native Project Kind",
+            "type": "string"
+          },
+          "runner_id": {
+            "format": "uuid",
+            "title": "Runner Id",
+            "type": "string"
+          },
+          "unavailable_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TargetReasonResponse" },
+              { "type": "null" }
+            ]
+          },
+          "updated_at": { "title": "Updated At", "type": "string" }
         },
-        "required": ["id", "name", "display_name", "path"],
-        "title": "ClientExecutionProject",
+        "required": [
+          "client_project_id",
+          "runner_id",
+          "native_project_kind",
+          "native_project_id",
+          "logical_project_id",
+          "display_name",
+          "execution_host_id",
+          "availability",
+          "unavailable_reason",
+          "updated_at"
+        ],
+        "title": "ClientProjectResponse",
         "type": "object"
       },
       "ClientScopeModuleDetail": {
         "additionalProperties": false,
-        "description": "已选模块的当前展示信息和可授予权限。",
         "properties": {
           "can_write": { "title": "Can Write", "type": "boolean" },
           "module_id": { "title": "Module Id", "type": "string" },
@@ -619,15 +1087,63 @@
         "title": "ClientScopeModuleDetail",
         "type": "object"
       },
-      "HTTPValidationError": {
+      "ClientTargetSelectRequest": {
+        "additionalProperties": false,
         "properties": {
-          "detail": {
-            "items": { "$ref": "#/components/schemas/ValidationError" },
-            "title": "Detail",
-            "type": "array"
+          "binding_id": {
+            "format": "uuid",
+            "title": "Binding Id",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              { "maxLength": 255, "minLength": 1, "type": "string" },
+              { "type": "null" }
+            ],
+            "title": "Target Id"
           }
         },
-        "title": "HTTPValidationError",
+        "required": ["binding_id", "target_id"],
+        "title": "ClientTargetSelectRequest",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "description": "错误详情",
+        "properties": {
+          "code": {
+            "description": "错误代码",
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              { "additionalProperties": true, "type": "object" },
+              { "type": "null" }
+            ],
+            "default": null,
+            "description": "额外错误详情",
+            "title": "Detail"
+          },
+          "message": {
+            "description": "错误消息",
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "additionalProperties": false,
+        "description": "标准错误响应格式\n\nAttributes:\n    success: 始终为 False，标识操作失败\n    error: 包含 code 和 message 的错误详情",
+        "properties": {
+          "error": { "$ref": "#/components/schemas/ErrorDetail" },
+          "success": { "const": false, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "error"],
+        "title": "ErrorResponse",
         "type": "object"
       },
       "ListData_ProjectResponse_": {
@@ -716,6 +1232,30 @@
         },
         "required": ["success", "data"],
         "title": "ListResponse[RunnerResponse]",
+        "type": "object"
+      },
+      "ModuleClientConfigurationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active_binding_id": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Active Binding Id"
+          },
+          "bindings": {
+            "items": { "$ref": "#/components/schemas/BindingResponse" },
+            "title": "Bindings",
+            "type": "array"
+          },
+          "configurations": {
+            "items": {
+              "$ref": "#/components/schemas/ClientConfigurationResponse"
+            },
+            "title": "Configurations",
+            "type": "array"
+          }
+        },
+        "required": ["bindings", "active_binding_id", "configurations"],
+        "title": "ModuleClientConfigurationResponse",
         "type": "object"
       },
       "ModuleOptionResponse": {
@@ -1018,8 +1558,15 @@
       },
       "RunnerPairingCreateRequest": {
         "additionalProperties": false,
-        "description": "创建设备配对流程。",
-        "properties": {},
+        "description": "创建设备配对流程；缺省代表现有 Dextra 客户端。",
+        "properties": {
+          "client_type": {
+            "default": "dextra",
+            "enum": ["dextra", "orca"],
+            "title": "Client Type",
+            "type": "string"
+          }
+        },
         "title": "RunnerPairingCreateRequest",
         "type": "object"
       },
@@ -1076,15 +1623,20 @@
         "additionalProperties": false,
         "description": "不含凭据的 Runner 公开摘要。",
         "properties": {
+          "client_build": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Client Build"
+          },
+          "client_type": {
+            "enum": ["dextra", "orca"],
+            "title": "Client Type",
+            "type": "string"
+          },
+          "client_version": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Client Version"
+          },
           "created_at": { "title": "Created At", "type": "string" },
-          "dextra_build": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Dextra Build"
-          },
-          "dextra_version": {
-            "anyOf": [{ "type": "string" }, { "type": "null" }],
-            "title": "Dextra Version"
-          },
           "display_name": { "title": "Display Name", "type": "string" },
           "last_seen_at": {
             "anyOf": [{ "type": "string" }, { "type": "null" }],
@@ -1102,8 +1654,9 @@
           "display_name",
           "status",
           "last_seen_at",
-          "dextra_build",
-          "dextra_version",
+          "client_type",
+          "client_build",
+          "client_version",
           "created_at"
         ],
         "title": "RunnerResponse",
@@ -1138,6 +1691,18 @@
         },
         "required": ["access_token", "token_type", "expires_in"],
         "title": "RunnerTokenResponse",
+        "type": "object"
+      },
+      "SuccessResponse_ClientBindingOperationResponse_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/ClientBindingOperationResponse"
+          },
+          "success": { "const": true, "title": "Success", "type": "boolean" }
+        },
+        "required": ["success", "data"],
+        "title": "SuccessResponse[ClientBindingOperationResponse]",
         "type": "object"
       },
       "SuccessResponse_ClientConfigurationResponse_": {
@@ -1228,6 +1793,94 @@
         "title": "SuccessResponse[RunnerTokenResponse]",
         "type": "object"
       },
+      "TargetReasonResponse": {
+        "additionalProperties": false,
+        "description": "Target 能力或可用性的真实原因。",
+        "properties": {
+          "code": { "title": "Code", "type": "string" },
+          "message": { "title": "Message", "type": "string" }
+        },
+        "required": ["code", "message"],
+        "title": "TargetReasonResponse",
+        "type": "object"
+      },
+      "TargetResponse": {
+        "additionalProperties": false,
+        "description": "不包含本机路径与配置秘密的 Target 摘要。",
+        "properties": {
+          "agent_type": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Agent Type"
+          },
+          "availability": {
+            "enum": ["AVAILABLE", "UNAVAILABLE"],
+            "title": "Availability",
+            "type": "string"
+          },
+          "branch": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Branch"
+          },
+          "client_project_id": {
+            "title": "Client Project Id",
+            "type": "string"
+          },
+          "display_name": { "title": "Display Name", "type": "string" },
+          "execution_host_id": {
+            "title": "Execution Host Id",
+            "type": "string"
+          },
+          "native_workspace_key": {
+            "title": "Native Workspace Key",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Path"
+          },
+          "repository": {
+            "anyOf": [{ "type": "string" }, { "type": "null" }],
+            "title": "Repository"
+          },
+          "runner_id": { "title": "Runner Id", "type": "string" },
+          "runner_status": {
+            "enum": ["REGISTERED", "ONLINE", "OFFLINE"],
+            "title": "Runner Status",
+            "type": "string"
+          },
+          "target_id": { "title": "Target Id", "type": "string" },
+          "unavailable_reason": {
+            "anyOf": [
+              { "$ref": "#/components/schemas/TargetReasonResponse" },
+              { "type": "null" }
+            ]
+          },
+          "updated_at": { "title": "Updated At", "type": "string" },
+          "workspace_display_name": {
+            "title": "Workspace Display Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_id",
+          "runner_id",
+          "client_project_id",
+          "native_workspace_key",
+          "execution_host_id",
+          "path",
+          "display_name",
+          "workspace_display_name",
+          "repository",
+          "branch",
+          "runner_status",
+          "availability",
+          "unavailable_reason",
+          "agent_type",
+          "updated_at"
+        ],
+        "title": "TargetResponse",
+        "type": "object"
+      },
       "TokenMCPCapabilitiesResponse": {
         "additionalProperties": false,
         "description": "Token 已持久化的确定能力状态。",
@@ -1271,33 +1924,764 @@
         "required": ["module_id", "permission"],
         "title": "TokenScopeItem",
         "type": "object"
-      },
-      "ValidationError": {
-        "properties": {
-          "ctx": { "title": "Context", "type": "object" },
-          "input": { "title": "Input" },
-          "loc": {
-            "items": { "anyOf": [{ "type": "string" }, { "type": "integer" }] },
-            "title": "Location",
-            "type": "array"
-          },
-          "msg": { "title": "Message", "type": "string" },
-          "type": { "title": "Error Type", "type": "string" }
-        },
-        "required": ["loc", "msg", "type"],
-        "title": "ValidationError",
-        "type": "object"
       }
     }
   },
   "x-dextra-contract-examples": {
+    "/api/v1/execution-runner-configurations/activate": {
+      "request": {
+        "binding_id": "00000000-0000-4000-8000-000000000000",
+        "target_id": "string"
+      },
+      "response": {
+        "data": {
+          "configuration": {
+            "binding_module_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "client_project_id": "00000000-0000-4000-8000-000000000000",
+            "client_type": "dextra",
+            "mcp_capabilities": {
+              "code_graph_enabled": false,
+              "forge_enabled": false,
+              "issue_enabled": false
+            },
+            "mcp_enabled": false,
+            "mcp_scope_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "mcp_scope_modules": [
+              { "module_id": "string", "permission": "READ" }
+            ],
+            "project": {
+              "availability": "AVAILABLE",
+              "client_project_id": "00000000-0000-4000-8000-000000000000",
+              "display_name": "string",
+              "execution_host_id": "string",
+              "logical_project_id": "string",
+              "native_project_id": "string",
+              "native_project_kind": "orca_setup",
+              "runner_id": "00000000-0000-4000-8000-000000000000",
+              "unavailable_reason": { "code": "string", "message": "string" },
+              "updated_at": "string"
+            },
+            "runner_id": "00000000-0000-4000-8000-000000000000",
+            "runner_name": "string",
+            "targets": [
+              {
+                "agent_type": "string",
+                "availability": "AVAILABLE",
+                "branch": "string",
+                "client_project_id": "string",
+                "display_name": "string",
+                "execution_host_id": "string",
+                "native_workspace_key": "string",
+                "path": "string",
+                "repository": "string",
+                "runner_id": "string",
+                "runner_status": "REGISTERED",
+                "target_id": "string",
+                "unavailable_reason": { "code": "string", "message": "string" },
+                "updated_at": "string",
+                "workspace_display_name": "string"
+              }
+            ]
+          },
+          "module": {
+            "active_binding_id": "string",
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "configurations": [
+              {
+                "binding_module_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "bindings": [
+                  {
+                    "binding_id": "string",
+                    "client_project_id": "string",
+                    "created_at": "string",
+                    "module_id": "string",
+                    "revoked_at": "string",
+                    "runner_id": "string",
+                    "status": "ACTIVE",
+                    "target": {
+                      "agent_type": "string",
+                      "availability": "AVAILABLE",
+                      "branch": "string",
+                      "client_project_id": "string",
+                      "display_name": "string",
+                      "execution_host_id": "string",
+                      "native_workspace_key": "string",
+                      "path": "string",
+                      "repository": "string",
+                      "runner_id": "string",
+                      "runner_status": "REGISTERED",
+                      "target_id": "string",
+                      "unavailable_reason": {
+                        "code": "string",
+                        "message": "string"
+                      },
+                      "updated_at": "string",
+                      "workspace_display_name": "string"
+                    },
+                    "target_id": "string",
+                    "updated_at": "string"
+                  }
+                ],
+                "client_project_id": "00000000-0000-4000-8000-000000000000",
+                "client_type": "dextra",
+                "mcp_capabilities": {
+                  "code_graph_enabled": false,
+                  "forge_enabled": false,
+                  "issue_enabled": false
+                },
+                "mcp_enabled": false,
+                "mcp_scope_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "mcp_scope_modules": [
+                  { "module_id": "string", "permission": "READ" }
+                ],
+                "project": {
+                  "availability": "AVAILABLE",
+                  "client_project_id": "00000000-0000-4000-8000-000000000000",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "logical_project_id": "string",
+                  "native_project_id": "string",
+                  "native_project_kind": "orca_setup",
+                  "runner_id": "00000000-0000-4000-8000-000000000000",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string"
+                },
+                "runner_id": "00000000-0000-4000-8000-000000000000",
+                "runner_name": "string",
+                "targets": [
+                  {
+                    "agent_type": "string",
+                    "availability": "AVAILABLE",
+                    "branch": "string",
+                    "client_project_id": "string",
+                    "display_name": "string",
+                    "execution_host_id": "string",
+                    "native_workspace_key": "string",
+                    "path": "string",
+                    "repository": "string",
+                    "runner_id": "string",
+                    "runner_status": "REGISTERED",
+                    "target_id": "string",
+                    "unavailable_reason": {
+                      "code": "string",
+                      "message": "string"
+                    },
+                    "updated_at": "string",
+                    "workspace_display_name": "string"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-configurations/bind": {
+      "request": {
+        "client_project_id": "00000000-0000-4000-8000-000000000000",
+        "module_id": "00000000-0000-4000-8000-000000000000"
+      },
+      "response": {
+        "data": {
+          "configuration": {
+            "binding_module_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "client_project_id": "00000000-0000-4000-8000-000000000000",
+            "client_type": "dextra",
+            "mcp_capabilities": {
+              "code_graph_enabled": false,
+              "forge_enabled": false,
+              "issue_enabled": false
+            },
+            "mcp_enabled": false,
+            "mcp_scope_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "mcp_scope_modules": [
+              { "module_id": "string", "permission": "READ" }
+            ],
+            "project": {
+              "availability": "AVAILABLE",
+              "client_project_id": "00000000-0000-4000-8000-000000000000",
+              "display_name": "string",
+              "execution_host_id": "string",
+              "logical_project_id": "string",
+              "native_project_id": "string",
+              "native_project_kind": "orca_setup",
+              "runner_id": "00000000-0000-4000-8000-000000000000",
+              "unavailable_reason": { "code": "string", "message": "string" },
+              "updated_at": "string"
+            },
+            "runner_id": "00000000-0000-4000-8000-000000000000",
+            "runner_name": "string",
+            "targets": [
+              {
+                "agent_type": "string",
+                "availability": "AVAILABLE",
+                "branch": "string",
+                "client_project_id": "string",
+                "display_name": "string",
+                "execution_host_id": "string",
+                "native_workspace_key": "string",
+                "path": "string",
+                "repository": "string",
+                "runner_id": "string",
+                "runner_status": "REGISTERED",
+                "target_id": "string",
+                "unavailable_reason": { "code": "string", "message": "string" },
+                "updated_at": "string",
+                "workspace_display_name": "string"
+              }
+            ]
+          },
+          "module": {
+            "active_binding_id": "string",
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "configurations": [
+              {
+                "binding_module_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "bindings": [
+                  {
+                    "binding_id": "string",
+                    "client_project_id": "string",
+                    "created_at": "string",
+                    "module_id": "string",
+                    "revoked_at": "string",
+                    "runner_id": "string",
+                    "status": "ACTIVE",
+                    "target": {
+                      "agent_type": "string",
+                      "availability": "AVAILABLE",
+                      "branch": "string",
+                      "client_project_id": "string",
+                      "display_name": "string",
+                      "execution_host_id": "string",
+                      "native_workspace_key": "string",
+                      "path": "string",
+                      "repository": "string",
+                      "runner_id": "string",
+                      "runner_status": "REGISTERED",
+                      "target_id": "string",
+                      "unavailable_reason": {
+                        "code": "string",
+                        "message": "string"
+                      },
+                      "updated_at": "string",
+                      "workspace_display_name": "string"
+                    },
+                    "target_id": "string",
+                    "updated_at": "string"
+                  }
+                ],
+                "client_project_id": "00000000-0000-4000-8000-000000000000",
+                "client_type": "dextra",
+                "mcp_capabilities": {
+                  "code_graph_enabled": false,
+                  "forge_enabled": false,
+                  "issue_enabled": false
+                },
+                "mcp_enabled": false,
+                "mcp_scope_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "mcp_scope_modules": [
+                  { "module_id": "string", "permission": "READ" }
+                ],
+                "project": {
+                  "availability": "AVAILABLE",
+                  "client_project_id": "00000000-0000-4000-8000-000000000000",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "logical_project_id": "string",
+                  "native_project_id": "string",
+                  "native_project_kind": "orca_setup",
+                  "runner_id": "00000000-0000-4000-8000-000000000000",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string"
+                },
+                "runner_id": "00000000-0000-4000-8000-000000000000",
+                "runner_name": "string",
+                "targets": [
+                  {
+                    "agent_type": "string",
+                    "availability": "AVAILABLE",
+                    "branch": "string",
+                    "client_project_id": "string",
+                    "display_name": "string",
+                    "execution_host_id": "string",
+                    "native_workspace_key": "string",
+                    "path": "string",
+                    "repository": "string",
+                    "runner_id": "string",
+                    "runner_status": "REGISTERED",
+                    "target_id": "string",
+                    "unavailable_reason": {
+                      "code": "string",
+                      "message": "string"
+                    },
+                    "updated_at": "string",
+                    "workspace_display_name": "string"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "success": true
+      }
+    },
     "/api/v1/execution-runner-configurations/credential": {
-      "request": { "target_id": "string" },
+      "request": {
+        "client_project_id": "00000000-0000-4000-8000-000000000000",
+        "target_id": "string"
+      },
       "response": {
         "data": {
           "access_token": "string",
           "expires_at": "string",
           "mcp_url": "string"
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-configurations/deactivate": {
+      "request": { "binding_id": "00000000-0000-4000-8000-000000000000" },
+      "response": {
+        "data": {
+          "configuration": {
+            "binding_module_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "client_project_id": "00000000-0000-4000-8000-000000000000",
+            "client_type": "dextra",
+            "mcp_capabilities": {
+              "code_graph_enabled": false,
+              "forge_enabled": false,
+              "issue_enabled": false
+            },
+            "mcp_enabled": false,
+            "mcp_scope_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "mcp_scope_modules": [
+              { "module_id": "string", "permission": "READ" }
+            ],
+            "project": {
+              "availability": "AVAILABLE",
+              "client_project_id": "00000000-0000-4000-8000-000000000000",
+              "display_name": "string",
+              "execution_host_id": "string",
+              "logical_project_id": "string",
+              "native_project_id": "string",
+              "native_project_kind": "orca_setup",
+              "runner_id": "00000000-0000-4000-8000-000000000000",
+              "unavailable_reason": { "code": "string", "message": "string" },
+              "updated_at": "string"
+            },
+            "runner_id": "00000000-0000-4000-8000-000000000000",
+            "runner_name": "string",
+            "targets": [
+              {
+                "agent_type": "string",
+                "availability": "AVAILABLE",
+                "branch": "string",
+                "client_project_id": "string",
+                "display_name": "string",
+                "execution_host_id": "string",
+                "native_workspace_key": "string",
+                "path": "string",
+                "repository": "string",
+                "runner_id": "string",
+                "runner_status": "REGISTERED",
+                "target_id": "string",
+                "unavailable_reason": { "code": "string", "message": "string" },
+                "updated_at": "string",
+                "workspace_display_name": "string"
+              }
+            ]
+          },
+          "module": {
+            "active_binding_id": "string",
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "configurations": [
+              {
+                "binding_module_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "bindings": [
+                  {
+                    "binding_id": "string",
+                    "client_project_id": "string",
+                    "created_at": "string",
+                    "module_id": "string",
+                    "revoked_at": "string",
+                    "runner_id": "string",
+                    "status": "ACTIVE",
+                    "target": {
+                      "agent_type": "string",
+                      "availability": "AVAILABLE",
+                      "branch": "string",
+                      "client_project_id": "string",
+                      "display_name": "string",
+                      "execution_host_id": "string",
+                      "native_workspace_key": "string",
+                      "path": "string",
+                      "repository": "string",
+                      "runner_id": "string",
+                      "runner_status": "REGISTERED",
+                      "target_id": "string",
+                      "unavailable_reason": {
+                        "code": "string",
+                        "message": "string"
+                      },
+                      "updated_at": "string",
+                      "workspace_display_name": "string"
+                    },
+                    "target_id": "string",
+                    "updated_at": "string"
+                  }
+                ],
+                "client_project_id": "00000000-0000-4000-8000-000000000000",
+                "client_type": "dextra",
+                "mcp_capabilities": {
+                  "code_graph_enabled": false,
+                  "forge_enabled": false,
+                  "issue_enabled": false
+                },
+                "mcp_enabled": false,
+                "mcp_scope_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "mcp_scope_modules": [
+                  { "module_id": "string", "permission": "READ" }
+                ],
+                "project": {
+                  "availability": "AVAILABLE",
+                  "client_project_id": "00000000-0000-4000-8000-000000000000",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "logical_project_id": "string",
+                  "native_project_id": "string",
+                  "native_project_kind": "orca_setup",
+                  "runner_id": "00000000-0000-4000-8000-000000000000",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string"
+                },
+                "runner_id": "00000000-0000-4000-8000-000000000000",
+                "runner_name": "string",
+                "targets": [
+                  {
+                    "agent_type": "string",
+                    "availability": "AVAILABLE",
+                    "branch": "string",
+                    "client_project_id": "string",
+                    "display_name": "string",
+                    "execution_host_id": "string",
+                    "native_workspace_key": "string",
+                    "path": "string",
+                    "repository": "string",
+                    "runner_id": "string",
+                    "runner_status": "REGISTERED",
+                    "target_id": "string",
+                    "unavailable_reason": {
+                      "code": "string",
+                      "message": "string"
+                    },
+                    "updated_at": "string",
+                    "workspace_display_name": "string"
+                  }
+                ]
+              }
+            ]
+          }
         },
         "success": true
       }
@@ -1355,19 +2739,52 @@
       }
     },
     "/api/v1/execution-runner-configurations/query": {
-      "request": { "target_id": "string" },
+      "request": {
+        "client_project_id": "00000000-0000-4000-8000-000000000000"
+      },
       "response": {
         "data": {
-          "binding_id": "00000000-0000-4000-8000-000000000000",
-          "credential_expires_at": "string",
-          "execution_module_id": "00000000-0000-4000-8000-000000000000",
-          "execution_project": {
-            "display_name": "string",
-            "id": "string",
-            "name": "string",
-            "path": "string"
-          },
-          "grant_id": "00000000-0000-4000-8000-000000000000",
+          "binding_module_details": [
+            {
+              "can_write": false,
+              "module_id": "string",
+              "module_name": "string",
+              "project_id": "string",
+              "project_name": "string"
+            }
+          ],
+          "bindings": [
+            {
+              "binding_id": "string",
+              "client_project_id": "string",
+              "created_at": "string",
+              "module_id": "string",
+              "revoked_at": "string",
+              "runner_id": "string",
+              "status": "ACTIVE",
+              "target": {
+                "agent_type": "string",
+                "availability": "AVAILABLE",
+                "branch": "string",
+                "client_project_id": "string",
+                "display_name": "string",
+                "execution_host_id": "string",
+                "native_workspace_key": "string",
+                "path": "string",
+                "repository": "string",
+                "runner_id": "string",
+                "runner_status": "REGISTERED",
+                "target_id": "string",
+                "unavailable_reason": { "code": "string", "message": "string" },
+                "updated_at": "string",
+                "workspace_display_name": "string"
+              },
+              "target_id": "string",
+              "updated_at": "string"
+            }
+          ],
+          "client_project_id": "00000000-0000-4000-8000-000000000000",
+          "client_type": "dextra",
           "mcp_capabilities": {
             "code_graph_enabled": false,
             "forge_enabled": false,
@@ -1386,37 +2803,97 @@
           "mcp_scope_modules": [
             { "module_id": "string", "permission": "READ" }
           ],
-          "module_labels": {},
+          "project": {
+            "availability": "AVAILABLE",
+            "client_project_id": "00000000-0000-4000-8000-000000000000",
+            "display_name": "string",
+            "execution_host_id": "string",
+            "logical_project_id": "string",
+            "native_project_id": "string",
+            "native_project_kind": "orca_setup",
+            "runner_id": "00000000-0000-4000-8000-000000000000",
+            "unavailable_reason": { "code": "string", "message": "string" },
+            "updated_at": "string"
+          },
           "runner_id": "00000000-0000-4000-8000-000000000000",
-          "target_id": "string"
+          "runner_name": "string",
+          "targets": [
+            {
+              "agent_type": "string",
+              "availability": "AVAILABLE",
+              "branch": "string",
+              "client_project_id": "string",
+              "display_name": "string",
+              "execution_host_id": "string",
+              "native_workspace_key": "string",
+              "path": "string",
+              "repository": "string",
+              "runner_id": "string",
+              "runner_status": "REGISTERED",
+              "target_id": "string",
+              "unavailable_reason": { "code": "string", "message": "string" },
+              "updated_at": "string",
+              "workspace_display_name": "string"
+            }
+          ]
         },
         "success": true
       }
     },
     "/api/v1/execution-runner-configurations/save": {
       "request": {
-        "execution_module_id": "00000000-0000-4000-8000-000000000000",
+        "client_project_id": "00000000-0000-4000-8000-000000000000",
         "mcp_capabilities": {
           "code_graph_enabled": false,
           "forge_enabled": false,
           "issue_enabled": false
         },
         "mcp_enabled": false,
-        "mcp_scope_modules": [{ "module_id": "string", "permission": "READ" }],
-        "target_id": "string"
+        "mcp_scope_modules": [{ "module_id": "string", "permission": "READ" }]
       },
       "response": {
         "data": {
-          "binding_id": "00000000-0000-4000-8000-000000000000",
-          "credential_expires_at": "string",
-          "execution_module_id": "00000000-0000-4000-8000-000000000000",
-          "execution_project": {
-            "display_name": "string",
-            "id": "string",
-            "name": "string",
-            "path": "string"
-          },
-          "grant_id": "00000000-0000-4000-8000-000000000000",
+          "binding_module_details": [
+            {
+              "can_write": false,
+              "module_id": "string",
+              "module_name": "string",
+              "project_id": "string",
+              "project_name": "string"
+            }
+          ],
+          "bindings": [
+            {
+              "binding_id": "string",
+              "client_project_id": "string",
+              "created_at": "string",
+              "module_id": "string",
+              "revoked_at": "string",
+              "runner_id": "string",
+              "status": "ACTIVE",
+              "target": {
+                "agent_type": "string",
+                "availability": "AVAILABLE",
+                "branch": "string",
+                "client_project_id": "string",
+                "display_name": "string",
+                "execution_host_id": "string",
+                "native_workspace_key": "string",
+                "path": "string",
+                "repository": "string",
+                "runner_id": "string",
+                "runner_status": "REGISTERED",
+                "target_id": "string",
+                "unavailable_reason": { "code": "string", "message": "string" },
+                "updated_at": "string",
+                "workspace_display_name": "string"
+              },
+              "target_id": "string",
+              "updated_at": "string"
+            }
+          ],
+          "client_project_id": "00000000-0000-4000-8000-000000000000",
+          "client_type": "dextra",
           "mcp_capabilities": {
             "code_graph_enabled": false,
             "forge_enabled": false,
@@ -1435,9 +2912,534 @@
           "mcp_scope_modules": [
             { "module_id": "string", "permission": "READ" }
           ],
-          "module_labels": {},
+          "project": {
+            "availability": "AVAILABLE",
+            "client_project_id": "00000000-0000-4000-8000-000000000000",
+            "display_name": "string",
+            "execution_host_id": "string",
+            "logical_project_id": "string",
+            "native_project_id": "string",
+            "native_project_kind": "orca_setup",
+            "runner_id": "00000000-0000-4000-8000-000000000000",
+            "unavailable_reason": { "code": "string", "message": "string" },
+            "updated_at": "string"
+          },
           "runner_id": "00000000-0000-4000-8000-000000000000",
-          "target_id": "string"
+          "runner_name": "string",
+          "targets": [
+            {
+              "agent_type": "string",
+              "availability": "AVAILABLE",
+              "branch": "string",
+              "client_project_id": "string",
+              "display_name": "string",
+              "execution_host_id": "string",
+              "native_workspace_key": "string",
+              "path": "string",
+              "repository": "string",
+              "runner_id": "string",
+              "runner_status": "REGISTERED",
+              "target_id": "string",
+              "unavailable_reason": { "code": "string", "message": "string" },
+              "updated_at": "string",
+              "workspace_display_name": "string"
+            }
+          ]
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-configurations/select-target": {
+      "request": {
+        "binding_id": "00000000-0000-4000-8000-000000000000",
+        "target_id": "string"
+      },
+      "response": {
+        "data": {
+          "configuration": {
+            "binding_module_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "client_project_id": "00000000-0000-4000-8000-000000000000",
+            "client_type": "dextra",
+            "mcp_capabilities": {
+              "code_graph_enabled": false,
+              "forge_enabled": false,
+              "issue_enabled": false
+            },
+            "mcp_enabled": false,
+            "mcp_scope_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "mcp_scope_modules": [
+              { "module_id": "string", "permission": "READ" }
+            ],
+            "project": {
+              "availability": "AVAILABLE",
+              "client_project_id": "00000000-0000-4000-8000-000000000000",
+              "display_name": "string",
+              "execution_host_id": "string",
+              "logical_project_id": "string",
+              "native_project_id": "string",
+              "native_project_kind": "orca_setup",
+              "runner_id": "00000000-0000-4000-8000-000000000000",
+              "unavailable_reason": { "code": "string", "message": "string" },
+              "updated_at": "string"
+            },
+            "runner_id": "00000000-0000-4000-8000-000000000000",
+            "runner_name": "string",
+            "targets": [
+              {
+                "agent_type": "string",
+                "availability": "AVAILABLE",
+                "branch": "string",
+                "client_project_id": "string",
+                "display_name": "string",
+                "execution_host_id": "string",
+                "native_workspace_key": "string",
+                "path": "string",
+                "repository": "string",
+                "runner_id": "string",
+                "runner_status": "REGISTERED",
+                "target_id": "string",
+                "unavailable_reason": { "code": "string", "message": "string" },
+                "updated_at": "string",
+                "workspace_display_name": "string"
+              }
+            ]
+          },
+          "module": {
+            "active_binding_id": "string",
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "configurations": [
+              {
+                "binding_module_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "bindings": [
+                  {
+                    "binding_id": "string",
+                    "client_project_id": "string",
+                    "created_at": "string",
+                    "module_id": "string",
+                    "revoked_at": "string",
+                    "runner_id": "string",
+                    "status": "ACTIVE",
+                    "target": {
+                      "agent_type": "string",
+                      "availability": "AVAILABLE",
+                      "branch": "string",
+                      "client_project_id": "string",
+                      "display_name": "string",
+                      "execution_host_id": "string",
+                      "native_workspace_key": "string",
+                      "path": "string",
+                      "repository": "string",
+                      "runner_id": "string",
+                      "runner_status": "REGISTERED",
+                      "target_id": "string",
+                      "unavailable_reason": {
+                        "code": "string",
+                        "message": "string"
+                      },
+                      "updated_at": "string",
+                      "workspace_display_name": "string"
+                    },
+                    "target_id": "string",
+                    "updated_at": "string"
+                  }
+                ],
+                "client_project_id": "00000000-0000-4000-8000-000000000000",
+                "client_type": "dextra",
+                "mcp_capabilities": {
+                  "code_graph_enabled": false,
+                  "forge_enabled": false,
+                  "issue_enabled": false
+                },
+                "mcp_enabled": false,
+                "mcp_scope_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "mcp_scope_modules": [
+                  { "module_id": "string", "permission": "READ" }
+                ],
+                "project": {
+                  "availability": "AVAILABLE",
+                  "client_project_id": "00000000-0000-4000-8000-000000000000",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "logical_project_id": "string",
+                  "native_project_id": "string",
+                  "native_project_kind": "orca_setup",
+                  "runner_id": "00000000-0000-4000-8000-000000000000",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string"
+                },
+                "runner_id": "00000000-0000-4000-8000-000000000000",
+                "runner_name": "string",
+                "targets": [
+                  {
+                    "agent_type": "string",
+                    "availability": "AVAILABLE",
+                    "branch": "string",
+                    "client_project_id": "string",
+                    "display_name": "string",
+                    "execution_host_id": "string",
+                    "native_workspace_key": "string",
+                    "path": "string",
+                    "repository": "string",
+                    "runner_id": "string",
+                    "runner_status": "REGISTERED",
+                    "target_id": "string",
+                    "unavailable_reason": {
+                      "code": "string",
+                      "message": "string"
+                    },
+                    "updated_at": "string",
+                    "workspace_display_name": "string"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "success": true
+      }
+    },
+    "/api/v1/execution-runner-configurations/unbind": {
+      "request": { "binding_id": "00000000-0000-4000-8000-000000000000" },
+      "response": {
+        "data": {
+          "configuration": {
+            "binding_module_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "client_project_id": "00000000-0000-4000-8000-000000000000",
+            "client_type": "dextra",
+            "mcp_capabilities": {
+              "code_graph_enabled": false,
+              "forge_enabled": false,
+              "issue_enabled": false
+            },
+            "mcp_enabled": false,
+            "mcp_scope_details": [
+              {
+                "can_write": false,
+                "module_id": "string",
+                "module_name": "string",
+                "project_id": "string",
+                "project_name": "string"
+              }
+            ],
+            "mcp_scope_modules": [
+              { "module_id": "string", "permission": "READ" }
+            ],
+            "project": {
+              "availability": "AVAILABLE",
+              "client_project_id": "00000000-0000-4000-8000-000000000000",
+              "display_name": "string",
+              "execution_host_id": "string",
+              "logical_project_id": "string",
+              "native_project_id": "string",
+              "native_project_kind": "orca_setup",
+              "runner_id": "00000000-0000-4000-8000-000000000000",
+              "unavailable_reason": { "code": "string", "message": "string" },
+              "updated_at": "string"
+            },
+            "runner_id": "00000000-0000-4000-8000-000000000000",
+            "runner_name": "string",
+            "targets": [
+              {
+                "agent_type": "string",
+                "availability": "AVAILABLE",
+                "branch": "string",
+                "client_project_id": "string",
+                "display_name": "string",
+                "execution_host_id": "string",
+                "native_workspace_key": "string",
+                "path": "string",
+                "repository": "string",
+                "runner_id": "string",
+                "runner_status": "REGISTERED",
+                "target_id": "string",
+                "unavailable_reason": { "code": "string", "message": "string" },
+                "updated_at": "string",
+                "workspace_display_name": "string"
+              }
+            ]
+          },
+          "module": {
+            "active_binding_id": "string",
+            "bindings": [
+              {
+                "binding_id": "string",
+                "client_project_id": "string",
+                "created_at": "string",
+                "module_id": "string",
+                "revoked_at": "string",
+                "runner_id": "string",
+                "status": "ACTIVE",
+                "target": {
+                  "agent_type": "string",
+                  "availability": "AVAILABLE",
+                  "branch": "string",
+                  "client_project_id": "string",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "native_workspace_key": "string",
+                  "path": "string",
+                  "repository": "string",
+                  "runner_id": "string",
+                  "runner_status": "REGISTERED",
+                  "target_id": "string",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string",
+                  "workspace_display_name": "string"
+                },
+                "target_id": "string",
+                "updated_at": "string"
+              }
+            ],
+            "configurations": [
+              {
+                "binding_module_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "bindings": [
+                  {
+                    "binding_id": "string",
+                    "client_project_id": "string",
+                    "created_at": "string",
+                    "module_id": "string",
+                    "revoked_at": "string",
+                    "runner_id": "string",
+                    "status": "ACTIVE",
+                    "target": {
+                      "agent_type": "string",
+                      "availability": "AVAILABLE",
+                      "branch": "string",
+                      "client_project_id": "string",
+                      "display_name": "string",
+                      "execution_host_id": "string",
+                      "native_workspace_key": "string",
+                      "path": "string",
+                      "repository": "string",
+                      "runner_id": "string",
+                      "runner_status": "REGISTERED",
+                      "target_id": "string",
+                      "unavailable_reason": {
+                        "code": "string",
+                        "message": "string"
+                      },
+                      "updated_at": "string",
+                      "workspace_display_name": "string"
+                    },
+                    "target_id": "string",
+                    "updated_at": "string"
+                  }
+                ],
+                "client_project_id": "00000000-0000-4000-8000-000000000000",
+                "client_type": "dextra",
+                "mcp_capabilities": {
+                  "code_graph_enabled": false,
+                  "forge_enabled": false,
+                  "issue_enabled": false
+                },
+                "mcp_enabled": false,
+                "mcp_scope_details": [
+                  {
+                    "can_write": false,
+                    "module_id": "string",
+                    "module_name": "string",
+                    "project_id": "string",
+                    "project_name": "string"
+                  }
+                ],
+                "mcp_scope_modules": [
+                  { "module_id": "string", "permission": "READ" }
+                ],
+                "project": {
+                  "availability": "AVAILABLE",
+                  "client_project_id": "00000000-0000-4000-8000-000000000000",
+                  "display_name": "string",
+                  "execution_host_id": "string",
+                  "logical_project_id": "string",
+                  "native_project_id": "string",
+                  "native_project_kind": "orca_setup",
+                  "runner_id": "00000000-0000-4000-8000-000000000000",
+                  "unavailable_reason": {
+                    "code": "string",
+                    "message": "string"
+                  },
+                  "updated_at": "string"
+                },
+                "runner_id": "00000000-0000-4000-8000-000000000000",
+                "runner_name": "string",
+                "targets": [
+                  {
+                    "agent_type": "string",
+                    "availability": "AVAILABLE",
+                    "branch": "string",
+                    "client_project_id": "string",
+                    "display_name": "string",
+                    "execution_host_id": "string",
+                    "native_workspace_key": "string",
+                    "path": "string",
+                    "repository": "string",
+                    "runner_id": "string",
+                    "runner_status": "REGISTERED",
+                    "target_id": "string",
+                    "unavailable_reason": {
+                      "code": "string",
+                      "message": "string"
+                    },
+                    "updated_at": "string",
+                    "workspace_display_name": "string"
+                  }
+                ]
+              }
+            ]
+          }
         },
         "success": true
       }
@@ -1484,15 +3486,20 @@
       "request": { "runner_id": "00000000-0000-4000-8000-000000000000" },
       "response": { "data": { "runner_id": "string" }, "success": true }
     },
+    "/api/v1/execution-runners/disconnect": {
+      "request": {},
+      "response": { "data": { "runner_id": "string" }, "success": true }
+    },
     "/api/v1/execution-runners/list": {
       "request": {},
       "response": {
         "data": {
           "items": [
             {
+              "client_build": "string",
+              "client_type": "dextra",
+              "client_version": "string",
               "created_at": "string",
-              "dextra_build": "string",
-              "dextra_version": "string",
               "display_name": "string",
               "last_seen_at": "string",
               "runner_id": "string",

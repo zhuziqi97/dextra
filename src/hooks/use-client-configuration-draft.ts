@@ -9,7 +9,6 @@ export function configurationInput(
   value?: ConfigurationInput | null
 ): ConfigurationInput {
   return {
-    execution_module_id: value?.execution_module_id ?? null,
     mcp_enabled: value?.mcp_enabled ?? false,
     mcp_scope_modules: (value?.mcp_scope_modules ?? []).map(
       ({ module_id, permission }) => ({ module_id, permission })
@@ -31,8 +30,6 @@ export function sameConfiguration(
     left.mcp_scope_modules.map((item) => [item.module_id, item.permission])
   )
   return (
-    (left.execution_module_id ?? null) ===
-      (right.execution_module_id ?? null) &&
     left.mcp_enabled === right.mcp_enabled &&
     left.mcp_capabilities.forge_enabled ===
       right.mcp_capabilities.forge_enabled &&
@@ -98,7 +95,12 @@ export function useClientConfigurationDraft(
         if (!active) return
         setState((current) => {
           if (dirty(current))
-            return { ...current, loading: false, error: result.error }
+            return {
+              ...current,
+              configuration: result.configuration,
+              loading: false,
+              error: result.error,
+            }
           const configuration = result.configuration
           return {
             configuration,
@@ -122,7 +124,7 @@ export function useClientConfigurationDraft(
     }
   }, [folderId, open, retry])
 
-  const targetId = state.configuration?.target_id
+  const targetId = state.configuration?.client_project_id
   useEffect(() => {
     if (!open || !targetId) return
     let active = true
@@ -131,10 +133,10 @@ export function useClientConfigurationDraft(
       .subscribe<ClientConfiguration>(
         "cerebro://configuration-changed",
         (value) => {
-          if (!active || value.target_id !== targetId) return
+          if (!active || value.client_project_id !== targetId) return
           setState((current) =>
             dirty(current)
-              ? current
+              ? { ...current, configuration: value }
               : {
                   configuration: value,
                   baseline: configurationInput(value),

@@ -6150,6 +6150,16 @@ export function saveCerebroFolderConfiguration(
   })
 }
 
+export function changeCerebroFolderBinding(
+  folderId: number,
+  input: import("./generated/cerebro/BindingInput").BindingInput
+): Promise<import("./generated/cerebro/BindingOperation").BindingOperation> {
+  return getTransport().call("cerebro_change_folder_binding", {
+    folderId,
+    input,
+  })
+}
+
 export function listCerebroConfigurationProjects(
   page = 1,
   search?: string

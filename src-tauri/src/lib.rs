@@ -1749,6 +1749,7 @@ mod tauri_app {
                 cerebro_commands::cerebro_resolve_target,
                 cerebro_commands::cerebro_query_folder_configuration,
                 cerebro_commands::cerebro_save_folder_configuration,
+                cerebro_commands::cerebro_change_folder_binding,
                 cerebro_commands::cerebro_configuration_projects,
                 cerebro_commands::cerebro_configuration_modules,
                 cerebro_commands::cerebro_start_pairing,

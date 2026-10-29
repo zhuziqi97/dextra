@@ -321,7 +321,10 @@ async fn post_json<T: DeserializeOwned, B: Serialize + ?Sized>(
 ) -> Result<T, ClientError> {
     let mut request = client.post(url).json(&body);
     if let Some(token) = bearer_token {
-        request = request.bearer_auth(token).header("Dextra-Protocol", super::protocol::integration_protocol_header());
+        request = request.bearer_auth(token).header(
+            "Dextra-Protocol",
+            super::protocol::integration_protocol_header(),
+        );
     }
     let response = request
         .send()
@@ -586,7 +589,12 @@ async fn refresh_access_token_with(
         AppCommandError::configuration_missing("This Dextra is not paired with Cerebro")
     })?;
     match refresh_credential(client, credential).await {
-        Err(error) if matches!(error.detail.as_deref(), Some(RUNNER_CREDENTIAL_INVALID | RUNNER_REVOKED)) => {
+        Err(error)
+            if matches!(
+                error.detail.as_deref(),
+                Some(RUNNER_CREDENTIAL_INVALID | RUNNER_REVOKED)
+            ) =>
+        {
             store.clear()?;
             Err(error)
         }
@@ -606,7 +614,8 @@ async fn refresh_credential(
         },
         None,
     )
-    .await.map_err(ClientError::into_app_error)?;
+    .await
+    .map_err(ClientError::into_app_error)?;
     if refreshed.access_token.trim().is_empty()
         || refreshed.token_type != "bearer"
         || refreshed.expires_in == 0
@@ -638,11 +647,21 @@ pub async fn start_pairing(cerebro_base_url: &str) -> Result<CerebroPairingStart
 
 pub async fn poll_pairing(handle: &str) -> Result<CerebroPairingPoll, AppCommandError> {
     let client = http_client()?;
-    poll_pairing_with(&PAIRING_MANAGER, &super::credential_storage::SelectedCredentialStore::current()?, &client, handle).await
+    poll_pairing_with(
+        &PAIRING_MANAGER,
+        &super::credential_storage::SelectedCredentialStore::current()?,
+        &client,
+        handle,
+    )
+    .await
 }
 
 pub async fn get_auth_state() -> Result<CerebroAuthState, AppCommandError> {
-    auth_state_with(&PAIRING_MANAGER, &super::credential_storage::SelectedCredentialStore::current()?).await
+    auth_state_with(
+        &PAIRING_MANAGER,
+        &super::credential_storage::SelectedCredentialStore::current()?,
+    )
+    .await
 }
 
 pub async fn cancel_pairing(handle: &str) -> Result<CerebroAuthState, AppCommandError> {
@@ -663,7 +682,11 @@ pub fn forget_runner_credential() -> Result<CerebroAuthState, AppCommandError> {
 
 pub async fn refresh_access_token() -> Result<CerebroRunnerAccess, AppCommandError> {
     let client = http_client()?;
-    refresh_access_token_with(&super::credential_storage::SelectedCredentialStore::current()?, &client).await
+    refresh_access_token_with(
+        &super::credential_storage::SelectedCredentialStore::current()?,
+        &client,
+    )
+    .await
 }
 
 /// 存活 Bridge 固定启动时身份；后续存储切换只影响新连接。
@@ -672,23 +695,40 @@ pub struct RunnerIdentity {
 }
 
 impl RunnerIdentity {
-    pub async fn configuration_request<T: DeserializeOwned>(&self, action: &str, body: &impl Serialize) -> Result<T, AppCommandError> {
+    pub async fn configuration_request<T: DeserializeOwned>(
+        &self,
+        action: &str,
+        body: &impl Serialize,
+    ) -> Result<T, AppCommandError> {
         let client = http_client()?;
         let access = refresh_credential(&client, self.credential.clone()).await?;
-        post_json(&client, endpoint(&access.cerebro_base_url, &format!("api/v1/execution-runner-configurations/{action}"))?, body, Some(&access.access_token))
-            .await.map_err(ClientError::into_app_error)
+        post_json(
+            &client,
+            endpoint(
+                &access.cerebro_base_url,
+                &format!("api/v1/execution-runner-configurations/{action}"),
+            )?,
+            body,
+            Some(&access.access_token),
+        )
+        .await
+        .map_err(ClientError::into_app_error)
     }
 
     pub fn current() -> Result<Self, AppCommandError> {
-        let credential = super::credential_storage::SelectedCredentialStore::current()?.load()?
-            .ok_or_else(|| AppCommandError::configuration_missing("This Dextra is not paired with Cerebro"))?;
+        let credential = super::credential_storage::SelectedCredentialStore::current()?
+            .load()?
+            .ok_or_else(|| {
+                AppCommandError::configuration_missing("This Dextra is not paired with Cerebro")
+            })?;
         Ok(Self { credential })
     }
-
 }
 
 /// 用户显式切换会结束本次配对，但不删除任一旧存储条目。
-pub async fn select_credential_storage(mode: super::credential_storage::StorageMode) -> Result<super::credential_storage::StorageSettings, AppCommandError> {
+pub async fn select_credential_storage(
+    mode: super::credential_storage::StorageMode,
+) -> Result<super::credential_storage::StorageSettings, AppCommandError> {
     let mut pending = PAIRING_MANAGER.pending.lock().await;
     let settings = super::credential_storage::select(mode)?;
     *pending = None;
@@ -727,11 +767,41 @@ mod tests {
     #[test]
     fn client_decodes_current_server_identity_and_configuration_contracts() {
         // 消费服务端生成样例；新增合法响应字段不会要求维护测试字段全集。
-        let _: CerebroEnvelope<PairingCreateData> = serde_json::from_value(contract_example(&format!("/{PAIRING_CREATE_PATH}"), "response")).unwrap();
-        let _: CerebroEnvelope<PairingExchangeData> = serde_json::from_value(contract_example(&format!("/{PAIRING_EXCHANGE_PATH}"), "response")).unwrap();
-        let _: CerebroEnvelope<TokenRefreshData> = serde_json::from_value(contract_example(&format!("/{TOKEN_REFRESH_PATH}"), "response")).unwrap();
-        let _: CerebroEnvelope<super::super::configuration::ClientConfiguration> = serde_json::from_value(contract_example("/api/v1/execution-runner-configurations/query", "response")).unwrap();
-        let _: CerebroEnvelope<super::super::configuration::FolderCredential> = serde_json::from_value(contract_example("/api/v1/execution-runner-configurations/credential", "response")).unwrap();
+        let _: CerebroEnvelope<PairingCreateData> = serde_json::from_value(contract_example(
+            &format!("/{PAIRING_CREATE_PATH}"),
+            "response",
+        ))
+        .unwrap();
+        let _: CerebroEnvelope<PairingExchangeData> = serde_json::from_value(contract_example(
+            &format!("/{PAIRING_EXCHANGE_PATH}"),
+            "response",
+        ))
+        .unwrap();
+        let _: CerebroEnvelope<TokenRefreshData> = serde_json::from_value(contract_example(
+            &format!("/{TOKEN_REFRESH_PATH}"),
+            "response",
+        ))
+        .unwrap();
+        let _: CerebroEnvelope<super::super::configuration::ClientConfiguration> =
+            serde_json::from_value(contract_example(
+                "/api/v1/execution-runner-configurations/query",
+                "response",
+            ))
+            .unwrap();
+        for operation in ["bind", "unbind", "select-target", "activate", "deactivate"] {
+            let _: CerebroEnvelope<super::super::configuration::BindingOperation> =
+                serde_json::from_value(contract_example(
+                    &format!("/api/v1/execution-runner-configurations/{operation}"),
+                    "response",
+                ))
+                .unwrap();
+        }
+        let _: CerebroEnvelope<super::super::configuration::FolderCredential> =
+            serde_json::from_value(contract_example(
+                "/api/v1/execution-runner-configurations/credential",
+                "response",
+            ))
+            .unwrap();
     }
 
     #[derive(Default)]
@@ -817,8 +887,15 @@ mod tests {
         }))
     }
 
-    async fn refresh_token(State(state): State<MockCerebro>, Json(body): Json<serde_json::Value>) -> Json<serde_json::Value> {
-        state.refresh_credentials.lock().unwrap().push(body["refresh_credential"].as_str().unwrap().to_string());
+    async fn refresh_token(
+        State(state): State<MockCerebro>,
+        Json(body): Json<serde_json::Value>,
+    ) -> Json<serde_json::Value> {
+        state
+            .refresh_credentials
+            .lock()
+            .unwrap()
+            .push(body["refresh_credential"].as_str().unwrap().to_string());
         if state.revoke_refresh.load(Ordering::SeqCst) {
             return Json(serde_json::json!({
                 "success": false,
@@ -898,18 +975,41 @@ mod tests {
     async fn live_identity_keeps_its_original_runner_after_storage_changes() {
         let (base_url, server, handle) = mock_server(false).await;
         let store = MemoryStore::default();
-        store.save(&RunnerCredential {
-            cerebro_base_url: base_url.clone(), runner_id: "original-runner".into(),
-            refresh_credential: "original-credential".into(),
-        }).unwrap();
-        let identity = RunnerIdentity { credential: store.load().unwrap().unwrap() };
-        identity.configuration_request::<super::super::configuration::FolderCredential>("credential", &serde_json::json!({"target_id": "target-1", "rotate": false})).await.unwrap();
-        store.save(&RunnerCredential {
-            cerebro_base_url: base_url, runner_id: "new-runner".into(),
-            refresh_credential: "new-credential".into(),
-        }).unwrap();
-        identity.configuration_request::<super::super::configuration::FolderCredential>("credential", &serde_json::json!({"target_id": "target-1", "rotate": false})).await.unwrap();
-        assert_eq!(*server.refresh_credentials.lock().unwrap(), vec!["original-credential", "original-credential"]);
+        store
+            .save(&RunnerCredential {
+                cerebro_base_url: base_url.clone(),
+                runner_id: "original-runner".into(),
+                refresh_credential: "original-credential".into(),
+            })
+            .unwrap();
+        let identity = RunnerIdentity {
+            credential: store.load().unwrap().unwrap(),
+        };
+        identity
+            .configuration_request::<super::super::configuration::FolderCredential>(
+                "credential",
+                &serde_json::json!({"target_id": "target-1", "rotate": false}),
+            )
+            .await
+            .unwrap();
+        store
+            .save(&RunnerCredential {
+                cerebro_base_url: base_url,
+                runner_id: "new-runner".into(),
+                refresh_credential: "new-credential".into(),
+            })
+            .unwrap();
+        identity
+            .configuration_request::<super::super::configuration::FolderCredential>(
+                "credential",
+                &serde_json::json!({"target_id": "target-1", "rotate": false}),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            *server.refresh_credentials.lock().unwrap(),
+            vec!["original-credential", "original-credential"]
+        );
         handle.abort();
     }
 
@@ -976,8 +1076,16 @@ mod tests {
             })
             .unwrap();
 
-        let identity = RunnerIdentity { credential: store.load().unwrap().unwrap() };
-        let principal: super::super::configuration::FolderCredential = identity.configuration_request("credential", &serde_json::json!({"target_id": "target-1", "rotate": false})).await.unwrap();
+        let identity = RunnerIdentity {
+            credential: store.load().unwrap().unwrap(),
+        };
+        let principal: super::super::configuration::FolderCredential = identity
+            .configuration_request(
+                "credential",
+                &serde_json::json!({"target_id": "target-1", "rotate": false}),
+            )
+            .await
+            .unwrap();
 
         assert_eq!(principal.mcp_url, "http://cerebro.test/mcp/stream");
         assert_eq!(principal.access_token, "mcp-short-lived");

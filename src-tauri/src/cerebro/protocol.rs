@@ -1,11 +1,11 @@
 //! 客户端身份和目录事实的控制协议，业务请求复用完整 Web 服务。
 
-use super::FolderTargetProjection;
+use super::target_projection::ProjectCatalog;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
 
-pub const INTEGRATION_MAJOR: u64 = 5;
+pub const INTEGRATION_MAJOR: u64 = 6;
 pub const INTEGRATION_MINOR: u64 = 0;
 pub fn integration_protocol_header() -> String {
     format!("{INTEGRATION_MAJOR}.{INTEGRATION_MINOR}")
@@ -46,9 +46,6 @@ pub fn runner_heartbeat(runner_id: impl Into<String>) -> Envelope {
     envelope(runner_id, "HEARTBEAT", json!({}))
 }
 
-pub fn runner_targets_report(
-    runner_id: impl Into<String>,
-    targets: Vec<FolderTargetProjection>,
-) -> Envelope {
-    envelope(runner_id, "TARGETS_REPORT", json!({"TARGETS": targets}))
+pub fn runner_targets_report(runner_id: impl Into<String>, catalog: ProjectCatalog) -> Envelope {
+    envelope(runner_id, "TARGETS_REPORT", json!(catalog))
 }

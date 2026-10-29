@@ -813,6 +813,7 @@ pub fn build_router(
         .route("/cerebro_resolve_target", post(handlers::cerebro::resolve_target))
         .route("/cerebro_query_folder_configuration", post(handlers::cerebro::query_folder_configuration))
         .route("/cerebro_save_folder_configuration", post(handlers::cerebro::save_folder_configuration))
+        .route("/cerebro_change_folder_binding", post(handlers::cerebro::change_folder_binding))
         .route("/cerebro_configuration_projects", post(handlers::cerebro::configuration_projects))
         .route("/cerebro_configuration_modules", post(handlers::cerebro::configuration_modules))
         .route(

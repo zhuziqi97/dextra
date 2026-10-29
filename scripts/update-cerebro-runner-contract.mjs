@@ -114,13 +114,11 @@ for (const runnerPath of runnerPaths) {
     operation?.requestBody?.content?.["application/json"]?.schema
   const responseSchema =
     operation?.responses?.["200"]?.content?.["application/json"]?.schema
-  if (!requestSchema || !responseSchema) {
-    throw new Error(
-      `Runner endpoint 缺少 JSON request/200 response：${runnerPath}`
-    )
+  if (!responseSchema) {
+    throw new Error(`Runner endpoint 缺少 JSON 200 response：${runnerPath}`)
   }
   examples[runnerPath] = {
-    request: exampleFor(resolveSchema(requestSchema)),
+    request: requestSchema ? exampleFor(resolveSchema(requestSchema)) : {},
     response: exampleFor(resolveSchema(responseSchema)),
   }
 }

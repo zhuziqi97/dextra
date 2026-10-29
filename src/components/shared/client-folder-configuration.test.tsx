@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react"
 import { NextIntlClientProvider } from "next-intl"
 import { expect, it, vi } from "vitest"
 import messages from "@/i18n/messages/en.json"
+import { clientProjectFixture } from "@/hooks/client-project.test-fixture"
 import { ClientFolderConfiguration } from "./client-folder-configuration"
 import { sameConfiguration } from "@/hooks/use-client-configuration-draft"
 
@@ -18,7 +19,6 @@ vi.mock("@/lib/api", () => ({
 
 it("compares editable values as sets and restores clean state after reverting", () => {
   const original = {
-    execution_module_id: null,
     mcp_enabled: false,
     mcp_scope_modules: [
       { module_id: "a", permission: "READ" as const },
@@ -46,14 +46,16 @@ it("compares editable values as sets and restores clean state after reverting", 
     false
   )
   expect(
-    sameConfiguration(original, { ...original, execution_module_id: "a" })
+    sameConfiguration(original, {
+      ...original,
+      mcp_capabilities: { ...original.mcp_capabilities, issue_enabled: true },
+    })
   ).toBe(false)
   expect(sameConfiguration(original, { ...original })).toBe(true)
 })
 
 it("shows unbound without selecting the first project or exposing credentials", async () => {
   const input = {
-    execution_module_id: null,
     mcp_enabled: false,
     mcp_scope_modules: [],
     mcp_capabilities: {
@@ -63,32 +65,25 @@ it("shows unbound without selecting the first project or exposing credentials", 
     },
   }
   const change = vi.fn()
-  render(
-    <NextIntlClientProvider locale="en" messages={messages}>
-      <ClientFolderConfiguration
-        configuration={{
-          ...input,
-          runner_id: "client",
-          target_id: "folder",
-          execution_project: null,
-          binding_id: null,
-          mcp_scope_details: [],
-          module_labels: {},
-          grant_id: null,
-          credential_expires_at: null,
-        }}
-        input={input}
-        loading={false}
-        busy={false}
-        error={null}
-        onChange={change}
-        onRetry={vi.fn()}
-      />
-    </NextIntlClientProvider>
-  )
+  await act(async () => {
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <ClientFolderConfiguration
+          configuration={{ ...clientProjectFixture(), ...input }}
+          input={input}
+          loading={false}
+          busy={false}
+          error={null}
+          onChange={change}
+          onRetry={vi.fn()}
+        />
+      </NextIntlClientProvider>
+    )
+  })
+
   expect(
-    await screen.findByRole("combobox", { name: "Execution module" })
-  ).toHaveTextContent("Not bound")
+    screen.queryByRole("combobox", { name: "Execution module" })
+  ).toBeNull()
   expect(
     screen.getByRole("combobox", { name: "Project filter" })
   ).toHaveTextContent("No project selected")
@@ -106,7 +101,6 @@ it("shows unbound without selecting the first project or exposing credentials", 
 
 it("lets the user clear the project filter without changing saved module access", async () => {
   const input = {
-    execution_module_id: "module",
     mcp_enabled: true,
     mcp_scope_modules: [{ module_id: "module", permission: "READ" as const }],
     mcp_capabilities: {
@@ -119,17 +113,7 @@ it("lets the user clear the project filter without changing saved module access"
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
       <ClientFolderConfiguration
-        configuration={{
-          ...input,
-          runner_id: "client",
-          target_id: "folder",
-          execution_project: null,
-          binding_id: "binding",
-          mcp_scope_details: [],
-          module_labels: { module: "Saved module" },
-          grant_id: "grant",
-          credential_expires_at: null,
-        }}
+        configuration={{ ...clientProjectFixture(), ...input }}
         input={input}
         loading={false}
         busy={false}
@@ -151,14 +135,13 @@ it("lets the user clear the project filter without changing saved module access"
   )
   expect(project).toHaveTextContent("No project selected")
   expect(
-    screen.getByRole("combobox", { name: "Execution module" })
-  ).toHaveTextContent("Saved module")
+    screen.queryByRole("combobox", { name: "Execution module" })
+  ).toBeNull()
   expect(change).not.toHaveBeenCalled()
 })
 
 it("tracks per-module permissions and the graph switch independently of order", () => {
   const original = {
-    execution_module_id: null,
     mcp_enabled: true,
     mcp_scope_modules: [
       { module_id: "a", permission: "READ" as const },
@@ -203,9 +186,8 @@ it("tracks per-module permissions and the graph switch independently of order", 
   ).toBe(false)
 })
 
-it("restores the bound project and preserves browsing on unrelated refreshes", async () => {
+it("preserves browsing on unrelated refreshes and clears it when changing client projects", async () => {
   const input = {
-    execution_module_id: "module",
     mcp_enabled: false,
     mcp_scope_modules: [],
     mcp_capabilities: {
@@ -214,22 +196,7 @@ it("restores the bound project and preserves browsing on unrelated refreshes", a
       issue_enabled: false,
     },
   }
-  const configuration = {
-    ...input,
-    runner_id: "runner",
-    target_id: "folder",
-    binding_id: "binding",
-    execution_project: {
-      id: "project",
-      name: "Project",
-      display_name: null,
-      path: "owner/project",
-    },
-    module_labels: { module: "Saved module" },
-    mcp_scope_details: [],
-    grant_id: null,
-    credential_expires_at: null,
-  }
+  const configuration = { ...clientProjectFixture(), ...input }
   const change = vi.fn()
   const view = (value: typeof configuration) => (
     <NextIntlClientProvider locale="en" messages={messages}>
@@ -246,10 +213,14 @@ it("restores the bound project and preserves browsing on unrelated refreshes", a
   )
   const { rerender } = render(view(configuration))
   const filter = screen.getByRole("combobox", { name: "Project filter" })
-  expect(filter).toHaveTextContent("Project（owner/project）")
+  expect(filter).toHaveTextContent("No project selected")
+  fireEvent.keyDown(filter, { key: "ArrowDown" })
+  fireEvent.click(
+    await screen.findByRole("option", { name: "Project（owner/project）" })
+  )
   expect(
-    screen.getByRole("combobox", { name: "Execution module" })
-  ).toHaveTextContent("Saved module")
+    screen.queryByRole("combobox", { name: "Execution module" })
+  ).toBeNull()
   fireEvent.keyDown(filter, { key: "ArrowDown" })
   fireEvent.click(
     await screen.findByRole("option", { name: "No project selected" })
@@ -260,7 +231,7 @@ it("restores the bound project and preserves browsing on unrelated refreshes", a
   })
   expect(filter).toHaveTextContent("No project selected")
   await act(async () => {
-    rerender(view({ ...configuration, target_id: "another-folder" }))
+    rerender(view({ ...configuration, client_project_id: "another-project" }))
   })
-  expect(filter).toHaveTextContent("Project（owner/project）")
+  expect(filter).toHaveTextContent("No project selected")
 })

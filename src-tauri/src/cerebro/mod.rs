@@ -23,6 +23,6 @@ pub use identity::{
 pub use runtime::CerebroRuntime;
 
 pub use target_projection::{
-    project_folder_targets, FolderTargetProjection, TargetAvailability, TargetProjectionReason,
+    project_folder_catalog, FolderTargetProjection, TargetAvailability, TargetProjectionReason,
     TargetProjectionReasonCode,
 };

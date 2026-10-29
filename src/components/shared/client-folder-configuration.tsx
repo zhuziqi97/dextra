@@ -20,7 +20,6 @@ import {
 import { configurationErrorMessage } from "@/hooks/use-client-configuration-draft"
 import type { ClientConfiguration } from "@/lib/generated/cerebro/ClientConfiguration"
 import type { ConfigurationInput } from "@/lib/generated/cerebro/ConfigurationInput"
-import type { ModuleOption } from "@/lib/generated/cerebro/ModuleOption"
 import type { ProjectOption } from "@/lib/generated/cerebro/ProjectOption"
 
 import { ClientMCPScope } from "./client-mcp-scope"
@@ -49,38 +48,30 @@ export function ClientFolderConfiguration({
 }: Props) {
   const t = useTranslations("CerebroFolder")
   const [projects, setProjects] = useState<ProjectOption[]>([])
-  const [projectId, setProjectId] = useState(
-    configuration?.execution_project?.id ?? ""
-  )
-  const [modules, setModules] = useState<ModuleOption[]>([])
+  const [projectId, setProjectId] = useState("")
   const [optionLabels, setLabels] = useState<
     Record<string, string | undefined>
   >({})
   const [projectsError, setProjectsError] = useState<string | null>(null)
   const [modulesError, setModulesError] = useState<string | null>(null)
   const error = projectsError ?? modulesError
-  const labels = { ...configuration?.module_labels, ...optionLabels }
-  const targetId = configuration?.target_id
-  const [bindingSource, setBindingSource] = useState({
-    targetId,
-    moduleId: configuration?.execution_module_id,
-  })
-  // 只在目录或已保存的执行绑定变化时恢复项目；普通刷新不打断当前筛选。
-  if (
-    bindingSource.targetId !== targetId ||
-    bindingSource.moduleId !== configuration?.execution_module_id
-  ) {
-    setBindingSource({ targetId, moduleId: configuration?.execution_module_id })
-    setProjectId(configuration?.execution_project?.id ?? "")
-    setModules([])
+  const labels = {
+    ...Object.fromEntries(
+      (configuration?.binding_module_details ?? []).map((detail) => [
+        detail.module_id,
+        detail.module_name,
+      ])
+    ),
+    ...optionLabels,
+  }
+  const targetId = configuration?.client_project_id
+  const projectOptions = projects
+  const [sourceProject, setSourceProject] = useState(targetId)
+  if (sourceProject !== targetId) {
+    setSourceProject(targetId)
+    setProjectId("")
     setModulesError(null)
   }
-  const executionProject = configuration?.execution_project
-  const projectOptions =
-    executionProject &&
-    !projects.some((project) => project.id === executionProject.id)
-      ? [executionProject, ...projects]
-      : projects
   const [optionsRetry, setOptionsRetry] = useState(0)
   const retry = () => {
     setProjectsError(null)
@@ -116,7 +107,6 @@ export function ClientFolderConfiguration({
     listCerebroConfigurationModules(projectId)
       .then((result) => {
         if (!active) return
-        setModules(result.items)
         setModulesError(null)
         setLabels((previous) => ({
           ...previous,
@@ -137,9 +127,6 @@ export function ClientFolderConfiguration({
     }
   }, [projectId, t, optionsRetry])
 
-  const selectedOutsideProject =
-    input.execution_module_id &&
-    !modules.some((module) => module.id === input.execution_module_id)
   if (loading && !configuration)
     return (
       <div className="flex items-center gap-2 py-4 text-sm">
@@ -168,7 +155,6 @@ export function ClientFolderConfiguration({
           <Select
             value={projectId || "NONE"}
             onValueChange={(value) => {
-              setModules([])
               setModulesError(null)
               setProjectId(value === "NONE" ? "" : value)
             }}
@@ -195,47 +181,15 @@ export function ClientFolderConfiguration({
           </Select>
         </SettingRow>
         <SettingRow title={t("executionModule")}>
-          <Select
-            value={input.execution_module_id ?? "NONE"}
-            onValueChange={(value) =>
-              edit({ execution_module_id: value === "NONE" ? null : value })
-            }
-            disabled={busy || !configuration}
-          >
-            <SelectTrigger className="w-full" aria-label={t("executionModule")}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent
-              position="popper"
-              side="bottom"
-              align="start"
-              sideOffset={4}
-              avoidCollisions={false}
-              className="max-h-[min(16rem,var(--radix-select-content-available-height))]"
+          {(configuration?.bindings ?? []).map((binding) => (
+            <p
+              key={binding.binding_id}
+              className="text-sm text-muted-foreground"
             >
-              <SelectItem value="NONE">{t("unbound")}</SelectItem>
-              {selectedOutsideProject && (
-                <SelectItem value={input.execution_module_id!}>
-                  {labels[input.execution_module_id!] ??
-                    input.execution_module_id}
-                </SelectItem>
-              )}
-              {modules
-                .filter(
-                  (module) =>
-                    module.can_write || module.id === input.execution_module_id
-                )
-                .map((module) => (
-                  <SelectItem
-                    key={module.id}
-                    value={module.id}
-                    disabled={!module.can_write}
-                  >
-                    {labels[module.id]}
-                  </SelectItem>
-                ))}
-            </SelectContent>
-          </Select>
+              {labels[binding.module_id] ?? binding.module_id} ·{" "}
+              {binding.status} · {binding.target?.display_name ?? "—"}
+            </p>
+          ))}
         </SettingRow>
         <SettingRow
           title={t("mcpModules")}

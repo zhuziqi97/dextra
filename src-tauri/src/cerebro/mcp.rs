@@ -7,25 +7,35 @@ use crate::acp::{
     manager::{AdditionalMcpServers, ConnectionManager, ScopedMcpServers},
 };
 use crate::app_error::{AppCommandError, AppErrorCode};
-use async_trait::async_trait;
 use agent_client_protocol::schema::v1::{McpServer, McpServerStdio};
+use async_trait::async_trait;
 use std::{path::PathBuf, sync::Arc};
 
 struct PrincipalScope {
     identity: identity::RunnerIdentity,
     target_id: String,
+    project_id: String,
 }
 
 #[async_trait]
 impl CompanionCredentials for PrincipalScope {
     async fn issue(&self) -> Result<serde_json::Value, AppCommandError> {
-        let credential = super::configuration::credential_for_target(&self.identity, &self.target_id, false).await?;
+        let credential = super::configuration::credential_for_target(
+            &self.identity,
+            &self.project_id,
+            &self.target_id,
+        )
+        .await?;
         let expires_at = chrono::DateTime::parse_from_rfc3339(&credential.expires_at)
             .map_err(|error| AppCommandError::configuration_invalid(error.to_string()))?;
-        let expires_in = (expires_at.with_timezone(&chrono::Utc) - chrono::Utc::now()).num_seconds().max(0) as u64;
+        let expires_in = (expires_at.with_timezone(&chrono::Utc) - chrono::Utc::now())
+            .num_seconds()
+            .max(0) as u64;
         Ok(serde_json::json!(identity::CerebroMcpPrincipal {
-            mcp_url: credential.mcp_url, access_token: credential.access_token,
-            token_type: "bearer".into(), expires_in,
+            mcp_url: credential.mcp_url,
+            access_token: credential.access_token,
+            token_type: "bearer".into(),
+            expires_in,
         }))
     }
 }
@@ -125,7 +135,19 @@ pub async fn server_for_folder(
     let Some(configuration) = state.configuration else {
         return Ok(Vec::new().into());
     };
-    launch(manager, PrincipalScope { identity: identity::RunnerIdentity::current()?, target_id: configuration.target_id })
+    let target = configuration
+        .targets
+        .iter()
+        .find(|target| target.native_workspace_key == format!("folder:{folder_id}"))
+        .ok_or_else(|| AppCommandError::configuration_invalid("会话位置不属于项目"))?;
+    launch(
+        manager,
+        PrincipalScope {
+            identity: identity::RunnerIdentity::current()?,
+            target_id: target.target_id.clone(),
+            project_id: configuration.client_project_id,
+        },
+    )
 }
 
 pub async fn server_for_conversation(
@@ -137,11 +159,22 @@ pub async fn server_for_conversation(
     use crate::db::entities::{conversation, folder};
     use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
     let folder_id = if let Some(id) = conversation_id {
-        conversation::Entity::find_by_id(id).one(conn).await.map_err(crate::db::error::DbError::from)?.map(|row| row.folder_id)
+        conversation::Entity::find_by_id(id)
+            .one(conn)
+            .await
+            .map_err(crate::db::error::DbError::from)?
+            .map(|row| row.folder_id)
     } else if let Some(path) = working_dir {
-        folder::Entity::find().filter(folder::Column::Path.eq(path)).filter(folder::Column::DeletedAt.is_null())
-            .one(conn).await.map_err(crate::db::error::DbError::from)?.map(|row| row.id)
-    } else { None };
+        folder::Entity::find()
+            .filter(folder::Column::Path.eq(path))
+            .filter(folder::Column::DeletedAt.is_null())
+            .one(conn)
+            .await
+            .map_err(crate::db::error::DbError::from)?
+            .map(|row| row.id)
+    } else {
+        None
+    };
     match folder_id {
         Some(id) => server_for_folder(conn, manager, id).await,
         None => Ok(Vec::new().into()),
